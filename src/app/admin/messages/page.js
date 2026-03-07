@@ -31,14 +31,44 @@ export default function MessagesPage() {
   }
 
   const sendAnnouncement = async () => {
-    if (!form.title || !form.content) return
-    setSaving(true)
-    await supabase.from('announcements').insert([form])
-    setForm({ title: '', content: '', audience: 'all' })
-    setShowAdd(false)
-    setSaving(false)
-    fetchAnnouncements()
+  if (!form.title || !form.content) return
+  setSaving(true)
+  
+  // Save to database
+  await supabase.from('announcements').insert([form])
+
+  // Send push notifications to parents
+  try {
+    let query = supabase.from('profiles').select('push_token').not('push_token', 'is', null)
+    if (form.audience === 'parents') query = query.eq('role', 'parent')
+    else if (form.audience === 'teachers') query = query.eq('role', 'teacher')
+    else if (form.audience === 'all') query = query.in('role', ['parent', 'teacher'])
+
+    const { data: recipients } = await query
+    const tokens = recipients?.map(r => r.push_token).filter(Boolean) || []
+
+    if (tokens.length > 0) {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens.map(token => ({
+          to: token,
+          title: `📢 ${form.title}`,
+          body: form.content,
+          sound: 'default',
+          data: { type: 'announcement', audience: form.audience }
+        })))
+      })
+    }
+  } catch (e) {
+    console.log('Push notification error:', e)
   }
+
+  setForm({ title: '', content: '', audience: 'all' })
+  setShowAdd(false)
+  setSaving(false)
+  fetchAnnouncements()
+}
 
   const deleteAnnouncement = async (id) => {
     if (!confirm('Delete this announcement?')) return
