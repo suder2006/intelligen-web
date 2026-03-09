@@ -18,7 +18,7 @@ export default function ClassroomMomentsAdmin() {
 
   useEffect(() => {
     fetchMoments()
-    supabase.from('classes').select('*').order('name').then(({ data }) => setClasses(data || []))
+    supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value').then(({ data }) => setClasses(data?.map(d => ({ id: d.id, name: d.value })) || []))
   }, [])
 
   async function fetchMoments() {
