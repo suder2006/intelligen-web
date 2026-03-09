@@ -149,7 +149,7 @@ const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'curriculum', label: 'Curriculum', icon: '📚' },
-    { id: 'moments', label: 'Moments', icon: ' 📸' },
+    { id: 'moments', label: 'Moments', icon: 'camera' },
     { id: 'students', label: 'Students', icon: '👶' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
   ]
