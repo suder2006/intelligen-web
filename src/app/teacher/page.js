@@ -14,6 +14,7 @@ export default function TeacherPortal() {
   const [saving, setSaving] = useState(false)
   const [curriculum, setCurriculum] = useState([])
   const [completions, setCompletions] = useState([])
+  const [currView, setCurrView] = useState('today')
   const [currWeek, setCurrWeek] = useState(() => {
     const today = new Date()
     const day = today.getDay()
@@ -256,18 +257,36 @@ const tabs = [
             )}
             {activeTab === 'curriculum' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                  <div className="section-title" style={{ margin: 0 }}>📚 This Week's Curriculum</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div className="section-title" style={{ margin: 0 }}>📚 Curriculum</div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button onClick={() => changeWeek(-1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>◀ Prev</button>
-                    <span style={{ color: '#38bdf8', fontSize: '14px', fontWeight: 'bold' }}>{currWeek}</span>
-                    <button onClick={() => changeWeek(1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>Next ▶</button>
+                    <button onClick={() => changeWeek(-1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>◀</button>
+                    <span style={{ color: '#38bdf8', fontSize: '13px', fontWeight: 'bold' }}>{currWeek}</span>
+                    <button onClick={() => changeWeek(1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>▶</button>
+                    <button onClick={fetchCurriculum} style={{ padding: '8px 14px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🔄</button>
                   </div>
                 </div>
-                <button onClick={fetchCurriculum} style={{ marginBottom: '16px', padding: '8px 16px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🔄 Refresh</button>
-                {curriculum.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No curriculum planned for this week.</div>
-                ) : curriculum.map(item => {
+
+                {/* Today / Week Toggle */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                  {['today', 'week'].map(v => (
+                    <button key={v} onClick={() => setCurrView(v)}
+                      style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: currView === v ? '#38bdf8' : '#1e293b', color: currView === v ? '#0f172a' : '#94a3b8' }}>
+                      {v === 'today' ? `📅 Today (${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })})` : '📆 Full Week'}
+                    </button>
+                  ))}
+                </div>
+                  {(() => {
+                  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+                  const todayDate = new Date().toISOString().split('T')[0]
+                  const filtered = currView === 'today'
+                    ? curriculum.filter(c => c.day === todayName || c.assigned_date === todayDate)
+                    : curriculum
+                  return filtered.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                      {currView === 'today' ? '🎉 No activities scheduled for today!' : 'No curriculum planned for this week.'}
+                    </div>
+                  ) : filtered.map(item => {  
                   const done = completions.some(c => c.curriculum_id === item.id)
                   return (
                     <div key={item.id} style={{ backgroundColor: done ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
@@ -292,7 +311,8 @@ const tabs = [
                       </div>
                     </div>
                   )
-                })}
+                })
+                })()}
               </>
             )}
             {activeTab === 'announcements' && (
