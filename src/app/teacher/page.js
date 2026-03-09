@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
+
 
 export default function TeacherPortal() {
   const [profile, setProfile] = useState(null)
