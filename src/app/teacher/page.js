@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
 
 export default function TeacherPortal() {
   const [profile, setProfile] = useState(null)
@@ -15,6 +16,14 @@ export default function TeacherPortal() {
   const [curriculum, setCurriculum] = useState([])
   const [completions, setCompletions] = useState([])
   const [currView, setCurrView] = useState('today')
+  const [moments, setMoments] = useState([])
+  const [momentCaption, setMomentCaption] = useState('')
+  const [momentClass, setMomentClass] = useState('')
+  const [momentFile, setMomentFile] = useState(null)
+  const [momentPreview, setMomentPreview] = useState(null)
+  const [uploadingMoment, setUploadingMoment] = useState(false)
+  const [programs, setPrograms] = useState([])
+  const momentFileRef = useRef()
   const [currWeek, setCurrWeek] = useState(() => {
     const today = new Date()
     const day = today.getDay()
@@ -39,8 +48,52 @@ export default function TeacherPortal() {
     setStudents(s.data || [])
     setAnnouncements(a.data || [])
     await fetchCurriculum()
+    await fetchMoments()
+    const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+    setPrograms(progs?.map(p => p.value) || [])
     await fetchAttendance()
     setLoading(false)
+  }
+  const fetchMoments = async () => {
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase.from('classroom_moments').select('*').order('created_at', { ascending: false }).limit(50)
+    setMoments(data || [])
+  }
+
+  const uploadMoment = async () => {
+    if (!momentFile || !momentClass) { alert('Please select a photo and class'); return }
+    setUploadingMoment(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const ext = momentFile.name.split('.').pop()
+      const path = `${momentClass}/${today}/${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('classroom-moments').upload(path, momentFile)
+      if (upErr) throw upErr
+      const { data: { publicUrl } } = supabase.storage.from('classroom-moments').getPublicUrl(path)
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('classroom_moments').insert({
+        class_name: momentClass, caption: momentCaption,
+        photo_url: publicUrl, storage_path: path,
+        uploaded_by: user.id, uploaded_by_name: profile?.full_name || 'Teacher',
+        moment_date: today
+      })
+      setMomentCaption('')
+      setMomentPreview(null)
+      setMomentFile(null)
+      if (momentFileRef.current) momentFileRef.current.value = ''
+      await fetchMoments()
+      alert('Photo uploaded!')
+    } catch (e) {
+      alert('Upload failed: ' + e.message)
+    }
+    setUploadingMoment(false)
+  }
+
+  const deleteMoment = async (id, storagePath) => {
+    if (!confirm('Delete this photo?')) return
+    await supabase.storage.from('classroom-moments').remove([storagePath])
+    await supabase.from('classroom_moments').delete().eq('id', id)
+    fetchMoments()
   }
   const fetchCurriculum = async () => {
     const weekEnd = new Date(currWeek)
@@ -96,6 +149,7 @@ const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'curriculum', label: 'Curriculum', icon: '📚' },
+    { id: 'moments', label: 'Moments', icon: '📸' },
     { id: 'students', label: 'Students', icon: '👶' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
   ]
@@ -315,6 +369,63 @@ const tabs = [
                 })()}
               </>
             )}
+            {activeTab === 'moments' && (
+              <>
+                <div className="section-title">📸 Classroom Moments</div>
+
+                {/* Upload */}
+                <div style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+                  <h3 style={{ color: '#38bdf8', marginBottom: '16px', fontSize: '15px' }}>📤 Upload Today's Photo</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '13px' }}>Class *</label>
+                      <select value={momentClass} onChange={e => setMomentClass(e.target.value)}
+                        style={{ width: '100%', marginTop: '6px', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }}>
+                        <option value=''>-- Select Class --</option>
+                        {programs.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '13px' }}>Caption (optional)</label>
+                      <input placeholder='e.g. Art activity today!' value={momentCaption} onChange={e => setMomentCaption(e.target.value)}
+                        style={{ width: '100%', marginTop: '6px', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                    </div>
+                  </div>
+                  <input ref={momentFileRef} type='file' accept='image/jpeg,image/png,image/webp'
+                    onChange={e => { const f = e.target.files[0]; if (f) { setMomentFile(f); setMomentPreview(URL.createObjectURL(f)) } }}
+                    style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }} />
+                  {momentPreview && <img src={momentPreview} alt='preview' style={{ maxHeight: '150px', borderRadius: '8px', marginBottom: '12px', display: 'block' }} />}
+                  <button onClick={uploadMoment} disabled={uploadingMoment}
+                    style={{ padding: '10px 24px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    {uploadingMoment ? '⏳ Uploading...' : '📤 Upload'}
+                  </button>
+                </div>
+
+                {/* Photos Grid */}
+                {moments.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No photos yet. Upload your first moment!</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
+                    {moments.map(m => (
+                      <div key={m.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <img src={m.photo_url} alt={m.caption} style={{ width: '100%', height: '150px', objectFit: 'cover' }} />
+                        <div style={{ padding: '10px' }}>
+                          {m.caption && <p style={{ color: '#e2e8f0', fontSize: '12px', marginBottom: '6px' }}>{m.caption}</p>}
+                          <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>📚 {m.class_name} · {m.moment_date}</div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <a href={m.photo_url} target='_blank' download
+                              style={{ flex: 1, padding: '5px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', textAlign: 'center' }}>⬇️ Save</a>
+                            <button onClick={() => deleteMoment(m.id, m.storage_path)}
+                              style={{ flex: 1, padding: '5px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>🗑️ Del</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
             {activeTab === 'announcements' && (
               <>
                 <div className="section-title">📢 Announcements ({announcements.length})</div>
