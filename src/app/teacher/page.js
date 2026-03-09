@@ -12,6 +12,14 @@ export default function TeacherPortal() {
   const [activeTab, setActiveTab] = useState('home')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [saving, setSaving] = useState(false)
+  const [curriculum, setCurriculum] = useState([])
+  const [completions, setCompletions] = useState([])
+  const [currWeek, setCurrWeek] = useState(() => {
+    const today = new Date()
+    const day = today.getDay()
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+    return new Date(today.setDate(diff)).toISOString().split('T')[0]
+  })
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -29,10 +37,38 @@ export default function TeacherPortal() {
     ])
     setStudents(s.data || [])
     setAnnouncements(a.data || [])
+    await fetchCurriculum()
     await fetchAttendance()
     setLoading(false)
   }
+  const fetchCurriculum = async () => {
+    const weekEnd = new Date(currWeek)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    const { data: curr } = await supabase.from('curriculum').select('*')
+      .gte('assigned_date', currWeek)
+      .lte('assigned_date', weekEnd.toISOString().split('T')[0])
+      .order('assigned_date').order('time_slot')
+    const { data: comp } = await supabase.from('curriculum_completion').select('*')
+    setCurriculum(curr || [])
+    setCompletions(comp || [])
+  }
 
+  const markComplete = async (curriculumId) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const already = completions.find(c => c.curriculum_id === curriculumId)
+    if (already) {
+      await supabase.from('curriculum_completion').delete().eq('id', already.id)
+    } else {
+      await supabase.from('curriculum_completion').insert({ curriculum_id: curriculumId, teacher_id: user.id })
+    }
+    await fetchCurriculum()
+  }
+
+  const changeWeek = (direction) => {
+    const d = new Date(currWeek)
+    d.setDate(d.getDate() + direction * 7)
+    setCurrWeek(d.toISOString().split('T')[0])
+  }
   const fetchAttendance = async () => {
     const { data } = await supabase.from('attendance').select('*').eq('date', date)
     setAttendance(data || [])
@@ -55,9 +91,10 @@ export default function TeacherPortal() {
   const present = attendance.filter(a => a.status === 'present').length
   const absent = attendance.filter(a => a.status === 'absent').length
 
-  const tabs = [
+const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
+    { id: 'curriculum', label: 'Curriculum', icon: '📚' },
     { id: 'students', label: 'Students', icon: '👶' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
   ]
@@ -217,7 +254,47 @@ export default function TeacherPortal() {
                 </div>
               </>
             )}
-
+            {activeTab === 'curriculum' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div className="section-title" style={{ margin: 0 }}>📚 This Week's Curriculum</div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button onClick={() => changeWeek(-1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>◀ Prev</button>
+                    <span style={{ color: '#38bdf8', fontSize: '14px', fontWeight: 'bold' }}>{currWeek}</span>
+                    <button onClick={() => changeWeek(1)} style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', cursor: 'pointer' }}>Next ▶</button>
+                  </div>
+                </div>
+                <button onClick={fetchCurriculum} style={{ marginBottom: '16px', padding: '8px 16px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🔄 Refresh</button>
+                {curriculum.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No curriculum planned for this week.</div>
+                ) : curriculum.map(item => {
+                  const done = completions.some(c => c.curriculum_id === item.id)
+                  return (
+                    <div key={item.id} style={{ backgroundColor: done ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                            <span style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.program}</span>
+                            <span style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.time_slot}</span>
+                            <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.day}</span>
+                            {item.special_event && <span style={{ backgroundColor: 'rgba(245,158,11,0.2)', color: '#fbbf24', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>⭐ Special</span>}
+                          </div>
+                          <div style={{ fontWeight: '600', fontSize: '15px', marginBottom: '4px' }}>{item.planned_activity || 'Activity'}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{item.activity_category} · {item.activity_type}</div>
+                          {item.materials_needed && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '4px' }}>🧰 {item.materials_needed}</div>}
+                          {item.teacher_notes && <div style={{ color: '#f59e0b', fontSize: '12px', marginTop: '4px' }}>📝 {item.teacher_notes}</div>}
+                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '4px' }}>📅 {item.assigned_date}</div>
+                        </div>
+                        <button onClick={() => markComplete(item.id)}
+                          style={{ padding: '8px 14px', backgroundColor: done ? '#10b981' : '#1e293b', color: done ? '#fff' : '#94a3b8', border: `1px solid ${done ? '#10b981' : '#334155'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                          {done ? '✅ Done' : '○ Mark Done'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )}
             {activeTab === 'announcements' && (
               <>
                 <div className="section-title">📢 Announcements ({announcements.length})</div>
