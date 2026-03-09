@@ -12,6 +12,9 @@ export default function ParentPortal() {
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('home')
+  const [curriculum, setCurriculum] = useState([])
+  const [newsletters, setNewsletters] = useState([])
+  const [currView, setCurrView] = useState('highlights')
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -33,6 +36,20 @@ export default function ParentPortal() {
     setFees(f.data || [])
     setAnnouncements(a.data || [])
     setAttendance(at.data || [])
+    // Load this week's curriculum
+    const today = new Date()
+    const day = today.getDay()
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+    const weekStart = new Date(today.setDate(diff)).toISOString().split('T')[0]
+    const weekEnd = new Date(new Date(weekStart).setDate(new Date(weekStart).getDate() + 6)).toISOString().split('T')[0]
+    const [curr, news] = await Promise.all([
+      supabase.from('curriculum').select('*').gte('assigned_date', weekStart).lte('assigned_date', weekEnd).order('assigned_date').order('time_slot'),
+      supabase.from('curriculum_newsletter').select('*').order('created_at', { ascending: false }).limit(5)
+    ])
+    const comp = await supabase.from('curriculum_completion').select('curriculum_id')
+    const completedIds = comp.data?.map(c => c.curriculum_id) || []
+    setCurriculum((curr.data || []).map(c => ({ ...c, completed: completedIds.includes(c.id) })))
+    setNewsletters(news.data || [])
     setLoading(false)
   }
 
@@ -44,6 +61,7 @@ export default function ParentPortal() {
   const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'children', label: 'My Children', icon: '👶' },
+    { id: 'curriculum', label: 'Curriculum', icon: '📚' },
     { id: 'fees', label: 'Fees', icon: '💳' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
@@ -235,7 +253,93 @@ export default function ParentPortal() {
                 </div>
               </>
             )}
+            {/* CURRICULUM TAB */}
+            {activeTab === 'curriculum' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div className="section-title" style={{ margin: 0 }}>📚 Curriculum</div>
+                </div>
 
+                {/* Toggle */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                  {['highlights', 'newsletter'].map(v => (
+                    <button key={v} onClick={() => setCurrView(v)}
+                      style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: currView === v ? '#38bdf8' : '#1e293b', color: currView === v ? '#0f172a' : '#94a3b8' }}>
+                      {v === 'highlights' ? '⭐ This Week' : '📰 Newsletter'}
+                    </button>
+                  ))}
+                </div>
+
+                {currView === 'highlights' && (
+                  <>
+                    <div style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px' }}>
+                      <div style={{ color: '#38bdf8', fontWeight: '600', marginBottom: '4px' }}>📅 Week Highlights</div>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
+                        {curriculum.filter(c => c.completed).length} of {curriculum.length} activities completed this week
+                      </div>
+                    </div>
+
+                    {/* Special Events first */}
+                    {curriculum.filter(c => c.special_event).length > 0 && (
+                      <>
+                        <div className="section-title">⭐ Special Events</div>
+                        {curriculum.filter(c => c.special_event).map(item => (
+                          <div key={item.id} style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                              <span style={{ backgroundColor: 'rgba(245,158,11,0.2)', color: '#f59e0b', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>⭐ Special Event</span>
+                              <span style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.day}</span>
+                              <span style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.program}</span>
+                            </div>
+                            <div style={{ fontWeight: '600' }}>{item.planned_activity}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>{item.activity_category}</div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Daily breakdown */}
+                    <div className="section-title">📆 Daily Activities</div>
+                    {['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day => {
+                      const dayItems = curriculum.filter(c => c.day === day)
+                      if (dayItems.length === 0) return null
+                      return (
+                        <div key={day} style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px', marginBottom: '12px' }}>
+                          <div style={{ color: '#38bdf8', fontWeight: '600', marginBottom: '12px' }}>📅 {day}</div>
+                          {dayItems.map(item => (
+                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <div>
+                                <div style={{ fontSize: '14px', fontWeight: '500' }}>{item.planned_activity || 'Activity'}</div>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{item.time_slot} · {item.program}</div>
+                              </div>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', backgroundColor: item.completed ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)', color: item.completed ? '#34d399' : 'rgba(255,255,255,0.3)' }}>
+                                {item.completed ? '✅ Done' : '⏳ Planned'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                    {curriculum.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No curriculum planned for this week.</div>}
+                  </>
+                )}
+
+                {currView === 'newsletter' && (
+                  <>
+                    {newsletters.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No newsletters sent yet.</div>
+                    ) : newsletters.map(n => (
+                      <div key={n.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '24px', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                          <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>📰 Week of {n.week_start}</span>
+                          <span style={{ color: '#64748b', fontSize: '13px' }}>{new Date(n.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <pre style={{ color: '#e2e8f0', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>{n.content}</pre>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
             {/* ANNOUNCEMENTS TAB */}
             {activeTab === 'announcements' && (
               <>
