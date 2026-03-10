@@ -223,9 +223,9 @@ export default function StaffPage() {
             <label className="form-label">Email *</label>
             <input className="form-input" type="email" placeholder="e.g. sarah@school.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
             <label className="form-label">Phone</label>
-            <label className="form-label">Password *</label>
-            <input className="form-input" type="password" placeholder="e.g. Teacher@123" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
             <input className="form-input" placeholder="e.g. +91 98765 43210" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+            <label className="form-label">Password *</label>
+            <input className="form-input" type="password" placeholder="e.g. Teacher@123" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />           
             <label className="form-label">Role</label>
             <select className="form-input" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
               <option value="teacher">Teacher</option>
