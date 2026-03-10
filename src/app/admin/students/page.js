@@ -14,7 +14,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('')
   const [filterProgram, setFilterProgram] = useState('')
   const [form, setForm] = useState({
-    full_name: '', date_of_birth: '', gender: '',
+    student_id: '', full_name: '', date_of_birth: '', gender: '',
     program: '', status: 'active', parent_name: '',
     parent_phone: '', parent_email: '', address: ''
   })
@@ -40,7 +40,7 @@ export default function StudentsPage() {
     } else {
       await supabase.from('students').insert(form)
     }
-    setForm({ full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
+    setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
     setEditing(null)
     setShowForm(false)
     await fetchStudents()
@@ -76,7 +76,7 @@ export default function StudentsPage() {
             <button onClick={() => router.back()} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>← Back</button>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold' }}>👶 Students ({students.length})</h1>
           </div>
-          <button onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' }) }}
+          <button onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' }) }}
             style={{ padding: '10px 24px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
             ➕ Add Student
           </button>
@@ -87,6 +87,10 @@ export default function StudentsPage() {
           <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '24px', border: '1px solid #38bdf8', marginBottom: '24px' }}>
             <h3 style={{ color: '#38bdf8', marginBottom: '20px' }}>{editing ? '✏️ Edit Student' : '➕ New Student'}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Student ID *</label>
+                <input value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} placeholder='e.g. TK-001' style={inputStyle} />
+              </div>
               <div>
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Full Name *</label>
                 <input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder='Student full name' style={inputStyle} />
@@ -174,7 +178,7 @@ export default function StudentsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #334155' }}>
-                {['Name', 'Program', 'DOB', 'Gender', 'Parent', 'Phone', 'Status', ''].map(h => (
+                {['ID', 'Name', 'Program', 'DOB', 'Gender', 'Parent', 'Phone', 'Status', ''].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '12px' }}>{h}</th>
                 ))}
               </tr>
@@ -197,6 +201,7 @@ export default function StudentsPage() {
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{s.program || '—'}</span>
                   </td>
+                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{s.student_id || '—'}</td>
                   <td style={{ padding: '12px 16px', color: '#64748b' }}>{s.date_of_birth || '—'}</td>
                   <td style={{ padding: '12px 16px', color: '#64748b' }}>{s.gender || '—'}</td>
                   <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{s.parent_name || '—'}</td>
