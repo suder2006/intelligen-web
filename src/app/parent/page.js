@@ -26,11 +26,20 @@ export default function ParentPortal() {
     setUser(user)
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
+        // Get only this parent's linked students
+    const { data: linkedStudents } = await supabase
+      .from('parent_students')
+      .select('student_id')
+      .eq('parent_id', user.id)
+    const studentIds = linkedStudents?.map(ls => ls.student_id) || []
+
     const [s, f, a, at] = await Promise.all([
-      supabase.from('students').select('*').eq('status', 'active').limit(10),
-      supabase.from('fees').select('*').order('created_at', { ascending: false }).limit(20),
+      studentIds.length > 0
+        ? supabase.from('students').select('*').in('id', studentIds).eq('status', 'active')
+        : Promise.resolve({ data: [] }),
+      supabase.from('fees').select('*').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('created_at', { ascending: false }).limit(20),
       supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(10),
-      supabase.from('attendance').select('*, students(full_name)').order('date', { ascending: false }).limit(30)
+      supabase.from('attendance').select('*, students(full_name)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('date', { ascending: false }).limit(30)
     ])
     setStudents(s.data || [])
     setFees(f.data || [])
