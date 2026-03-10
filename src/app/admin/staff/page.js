@@ -10,7 +10,7 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', role: 'teacher' })
+  const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', role: 'teacher' })
   const [selectedPrograms, setSelectedPrograms] = useState([])
   const [editingPrograms, setEditingPrograms] = useState(null)
   const [editPrograms, setEditPrograms] = useState([])
@@ -52,22 +52,26 @@ export default function StaffPage() {
     else setList([...list, prog])
   }
 
+  const [credentials, setCredentials] = useState(null)
+
   const addStaff = async () => {
-    if (!form.full_name || !form.email) { alert('Name and email are required'); return }
+    if (!form.full_name || !form.email || !form.password) { alert('Name, email and password are required'); return }
     setSaving(true)
     try {
-      // Insert into profiles (auth user created separately by super admin)
-      const { data: prof, error } = await supabase.from('profiles').insert([{
-        full_name: form.full_name, email: form.email, phone: form.phone, role: form.role
-      }]).select().single()
+      const { data, error } = await supabase.functions.invoke('create-staff-user', {
+        body: {
+          full_name: form.full_name,
+          email: form.email,
+          password: form.password,
+          phone: form.phone,
+          role: form.role,
+          programs: selectedPrograms
+        }
+      })
       if (error) throw error
-      // Save program assignments
-      if (selectedPrograms.length > 0) {
-        await supabase.from('staff_programs').insert(
-          selectedPrograms.map(p => ({ staff_id: prof.id, program: p }))
-        )
-      }
-      setForm({ full_name: '', email: '', phone: '', role: 'teacher' })
+      if (data.error) throw new Error(data.error)
+      setCredentials({ email: form.email, password: form.password, name: form.full_name })
+      setForm({ full_name: '', email: '', phone: '', password: '', role: 'teacher' })
       setSelectedPrograms([])
       setShowAdd(false)
       await fetchAll()
@@ -219,6 +223,8 @@ export default function StaffPage() {
             <label className="form-label">Email *</label>
             <input className="form-input" type="email" placeholder="e.g. sarah@school.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
             <label className="form-label">Phone</label>
+            <label className="form-label">Password *</label>
+            <input className="form-input" type="password" placeholder="e.g. Teacher@123" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
             <input className="form-input" placeholder="e.g. +91 98765 43210" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
             <label className="form-label">Role</label>
             <select className="form-input" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
@@ -241,6 +247,22 @@ export default function StaffPage() {
           </div>
         </div>
       )}
-    </div>
+      {credentials && (
+        <div className="modal-overlay" onClick={() => setCredentials(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Staff Added!</div>
+            <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+              <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }}>Share these credentials with {credentials.name}:</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '15px', marginBottom: '8px' }}>Email: <strong style={{ color: '#38bdf8' }}>{credentials.email}</strong></div>
+              <div style={{ fontFamily: 'monospace', fontSize: '15px' }}>Password: <strong style={{ color: '#38bdf8' }}>{credentials.password}</strong></div>
+            </div>
+            <div className="modal-btns">
+              <button className="btn-primary" onClick={() => { navigator.clipboard.writeText(`Email: ${credentials.email}\nPassword: ${credentials.password}`); alert('Copied!') }}>Copy Credentials</button>
+              <button className="btn-cancel" onClick={() => setCredentials(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>   
   )
 }
