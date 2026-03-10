@@ -36,15 +36,36 @@ export default function StudentsPage() {
     if (!form.full_name) { alert('Please enter student name'); return }
     setSaving(true)
     const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
-    if (editing) {
-      await supabase.from('students').update(form).eq('id', editing)
-    } else {
-      await supabase.from('students').insert({ ...form, school_id: SCHOOL_ID })
+    try {
+      let studentId = editing
+      if (editing) {
+        const { error } = await supabase.from('students').update(form).eq('id', editing)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('students').insert({ ...form, school_id: SCHOOL_ID }).select().single()
+        if (error) throw error
+        studentId = data.id
+      }
+
+      // Auto-link parent if email provided
+      if (form.parent_email && studentId) {
+        await supabase.functions.invoke('create-parent-user', {
+          body: {
+            student_id: studentId,
+            parent_name: form.parent_name || '',
+            parent_email: form.parent_email,
+            parent_phone: form.parent_phone || ''
+          }
+        })
+      }
+
+      setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
+      setEditing(null)
+      setShowForm(false)
+      await fetchStudents()
+    } catch (e) {
+      alert('Error: ' + e.message)
     }
-    setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
-    setEditing(null)
-    setShowForm(false)
-    await fetchStudents()
     setSaving(false)
   }
 
