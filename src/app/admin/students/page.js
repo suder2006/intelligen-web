@@ -35,10 +35,11 @@ export default function StudentsPage() {
   async function save() {
     if (!form.full_name) { alert('Please enter student name'); return }
     setSaving(true)
+    const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
     if (editing) {
       await supabase.from('students').update(form).eq('id', editing)
     } else {
-      await supabase.from('students').insert(form)
+      await supabase.from('students').insert({ ...form, school_id: SCHOOL_ID })
     }
     setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
     setEditing(null)
