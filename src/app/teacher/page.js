@@ -41,12 +41,22 @@ export default function TeacherPortal() {
     if (!user) { router.push('/'); return }
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
-    const [s, a] = await Promise.all([
-      supabase.from('students').select('*').eq('status', 'active').order('full_name'),
-      supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(10)
-    ])
-    setStudents(s.data || [])
-    setAnnouncements(a.data || [])
+    // Get teacher's assigned programs
+    const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
+    const teacherPrograms = spData?.map(p => p.program) || []
+
+    const { data: sData } = await supabase.from('students')
+      .select('*')
+      .eq('status', 'active')
+      .in('program', teacherPrograms.length > 0 ? teacherPrograms : ['__none__'])
+      .order('full_name')
+
+    const { data: aData } = await supabase.from('announcements')
+      .select('*').order('created_at', { ascending: false }).limit(10)
+
+    setStudents(sData || [])
+    setAnnouncements(aData || [])
+  
     await fetchCurriculum()
     await fetchMoments()
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
