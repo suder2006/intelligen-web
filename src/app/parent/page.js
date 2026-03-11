@@ -92,13 +92,15 @@ export default function ParentPortal() {
     setSendingMessage(true)
     await supabase.from('messages').insert({
       sender_id: user.id,
-      recipient_id: selectedTeacher,
+      receiver_id: selectedTeacher,
       content: newMessage,
-      sender_name: profile?.full_name || 'Parent'
+      sender_name: profile?.full_name || 'Parent',
+      private: true
     })
     setNewMessage('')
-    const { data: msgsData } = await supabase.from('messages').select('*')
-      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+       const { data: msgsData } = await supabase.from('messages').select('*')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .eq('private', true)  
       .order('created_at', { ascending: false }).limit(30)
     setMessages(msgsData || [])
     setSendingMessage(false)
