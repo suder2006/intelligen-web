@@ -31,6 +31,11 @@ export default function TeacherPortal() {
     return new Date(today.setDate(diff)).toISOString().split('T')[0]
   })
   const router = useRouter()
+  const [messages, setMessages] = useState([])
+  const [replyText, setReplyText] = useState('')
+  const [replyingTo, setReplyingTo] = useState(null)
+  const [sendingReply, setSendingReply] = useState(false)
+  const [parents, setParents] = useState([])
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
@@ -61,6 +66,9 @@ export default function TeacherPortal() {
     await fetchMoments()
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
     setPrograms(progs?.map(p => p.value) || [])
+    await fetchMessages()
+    const { data: parentsData } = await supabase.from('profiles').select('*').eq('role', 'parent')
+    setParents(parentsData || [])
     await fetchAttendance()
     setLoading(false)
   }
@@ -74,6 +82,30 @@ export default function TeacherPortal() {
       .order('created_at', { ascending: false })
       .limit(50)
     setMoments(data || [])
+  }
+  const fetchMessages = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data } = await supabase.from('messages').select('*')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .eq('private', true)
+      .order('created_at', { ascending: true })
+    setMessages(data || [])
+  }
+
+  const sendReply = async () => {
+    if (!replyText.trim() || !replyingTo) return
+    setSendingReply(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: replyingTo,
+      content: replyText,
+      sender_name: profile?.full_name || 'Teacher',
+      private: true
+    })
+    setReplyText('')
+    await fetchMessages()
+    setSendingReply(false)
   }
 
   const uploadMoment = async () => {
@@ -168,6 +200,7 @@ const tabs = [
     { id: 'moments', label: 'Moments', icon: 'camera' },
     { id: 'students', label: 'Students', icon: '👶' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
+    { id: 'messages', label: 'Messages', icon: '💬' },
   ]
 
   return (
@@ -439,6 +472,62 @@ const tabs = [
                     ))}
                   </div>
                 )}
+              </>
+            )}
+
+            {activeTab === 'messages' && (
+              <>
+                <div className="section-title">💬 Parent Messages</div>
+
+                {/* Conversations grouped by parent */}
+                {parents.filter(p => messages.some(m => m.sender_id === p.id || m.receiver_id === p.id)).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No messages yet from parents.</div>
+                ) : parents.filter(p => messages.some(m => m.sender_id === p.id || m.receiver_id === p.id)).map(parent => {
+                  const convo = messages.filter(m => m.sender_id === parent.id || m.receiver_id === parent.id)
+                  return (
+                    <div key={parent.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ fontWeight: '700', color: '#38bdf8' }}>👪 {parent.full_name}</div>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>{convo.length} messages</span>
+                      </div>
+
+                      {/* Messages */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px' }}>
+                        {convo.map(m => {
+                          const isSent = m.sender_id !== parent.id
+                          return (
+                            <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isSent ? 'flex-end' : 'flex-start' }}>
+                              <div style={{ padding: '10px 14px', borderRadius: '12px', maxWidth: '75%', fontSize: '14px', lineHeight: 1.5,
+                                backgroundColor: isSent ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.06)',
+                                border: isSent ? '1px solid rgba(56,189,248,0.2)' : '1px solid rgba(255,255,255,0.1)',
+                                borderBottomRightRadius: isSent ? '4px' : '12px',
+                                borderBottomLeftRadius: isSent ? '12px' : '4px' }}>
+                                {m.content}
+                              </div>
+                              <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', margin: '2px 4px 8px' }}>
+                                {isSent ? 'You' : m.sender_name} · {new Date(m.created_at).toLocaleString()}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Reply */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          placeholder='Type a reply...'
+                          value={replyingTo === parent.id ? replyText : ''}
+                          onChange={e => { setReplyingTo(parent.id); setReplyText(e.target.value) }}
+                          onFocus={() => setReplyingTo(parent.id)}
+                          style={{ flex: 1, padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                        <button onClick={sendReply} disabled={sendingReply}
+                          style={{ padding: '10px 16px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                          {sendingReply ? '...' : '📤'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
               </>
             )}
 
