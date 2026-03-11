@@ -3,107 +3,213 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
+const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
+const FEE_TYPES = ['Registration Fee', 'Admission Fee', 'Annual Fee', 'Tuition Fee', 'Books & Materials', 'Uniform', 'Event Fee', 'Daycare Fee', 'Transport Fee']
+const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Online']
+
+const navItems = [
+  { href: '/admin', label: 'Dashboard', icon: '⊞' },
+  { href: '/admin/students', label: 'Students', icon: '👶' },
+  { href: '/admin/classes', label: 'Classes', icon: '📚' },
+  { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
+  { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
+  { href: '/admin/fees', label: 'Fees', icon: '💳' },
+  { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
+  { href: '/admin/messages', label: 'Messages', icon: '💬' },
+]
+
 export default function FeesPage() {
-  const [fees, setFees] = useState([])
+  const [view, setView] = useState('overview') // overview | student | invoices | structures
   const [students, setStudents] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [installments, setInstallments] = useState([])
+  const [structures, setStructures] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [filter, setFilter] = useState('all')
+  const [selectedStudent, setSelectedStudent] = useState(null)
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false)
+  const [showInstallmentForm, setShowInstallmentForm] = useState(false)
+  const [showStructureForm, setShowStructureForm] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(null)
+  const [paymentMode, setPaymentMode] = useState('Cash')
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ student_id: '', title: '', amount: '', due_date: '', status: 'unpaid' })
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [searchStudent, setSearchStudent] = useState('')
+  const [activeInvoice, setActiveInvoice] = useState(null)
 
-  const navItems = [
-    { href: '/admin', label: 'Dashboard', icon: '⊞' },
-    { href: '/admin/students', label: 'Students', icon: '👶' },
-    { href: '/admin/classes', label: 'Classes', icon: '📚' },
-    { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
-    { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
-    { href: '/admin/fees', label: 'Fees', icon: '💳' },
-    { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
-    { href: '/admin/messages', label: 'Messages', icon: '💬' },
-  ]
+  const [invoiceForm, setInvoiceForm] = useState({
+    student_id: '', fee_type: 'Tuition Fee', description: '', total_amount: '',
+    due_date: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1), notes: ''
+  })
 
-  useEffect(() => { fetchData() }, [])
+  const [installmentForm, setInstallmentForm] = useState({
+    installment_number: 1, amount: '', due_date: '', notes: ''
+  })
 
-  const fetchData = async () => {
+  const [structureForm, setStructureForm] = useState({
+    program: '', fee_type: 'Tuition Fee', amount: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1)
+  })
+
+  useEffect(() => { fetchAll() }, [])
+
+  const fetchAll = async () => {
     setLoading(true)
-    const [f, s] = await Promise.all([
-      supabase.from('fees').select('*, students(full_name)').order('created_at', { ascending: false }),
-      supabase.from('students').select('id, full_name').eq('status', 'active')
+    const [s, inv, inst, str] = await Promise.all([
+      supabase.from('students').select('id, full_name, program, student_id').eq('status', 'active').order('full_name'),
+      supabase.from('fee_invoices').select('*, students(full_name, program)').order('created_at', { ascending: false }),
+      supabase.from('fee_installments').select('*').order('due_date'),
+      supabase.from('fee_structures').select('*').order('program')
     ])
-    setFees(f.data || [])
     setStudents(s.data || [])
+    setInvoices(inv.data || [])
+    setInstallments(inst.data || [])
+    setStructures(str.data || [])
     setLoading(false)
   }
 
-  const addFee = async () => {
-    if (!form.title || !form.amount) return
+  const createInvoice = async () => {
+    if (!invoiceForm.student_id || !invoiceForm.fee_type || !invoiceForm.total_amount) {
+      alert('Please fill student, fee type and amount'); return
+    }
     setSaving(true)
-    await supabase.from('fees').insert([{ ...form, amount: parseFloat(form.amount) }])
-    setForm({ student_id: '', title: '', amount: '', due_date: '', status: 'unpaid' })
-    setShowAdd(false)
+    const { error } = await supabase.from('fee_invoices').insert({
+      ...invoiceForm,
+      total_amount: parseFloat(invoiceForm.total_amount),
+      paid_amount: 0,
+      status: 'unpaid',
+      school_id: SCHOOL_ID
+    })
+    if (error) { alert('Error: ' + error.message); setSaving(false); return }
+    setShowInvoiceForm(false)
+    setInvoiceForm({ student_id: '', fee_type: 'Tuition Fee', description: '', total_amount: '', due_date: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1), notes: '' })
+    await fetchAll()
     setSaving(false)
-    fetchData()
   }
 
-  const markPaid = async (id) => {
-    await supabase.from('fees').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id)
-    fetchData()
+  const createInstallment = async () => {
+    if (!activeInvoice || !installmentForm.amount || !installmentForm.due_date) {
+      alert('Please fill amount and due date'); return
+    }
+    setSaving(true)
+    await supabase.from('fee_installments').insert({
+      student_id: activeInvoice.student_id,
+      invoice_id: activeInvoice.id,
+      installment_number: installmentForm.installment_number,
+      amount: parseFloat(installmentForm.amount),
+      due_date: installmentForm.due_date,
+      notes: installmentForm.notes,
+      status: 'unpaid'
+    })
+    setShowInstallmentForm(false)
+    setInstallmentForm({ installment_number: 1, amount: '', due_date: '', notes: '' })
+    await fetchAll()
+    setSaving(false)
   }
 
-  const deleteFee = async (id) => {
-    if (!confirm('Delete this fee?')) return
-    await supabase.from('fees').delete().eq('id', id)
-    fetchData()
+  const markInvoicePaid = async (invoice, mode) => {
+    await supabase.from('fee_invoices').update({
+      status: 'paid',
+      paid_amount: invoice.total_amount,
+      payment_mode: mode,
+      payment_date: new Date().toISOString().split('T')[0]
+    }).eq('id', invoice.id)
+    setShowPaymentModal(null)
+    await fetchAll()
   }
 
-  const filtered = filter === 'all' ? fees : fees.filter(f => f.status === filter)
-  const totalUnpaid = fees.filter(f => f.status === 'unpaid').reduce((sum, f) => sum + Number(f.amount), 0)
-  const totalPaid = fees.filter(f => f.status === 'paid').reduce((sum, f) => sum + Number(f.amount), 0)
+  const markInstallmentPaid = async (inst, mode) => {
+    await supabase.from('fee_installments').update({
+      status: 'paid',
+      paid_amount: inst.amount,
+      payment_mode: mode,
+      payment_date: new Date().toISOString().split('T')[0]
+    }).eq('id', inst.id)
+    const invoiceInsts = installments.filter(i => i.invoice_id === inst.invoice_id)
+    const paidTotal = invoiceInsts.filter(i => i.status === 'paid' || i.id === inst.id).reduce((s, i) => s + Number(i.amount), 0)
+    const invoice = invoices.find(i => i.id === inst.invoice_id)
+    if (invoice) {
+      const newStatus = paidTotal >= invoice.total_amount ? 'paid' : 'partial'
+      await supabase.from('fee_invoices').update({ paid_amount: paidTotal, status: newStatus }).eq('id', inst.invoice_id)
+    }
+    setShowPaymentModal(null)
+    await fetchAll()
+  }
 
-  const statusColor = { unpaid: '#f59e0b', paid: '#10b981', overdue: '#ef4444' }
-  const statusBg = { unpaid: 'rgba(245,158,11,0.15)', paid: 'rgba(16,185,129,0.15)', overdue: 'rgba(239,68,68,0.15)' }
+  const deleteInvoice = async (id) => {
+    if (!confirm('Delete this invoice and all its installments?')) return
+    await supabase.from('fee_installments').delete().eq('invoice_id', id)
+    await supabase.from('fee_invoices').delete().eq('id', id)
+    await fetchAll()
+  }
+
+  const saveStructure = async () => {
+    if (!structureForm.program || !structureForm.fee_type || !structureForm.amount) {
+      alert('Please fill all fields'); return
+    }
+    setSaving(true)
+    await supabase.from('fee_structures').insert({
+      ...structureForm, amount: parseFloat(structureForm.amount)
+    })
+    setShowStructureForm(false)
+    setStructureForm({ program: '', fee_type: 'Tuition Fee', amount: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1) })
+    await fetchAll()
+    setSaving(false)
+  }
+
+  const sendReminder = async (invoice) => {
+    const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', invoice.student_id)
+    if (!ps || ps.length === 0) { alert('No parent linked to this student'); return }
+    for (const { parent_id } of ps) {
+      await supabase.from('chat_messages').insert({
+        sender_id: SCHOOL_ID,
+        receiver_id: parent_id,
+        sender_name: 'Time Kids Admin',
+        content: `📢 Fee Reminder: ${invoice.fee_type} of ₹${invoice.total_amount} is due on ${invoice.due_date || 'soon'}. Please make the payment at the earliest. Thank you! 🙏`
+      })
+    }
+    alert('Reminder sent to parent(s)! ✅')
+  }
+
+  const totalInvoiced = invoices.reduce((s, i) => s + Number(i.total_amount), 0)
+  const totalCollected = invoices.reduce((s, i) => s + Number(i.paid_amount), 0)
+  const totalPending = totalInvoiced - totalCollected
+  const overdueCount = invoices.filter(i => i.status === 'unpaid' && i.due_date && new Date(i.due_date) < new Date()).length
+
+  const filteredInvoices = invoices.filter(inv => {
+    const matchStatus = filterStatus === 'all' ? true : inv.status === filterStatus
+    const matchSearch = searchStudent ? inv.students?.full_name?.toLowerCase().includes(searchStudent.toLowerCase()) : true
+    return matchStatus && matchSearch
+  })
+
+  const studentInvoices = selectedStudent ? invoices.filter(i => i.student_id === selectedStudent.id) : []
+  const studentInstallments = selectedStudent ? installments.filter(i => i.student_id === selectedStudent.id) : []
+
+  const statusColor = { unpaid: '#f59e0b', paid: '#10b981', overdue: '#ef4444', partial: '#38bdf8' }
+  const statusBg = { unpaid: 'rgba(245,158,11,0.15)', paid: 'rgba(16,185,129,0.15)', overdue: 'rgba(239,68,68,0.15)', partial: 'rgba(56,189,248,0.15)' }
+  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', marginBottom: '14px', fontFamily: "'DM Sans', sans-serif" }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
-        * { box-sizing: border-box; }
-        .sidebar { width: 240px; min-height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .sidebar { width: 240px; min-height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; position: fixed; top: 0; left: 0; }
         .logo { font-family: 'Playfair Display', serif; font-size: 24px; color: #fff; padding: 8px 12px; margin-bottom: 32px; }
         .logo span { color: #38bdf8; }
         .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.2s; margin-bottom: 4px; }
         .nav-item:hover, .nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8; }
         .main { margin-left: 240px; flex: 1; padding: 32px; }
-        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
-        .page-title { font-size: 24px; font-weight: 700; }
-        .page-sub { color: rgba(255,255,255,0.4); font-size: 14px; margin-top: 4px; }
         .btn-primary { background: linear-gradient(135deg, #0ea5e9, #38bdf8); border: none; border-radius: 10px; padding: 10px 20px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .sum-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 20px; }
-        .sum-value { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
-        .sum-label { color: rgba(255,255,255,0.4); font-size: 13px; }
-        .filters { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
-        .filter-btn { padding: 7px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.5); font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
-        .filter-btn.active { background: rgba(56,189,248,0.15); border-color: #38bdf8; color: #38bdf8; }
-        .table-wrap { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; overflow: hidden; }
-        table { width: 100%; border-collapse: collapse; }
-        th { padding: 14px 20px; text-align: left; font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-        td { padding: 16px 20px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); }
-        tr:last-child td { border-bottom: none; }
+        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
         .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .pay-btn { background: rgba(16,185,129,0.15); border: none; border-radius: 6px; padding: 6px 12px; color: #34d399; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; margin-right: 6px; }
-        .del-btn { background: rgba(239,68,68,0.1); border: none; border-radius: 6px; padding: 6px 12px; color: #f87171; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 32px; width: 100%; max-width: 480px; }
-        .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 24px; }
-        .form-label { color: rgba(255,255,255,0.6); font-size: 13px; font-weight: 500; margin-bottom: 8px; display: block; }
-        .form-input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 14px; color: #fff; font-size: 14px; outline: none; margin-bottom: 16px; font-family: 'DM Sans', sans-serif; }
-        .form-input:focus { border-color: #38bdf8; }
-        .modal-btns { display: flex; gap: 12px; justify-content: flex-end; }
-        .btn-cancel { background: rgba(255,255,255,0.06); border: none; border-radius: 10px; padding: 10px 20px; color: rgba(255,255,255,0.6); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .empty { text-align: center; padding: 40px; color: rgba(255,255,255,0.3); }
-        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 20px; } }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+        .view-tab { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+        .view-tab.active { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .view-tab:not(.active) { background: transparent; color: rgba(255,255,255,0.4); }
+        .filter-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: rgba(255,255,255,0.5); font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .filter-btn.active { background: rgba(56,189,248,0.15); border-color: #38bdf8; color: #38bdf8; }
+        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
       <div className="sidebar">
@@ -116,91 +222,368 @@ export default function FeesPage() {
       </div>
 
       <div className="main">
-        <div className="topbar">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <div className="page-title">💳 Fees & Payments</div>
-            <div className="page-sub">{fees.length} total fee records</div>
+            <h1 style={{ fontSize: '24px', fontWeight: '700' }}>💳 Fee Management</h1>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Manage student fees, installments & payments</p>
           </div>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add Fee</button>
-        </div>
-
-        <div className="summary">
-          <div className="sum-card">
-            <div className="sum-value" style={{ color: '#ef4444' }}>${totalUnpaid.toLocaleString()}</div>
-            <div className="sum-label">💳 Total Unpaid</div>
-          </div>
-          <div className="sum-card">
-            <div className="sum-value" style={{ color: '#10b981' }}>${totalPaid.toLocaleString()}</div>
-            <div className="sum-label">✅ Total Collected</div>
-          </div>
-          <div className="sum-card">
-            <div className="sum-value" style={{ color: '#38bdf8' }}>{fees.length}</div>
-            <div className="sum-label">📋 Total Invoices</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn-secondary" onClick={() => setShowStructureForm(true)}>📋 Fee Structure</button>
+            <button className="btn-primary" onClick={() => setShowInvoiceForm(true)}>+ Create Invoice</button>
           </div>
         </div>
 
-        <div className="filters">
-          {['all', 'unpaid', 'paid', 'overdue'].map(f => (
-            <button key={f} className={`filter-btn ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
-              {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-              {' '}({f === 'all' ? fees.length : fees.filter(x => x.status === f).length})
-            </button>
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
+          {[['overview', '📊 Overview'], ['invoices', '📋 All Invoices'], ['student', '👶 By Student']].map(([v, l]) => (
+            <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Fee Title</th>
-                <th>Amount</th>
-                <th>Due Date</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} className="empty">Loading fees...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="empty">No fee records found.</td></tr>
-              ) : filtered.map(f => (
-                <tr key={f.id}>
-                  <td>{f.students?.full_name || '—'}</td>
-                  <td style={{ fontWeight: 500 }}>{f.title}</td>
-                  <td style={{ color: '#38bdf8', fontWeight: 600 }}>${Number(f.amount).toLocaleString()}</td>
-                  <td style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{f.due_date || '—'}</td>
-                  <td><span className="badge" style={{ background: statusBg[f.status], color: statusColor[f.status] }}>{f.status}</span></td>
-                  <td>
-                    {f.status !== 'paid' && <button className="pay-btn" onClick={() => markPaid(f.id)}>✅ Mark Paid</button>}
-                    <button className="del-btn" onClick={() => deleteFee(f.id)}>🗑</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div> : (
+          <>
+            {view === 'overview' && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '14px', marginBottom: '28px' }}>
+                  {[
+                    { label: 'Total Invoiced', value: `₹${totalInvoiced.toLocaleString()}`, color: '#38bdf8' },
+                    { label: 'Collected', value: `₹${totalCollected.toLocaleString()}`, color: '#10b981' },
+                    { label: 'Pending', value: `₹${totalPending.toLocaleString()}`, color: '#f59e0b' },
+                    { label: 'Overdue', value: overdueCount, color: '#ef4444' },
+                    { label: 'Total Invoices', value: invoices.length, color: '#a78bfa' },
+                  ].map(item => (
+                    <div key={item.label} className="card" style={{ padding: '18px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '700', color: item.color, marginBottom: '4px' }}>{item.value}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '14px', color: 'rgba(255,255,255,0.8)' }}>📊 Program-wise Summary</h3>
+                {[...new Set(students.map(s => s.program).filter(Boolean))].map(prog => {
+                  const progStudents = students.filter(s => s.program === prog)
+                  const progInvoices = invoices.filter(i => progStudents.some(s => s.id === i.student_id))
+                  const progTotal = progInvoices.reduce((s, i) => s + Number(i.total_amount), 0)
+                  const progPaid = progInvoices.reduce((s, i) => s + Number(i.paid_amount), 0)
+                  return (
+                    <div key={prog} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div>
+                        <div style={{ fontWeight: '600', marginBottom: '4px' }}>{prog}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{progStudents.length} students · {progInvoices.length} invoices</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '20px' }}>
+                        {[['₹'+progTotal.toLocaleString(),'Invoiced','#38bdf8'],['₹'+progPaid.toLocaleString(),'Collected','#10b981'],['₹'+(progTotal-progPaid).toLocaleString(),'Pending','#f59e0b']].map(([val,lbl,col]) => (
+                          <div key={lbl} style={{ textAlign: 'right' }}>
+                            <div style={{ color: col, fontWeight: '700' }}>{val}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>{lbl}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {overdueCount > 0 && (
+                  <>
+                    <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '24px 0 14px', color: '#ef4444' }}>⚠️ Overdue Invoices</h3>
+                    {invoices.filter(i => i.status === 'unpaid' && i.due_date && new Date(i.due_date) < new Date()).map(inv => (
+                      <div key={inv.id} className="card" style={{ borderColor: 'rgba(239,68,68,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontWeight: '600' }}>{inv.students?.full_name}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{inv.fee_type} · Due: {inv.due_date}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <span style={{ color: '#ef4444', fontWeight: '700' }}>₹{Number(inv.total_amount).toLocaleString()}</span>
+                          <button onClick={() => sendReminder(inv)} style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' }}>📤 Remind</button>
+                          <button onClick={() => { setShowPaymentModal({...inv, type:'invoice'}); setPaymentMode('Cash') }} style={{ padding: '6px 12px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#34d399', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' }}>✅ Pay</button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+
+            {view === 'invoices' && (
+              <>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <input placeholder='Search student...' value={searchStudent} onChange={e => setSearchStudent(e.target.value)}
+                    style={{ flex: 1, minWidth: '200px', padding: '9px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                  {['all', 'unpaid', 'partial', 'paid'].map(s => (
+                    <button key={s} className={`filter-btn ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)} ({s === 'all' ? invoices.length : invoices.filter(i => i.status === s).length})
+                    </button>
+                  ))}
+                </div>
+                {filteredInvoices.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No invoices found.</div>
+                ) : filteredInvoices.map(inv => {
+                  const invInsts = installments.filter(i => i.invoice_id === inv.id)
+                  return (
+                    <div key={inv.id} className="card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: invInsts.length > 0 ? '14px' : '0' }}>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{inv.students?.full_name}</div>
+                          <div style={{ color: '#a78bfa', fontSize: '13px', marginBottom: '4px' }}>{inv.fee_type} · {inv.academic_year}</div>
+                          {inv.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{inv.description}</div>}
+                          {inv.due_date && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '4px' }}>Due: {inv.due_date}</div>}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontWeight: '700', color: '#38bdf8', fontSize: '16px' }}>₹{Number(inv.total_amount).toLocaleString()}</div>
+                              {inv.paid_amount > 0 && <div style={{ color: '#10b981', fontSize: '12px' }}>Paid: ₹{Number(inv.paid_amount).toLocaleString()}</div>}
+                            </div>
+                            <span className="badge" style={{ background: statusBg[inv.status]||statusBg.unpaid, color: statusColor[inv.status]||statusColor.unpaid }}>{inv.status}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {inv.status !== 'paid' && <>
+                              <button onClick={() => { setActiveInvoice(inv); setShowInstallmentForm(true); setInstallmentForm({ installment_number: invInsts.length+1, amount:'', due_date:'', notes:'' }) }}
+                                style={{ padding:'5px 10px', backgroundColor:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>+ Installment</button>
+                              <button onClick={() => sendReminder(inv)}
+                                style={{ padding:'5px 10px', backgroundColor:'rgba(245,158,11,0.15)', color:'#f59e0b', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>📤 Remind</button>
+                              <button onClick={() => { setShowPaymentModal({...inv,type:'invoice'}); setPaymentMode('Cash') }}
+                                style={{ padding:'5px 10px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>✅ Mark Paid</button>
+                            </>}
+                            <button onClick={() => deleteInvoice(inv.id)}
+                              style={{ padding:'5px 10px', backgroundColor:'rgba(239,68,68,0.1)', color:'#f87171', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>🗑️</button>
+                          </div>
+                        </div>
+                      </div>
+                      {invInsts.length > 0 && (
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '8px' }}>Installments:</div>
+                          {invInsts.map(inst => (
+                            <div key={inst.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+                              <div style={{ fontSize:'13px' }}>#{inst.installment_number} · Due: {inst.due_date} {inst.notes && `· ${inst.notes}`}</div>
+                              <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                                <span style={{ color:'#38bdf8', fontWeight:'600', fontSize:'13px' }}>₹{Number(inst.amount).toLocaleString()}</span>
+                                <span className="badge" style={{ background:statusBg[inst.status]||statusBg.unpaid, color:statusColor[inst.status]||statusColor.unpaid, fontSize:'11px' }}>{inst.status}</span>
+                                {inst.status !== 'paid' && <button onClick={() => { setShowPaymentModal({...inst,type:'installment'}); setPaymentMode('Cash') }}
+                                  style={{ padding:'3px 8px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'11px' }}>Pay</button>}
+                                {inst.payment_mode && <span style={{ color:'rgba(255,255,255,0.3)', fontSize:'11px' }}>{inst.payment_mode}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
+            {view === 'student' && (
+              <>
+                {!selectedStudent ? (
+                  <>
+                    <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Select a Student</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
+                      {students.map(s => {
+                        const sInv = invoices.filter(i => i.student_id === s.id)
+                        const sPaid = sInv.reduce((sum,i) => sum+Number(i.paid_amount), 0)
+                        const sTotal = sInv.reduce((sum,i) => sum+Number(i.total_amount), 0)
+                        return (
+                          <div key={s.id} className="card" style={{ cursor:'pointer' }} onClick={() => setSelectedStudent(s)}>
+                            <div style={{ fontWeight:'700', marginBottom:'4px' }}>{s.full_name}</div>
+                            <div style={{ color:'#a78bfa', fontSize:'13px', marginBottom:'10px' }}>{s.program}</div>
+                            <div style={{ display:'flex', justifyContent:'space-between' }}>
+                              <div><div style={{ color:'#10b981', fontWeight:'600' }}>₹{sPaid.toLocaleString()}</div><div style={{ color:'rgba(255,255,255,0.3)', fontSize:'11px' }}>Paid</div></div>
+                              <div><div style={{ color:(sTotal-sPaid)>0?'#f59e0b':'#10b981', fontWeight:'600' }}>₹{(sTotal-sPaid).toLocaleString()}</div><div style={{ color:'rgba(255,255,255,0.3)', fontSize:'11px' }}>Pending</div></div>
+                              <div><div style={{ color:'#38bdf8', fontWeight:'600' }}>{sInv.length}</div><div style={{ color:'rgba(255,255,255,0.3)', fontSize:'11px' }}>Invoices</div></div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'20px' }}>
+                      <button onClick={() => setSelectedStudent(null)} style={{ padding:'7px 14px', background:'rgba(255,255,255,0.06)', border:'1px solid #334155', color:'#94a3b8', borderRadius:'8px', cursor:'pointer' }}>← Back</button>
+                      <div>
+                        <div style={{ fontWeight:'700', fontSize:'18px' }}>{selectedStudent.full_name}</div>
+                        <div style={{ color:'#a78bfa', fontSize:'13px' }}>{selectedStudent.program}</div>
+                      </div>
+                      <button onClick={() => { setInvoiceForm(f => ({...f, student_id:selectedStudent.id})); setShowInvoiceForm(true) }}
+                        className="btn-primary" style={{ marginLeft:'auto' }}>+ Add Invoice</button>
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'12px', marginBottom:'20px' }}>
+                      {[
+                        ['Total Invoiced','₹'+studentInvoices.reduce((s,i)=>s+Number(i.total_amount),0).toLocaleString(),'#38bdf8'],
+                        ['Paid','₹'+studentInvoices.reduce((s,i)=>s+Number(i.paid_amount),0).toLocaleString(),'#10b981'],
+                        ['Pending','₹'+(studentInvoices.reduce((s,i)=>s+Number(i.total_amount),0)-studentInvoices.reduce((s,i)=>s+Number(i.paid_amount),0)).toLocaleString(),'#f59e0b'],
+                      ].map(([lbl,val,col]) => (
+                        <div key={lbl} className="card" style={{ padding:'16px', textAlign:'center' }}>
+                          <div style={{ fontSize:'20px', fontWeight:'700', color:col }}>{val}</div>
+                          <div style={{ color:'rgba(255,255,255,0.4)', fontSize:'13px' }}>{lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {studentInvoices.length === 0 ? (
+                      <div style={{ textAlign:'center', padding:'40px', color:'rgba(255,255,255,0.3)' }}>No invoices for this student yet.</div>
+                    ) : studentInvoices.map(inv => {
+                      const invInsts = studentInstallments.filter(i => i.invoice_id === inv.id)
+                      return (
+                        <div key={inv.id} className="card">
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'12px', marginBottom: invInsts.length>0?'12px':0 }}>
+                            <div>
+                              <div style={{ fontWeight:'700', marginBottom:'4px' }}>{inv.fee_type}</div>
+                              {inv.description && <div style={{ color:'rgba(255,255,255,0.4)', fontSize:'13px' }}>{inv.description}</div>}
+                              <div style={{ color:'rgba(255,255,255,0.3)', fontSize:'12px', marginTop:'4px' }}>
+                                {inv.academic_year}{inv.due_date && ` · Due: ${inv.due_date}`}{inv.payment_mode && ` · ${inv.payment_mode}`}
+                              </div>
+                            </div>
+                            <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+                              <div style={{ textAlign:'right' }}>
+                                <div style={{ fontWeight:'700', color:'#38bdf8' }}>₹{Number(inv.total_amount).toLocaleString()}</div>
+                                {inv.paid_amount > 0 && <div style={{ color:'#10b981', fontSize:'12px' }}>Paid: ₹{Number(inv.paid_amount).toLocaleString()}</div>}
+                              </div>
+                              <span className="badge" style={{ background:statusBg[inv.status]||statusBg.unpaid, color:statusColor[inv.status]||statusColor.unpaid }}>{inv.status}</span>
+                              {inv.status !== 'paid' && <>
+                                <button onClick={() => { setActiveInvoice(inv); setShowInstallmentForm(true); setInstallmentForm({installment_number:invInsts.length+1,amount:'',due_date:'',notes:''}) }}
+                                  style={{ padding:'5px 10px', backgroundColor:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>+ Install</button>
+                                <button onClick={() => { setShowPaymentModal({...inv,type:'invoice'}); setPaymentMode('Cash') }}
+                                  style={{ padding:'5px 10px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>✅ Pay</button>
+                              </>}
+                            </div>
+                          </div>
+                          {invInsts.length > 0 && (
+                            <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:'10px' }}>
+                              {invInsts.map(inst => (
+                                <div key={inst.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0' }}>
+                                  <div style={{ fontSize:'13px', color:'rgba(255,255,255,0.6)' }}>Installment #{inst.installment_number} · {inst.due_date}</div>
+                                  <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+                                    <span style={{ color:'#38bdf8', fontSize:'13px', fontWeight:'600' }}>₹{Number(inst.amount).toLocaleString()}</span>
+                                    <span className="badge" style={{ background:statusBg[inst.status]||statusBg.unpaid, color:statusColor[inst.status]||statusColor.unpaid, fontSize:'11px' }}>{inst.status}</span>
+                                    {inst.status !== 'paid' && <button onClick={() => { setShowPaymentModal({...inst,type:'installment'}); setPaymentMode('Cash') }}
+                                      style={{ padding:'3px 8px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'11px' }}>Pay</button>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </>
+            )}
+          </>
+        )}
       </div>
 
-      {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+      {/* Create Invoice Modal */}
+      {showInvoiceForm && (
+        <div className="modal-overlay" onClick={() => setShowInvoiceForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">💳 Add Fee Invoice</div>
-            <label className="form-label">Student</label>
-            <select className="form-input" value={form.student_id} onChange={e => setForm({...form, student_id: e.target.value})}>
-              <option value="">Select student (optional)</option>
-              {students.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'20px' }}>💳 Create Fee Invoice</h3>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Student *</label>
+            <select value={invoiceForm.student_id} onChange={e => setInvoiceForm({...invoiceForm, student_id:e.target.value})} style={inputStyle}>
+              <option value=''>-- Select Student --</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>)}
             </select>
-            <label className="form-label">Fee Title *</label>
-            <input className="form-input" placeholder="e.g. Monthly Tuition - January" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-            <label className="form-label">Amount ($) *</label>
-            <input className="form-input" type="number" placeholder="e.g. 250" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
-            <label className="form-label">Due Date</label>
-            <input className="form-input" type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} />
-            <div className="modal-btns">
-              <button className="btn-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button className="btn-primary" onClick={addFee} disabled={saving}>{saving ? 'Saving...' : 'Create Invoice'}</button>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Fee Type *</label>
+            <select value={invoiceForm.fee_type} onChange={e => setInvoiceForm({...invoiceForm, fee_type:e.target.value})} style={inputStyle}>
+              {FEE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Description</label>
+            <input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description:e.target.value})} placeholder='e.g. Term 1 Tuition' style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Total Amount (₹) *</label>
+            <input type='number' value={invoiceForm.total_amount} onChange={e => setInvoiceForm({...invoiceForm, total_amount:e.target.value})} placeholder='e.g. 15000' style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Due Date</label>
+            <input type='date' value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date:e.target.value})} style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Academic Year</label>
+            <input value={invoiceForm.academic_year} onChange={e => setInvoiceForm({...invoiceForm, academic_year:e.target.value})} placeholder='e.g. 2025-2026' style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Notes</label>
+            <input value={invoiceForm.notes} onChange={e => setInvoiceForm({...invoiceForm, notes:e.target.value})} placeholder='Any additional notes' style={inputStyle} />
+            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'8px' }}>
+              <button onClick={() => setShowInvoiceForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={createInvoice} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Create Invoice'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Installment Modal */}
+      {showInstallmentForm && activeInvoice && (
+        <div className="modal-overlay" onClick={() => setShowInstallmentForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'8px' }}>📅 Add Installment</h3>
+            <p style={{ color:'#a78bfa', fontSize:'14px', marginBottom:'20px' }}>{activeInvoice.fee_type} · Total: ₹{Number(activeInvoice.total_amount).toLocaleString()}</p>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Installment #</label>
+            <input type='number' value={installmentForm.installment_number} onChange={e => setInstallmentForm({...installmentForm, installment_number:parseInt(e.target.value)})} style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Amount (₹) *</label>
+            <input type='number' value={installmentForm.amount} onChange={e => setInstallmentForm({...installmentForm, amount:e.target.value})} placeholder='e.g. 5000' style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Due Date *</label>
+            <input type='date' value={installmentForm.due_date} onChange={e => setInstallmentForm({...installmentForm, due_date:e.target.value})} style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Notes</label>
+            <input value={installmentForm.notes} onChange={e => setInstallmentForm({...installmentForm, notes:e.target.value})} placeholder='Optional' style={inputStyle} />
+            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+              <button onClick={() => setShowInstallmentForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={createInstallment} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Add Installment'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="modal-overlay" onClick={() => setShowPaymentModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth:'380px' }}>
+            <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'8px' }}>✅ Record Payment</h3>
+            <p style={{ color:'rgba(255,255,255,0.5)', fontSize:'14px', marginBottom:'20px' }}>
+              Amount: <strong style={{ color:'#38bdf8' }}>₹{showPaymentModal.type==='invoice' ? Number(showPaymentModal.total_amount).toLocaleString() : Number(showPaymentModal.amount).toLocaleString()}</strong>
+            </p>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'10px' }}>Payment Mode *</label>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'20px' }}>
+              {PAYMENT_MODES.map(mode => (
+                <button key={mode} onClick={() => setPaymentMode(mode)}
+                  style={{ padding:'7px 16px', borderRadius:'20px', border:`1px solid ${paymentMode===mode?'#38bdf8':'#334155'}`, backgroundColor:paymentMode===mode?'rgba(56,189,248,0.15)':'transparent', color:paymentMode===mode?'#38bdf8':'#94a3b8', cursor:'pointer', fontSize:'13px' }}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+              <button onClick={() => setShowPaymentModal(null)} className="btn-secondary">Cancel</button>
+              <button onClick={() => showPaymentModal.type==='invoice' ? markInvoicePaid(showPaymentModal, paymentMode) : markInstallmentPaid(showPaymentModal, paymentMode)} className="btn-primary">Confirm Payment</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fee Structure Modal */}
+      {showStructureForm && (
+        <div className="modal-overlay" onClick={() => setShowStructureForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'20px' }}>📋 Fee Structure Templates</h3>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Program *</label>
+            <select value={structureForm.program} onChange={e => setStructureForm({...structureForm, program:e.target.value})} style={inputStyle}>
+              <option value=''>-- Select Program --</option>
+              {[...new Set(students.map(s => s.program).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Fee Type *</label>
+            <select value={structureForm.fee_type} onChange={e => setStructureForm({...structureForm, fee_type:e.target.value})} style={inputStyle}>
+              {FEE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Amount (₹) *</label>
+            <input type='number' value={structureForm.amount} onChange={e => setStructureForm({...structureForm, amount:e.target.value})} placeholder='e.g. 15000' style={inputStyle} />
+            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Academic Year</label>
+            <input value={structureForm.academic_year} onChange={e => setStructureForm({...structureForm, academic_year:e.target.value})} style={inputStyle} />
+            {structures.length > 0 && (
+              <div style={{ marginBottom:'16px' }}>
+                <div style={{ color:'#94a3b8', fontSize:'13px', marginBottom:'8px' }}>Saved Structures:</div>
+                {structures.map(s => (
+                  <div key={s.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.05)', fontSize:'13px' }}>
+                    <span style={{ color:'rgba(255,255,255,0.6)' }}>{s.program} · {s.fee_type}</span>
+                    <span style={{ color:'#38bdf8' }}>₹{Number(s.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+              <button onClick={() => setShowStructureForm(false)} className="btn-secondary">Close</button>
+              <button onClick={saveStructure} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save Structure'}</button>
             </div>
           </div>
         </div>
