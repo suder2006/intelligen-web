@@ -65,8 +65,14 @@ export default function TeacherPortal() {
     setLoading(false)
   }
   const fetchMoments = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase.from('classroom_moments').select('*').order('created_at', { ascending: false }).limit(50)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
+    const teacherPrograms = spData?.map(p => p.program) || []
+    const { data } = await supabase.from('classroom_moments')
+      .select('*')
+      .in('class_name', teacherPrograms.length > 0 ? teacherPrograms : ['__none__'])
+      .order('created_at', { ascending: false })
+      .limit(50)
     setMoments(data || [])
   }
 
