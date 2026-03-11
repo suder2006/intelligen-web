@@ -83,11 +83,10 @@ export default function TeacherPortal() {
       .limit(50)
     setMoments(data || [])
   }
-  const fetchMessages = async () => {
+const fetchMessages = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data } = await supabase.from('messages').select('*')
+    const { data } = await supabase.from('chat_messages').select('*')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('private', true)
       .order('created_at', { ascending: true })
     setMessages(data || [])
   }
@@ -96,12 +95,11 @@ export default function TeacherPortal() {
     if (!replyText.trim() || !replyingTo) return
     setSendingReply(true)
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('messages').insert({
+      await supabase.from('chat_messages').insert({
       sender_id: user.id,
       receiver_id: replyingTo,
       content: replyText,
-      sender_name: profile?.full_name || 'Teacher',
-      private: true
+      sender_name: profile?.full_name || 'Teacher'
     })
     setReplyText('')
     await fetchMessages()

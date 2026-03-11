@@ -74,9 +74,9 @@ export default function ParentPortal() {
       .order('created_at', { ascending: false }).limit(50)
     setMoments(momentsData || [])
 
-    // Load messages
-    const { data: msgsData } = await supabase.from('messages').select('*')
-      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+   // Load messages
+    const { data: msgsData } = await supabase.from('chat_messages').select('*')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: false }).limit(30)
     setMessages(msgsData || [])
 
@@ -90,17 +90,15 @@ export default function ParentPortal() {
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedTeacher) { alert('Please select a teacher and type a message'); return }
     setSendingMessage(true)
-    await supabase.from('messages').insert({
+    await supabase.from('chat_messages').insert({
       sender_id: user.id,
       receiver_id: selectedTeacher,
       content: newMessage,
-      sender_name: profile?.full_name || 'Parent',
-      private: true
+      sender_name: profile?.full_name || 'Parent'
     })
     setNewMessage('')
-       const { data: msgsData } = await supabase.from('messages').select('*')
+    const { data: msgsData } = await supabase.from('chat_messages').select('*')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('private', true)  
       .order('created_at', { ascending: false }).limit(30)
     setMessages(msgsData || [])
     setSendingMessage(false)
