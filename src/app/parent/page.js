@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
 export default function ParentPortal() {
+  const [moments, setMoments] = useState([])
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [students, setStudents] = useState([])
@@ -59,6 +60,17 @@ export default function ParentPortal() {
     const completedIds = comp.data?.map(c => c.curriculum_id) || []
     setCurriculum((curr.data || []).map(c => ({ ...c, completed: completedIds.includes(c.id) })))
     setNewsletters(news.data || [])
+    
+
+    // Load moments for parent's children's programs
+    const { data: studentsData } = await supabase.from('students').select('program').in('id', studentIds.length > 0 ? studentIds : ['__none__'])
+    const parentPrograms = [...new Set(studentsData?.map(s => s.program).filter(Boolean) || [])]
+    const { data: momentsData } = await supabase.from('classroom_moments')
+      .select('*')
+      .in('class_name', parentPrograms.length > 0 ? parentPrograms : ['__none__'])
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setMoments(momentsData || [])
     setLoading(false)
   }
 
@@ -74,6 +86,7 @@ export default function ParentPortal() {
     { id: 'fees', label: 'Fees', icon: '💳' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
+    { id: 'moments', label: 'Moments', icon: 'camera' },
   ]
 
   return (
@@ -364,6 +377,31 @@ export default function ParentPortal() {
                 ))}
               </>
             )}
+            {activeTab === 'moments' && (
+              <>
+                <div className="section-title">camera Classroom Moments</div>
+                {moments.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No moments shared yet.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
+                    {moments.map(m => (
+                      <div key={m.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <img src={m.photo_url} alt={m.caption} style={{ width: '100%', height: '150px', objectFit: 'cover' }} />
+                        <div style={{ padding: '10px' }}>
+                          {m.caption && <p style={{ color: '#e2e8f0', fontSize: '12px', marginBottom: '6px' }}>{m.caption}</p>}
+                          <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>📚 {m.class_name} · {m.moment_date}</div>
+                          <a href={m.photo_url} target='_blank' download
+                            style={{ display: 'block', padding: '5px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', textAlign: 'center' }}>
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
           </>
         )}
       </div>
