@@ -115,7 +115,7 @@ export default function ParentPortal() {
 
   const unpaidFees = fees.filter(f => f.status !== 'paid')
   const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.total_amount), 0)
-  const totalPaid = fees.filter(f => f.status === 'paid').reduce((sum, f) => sum + Number(f.total_amount), 0)
+  const totalPaid = fees.reduce((sum, f) => sum + Number(f.paid_amount || 0), 0)
 
   // Attendance stats per child
   const getAttendanceStats = (studentId) => {
