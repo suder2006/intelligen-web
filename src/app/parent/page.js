@@ -22,6 +22,9 @@ export default function ParentPortal() {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [teachers, setTeachers] = useState([])
   const [selectedTeacher, setSelectedTeacher] = useState('')
+  const [paymentModal, setPaymentModal] = useState(null)
+  const [notifying, setNotifying] = useState(false)
+  const [notified, setNotified] = useState(false)
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -442,11 +445,11 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                             {/* Pay button */}
                             {inv.status !== 'paid' && (
                               <button
-                                onClick={() => alert('Payment gateway coming soon! Please pay via UPI to the school and notify admin.')}
+                                onClick={() => setPaymentModal(inv)}
                                 style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
                                 💳 Pay Now — ₹{Number(inv.total_amount - (inv.paid_amount||0)).toLocaleString()} pending
                               </button>
-                            )}
+                            )}    
                           </div>
                         )
                       })}
@@ -629,6 +632,86 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
           </>
         )}
       </div>
+      {/* UPI Payment Modal */}
+      {paymentModal && (() => {
+        const pendingAmount = Number(paymentModal.total_amount) - Number(paymentModal.paid_amount || 0)
+        const upiId = 'getepay.ucbqrapp703536@icici'
+        const upiName = 'Time Kids Preschool Anna Nagar'
+        const upiNote = `${paymentModal.fee_type} - ${paymentModal.academic_year}`
+        const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${pendingAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUrl)}`
+        const gPayUrl = `gpay://upi/pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${pendingAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+        const phonePeUrl = `phonepe://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${pendingAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+        const paytmUrl = `paytmmp://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${pendingAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+
+        const notifySchool = async () => {
+          setNotifying(true)
+          const { data: ps } = await supabase.from('parent_students').select('*').eq('parent_id', user.id)
+          await supabase.from('chat_messages').insert({
+            sender_id: user.id,
+            receiver_id: '554c668d-1668-474b-a8aa-f529941dbcf6',
+            sender_name: profile?.full_name || 'Parent',
+            content: `💳 Payment Notification: I have paid ₹${pendingAmount.toLocaleString()} for ${paymentModal.fee_type} (${paymentModal.academic_year}) via UPI. Please verify and mark as paid. Student: ${students.find(s => s.id === paymentModal.student_id)?.full_name}`
+          })
+          setNotifying(false)
+          setNotified(true)
+        }
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+            onClick={() => { setPaymentModal(null); setNotified(false) }}>
+            <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '28px', width: '100%', maxWidth: '420px', textAlign: 'center' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>💳 Pay via UPI</div>
+                <div style={{ color: '#a78bfa', fontSize: '14px' }}>{paymentModal.fee_type}</div>
+                <div style={{ color: '#38bdf8', fontSize: '28px', fontWeight: '700', margin: '8px 0' }}>₹{pendingAmount.toLocaleString()}</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>To: {upiName}</div>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>{upiId}</div>
+              </div>
+
+              {/* QR Code */}
+              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', display: 'inline-block', marginBottom: '20px' }}>
+                <img src={qrUrl} alt='UPI QR Code' style={{ width: '180px', height: '180px', display: 'block' }} />
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>Scan with any UPI app to pay</div>
+
+              {/* UPI App Buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                {[
+                  { label: '🟢 GPay', url: gPayUrl, color: 'rgba(52,211,153,0.15)', border: 'rgba(52,211,153,0.3)', text: '#34d399' },
+                  { label: '🟣 PhonePe', url: phonePeUrl, color: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.3)', text: '#a78bfa' },
+                  { label: '🔵 Paytm', url: paytmUrl, color: 'rgba(56,189,248,0.15)', border: 'rgba(56,189,248,0.3)', text: '#38bdf8' },
+                ].map(app => (
+                  <a key={app.label} href={app.url}
+                    style={{ padding: '10px 6px', backgroundColor: app.color, border: `1px solid ${app.border}`, borderRadius: '10px', color: app.text, fontSize: '13px', fontWeight: '600', textDecoration: 'none', display: 'block' }}>
+                    {app.label}
+                  </a>
+                ))}
+              </div>
+
+              {/* Notify School */}
+              {!notified ? (
+                <button onClick={notifySchool} disabled={notifying}
+                  style={{ width: '100%', padding: '12px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', marginBottom: '10px', fontFamily: "'DM Sans', sans-serif" }}>
+                  {notifying ? '⏳ Sending...' : '✅ I have paid — Notify School'}
+                </button>
+              ) : (
+                <div style={{ padding: '12px', backgroundColor: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', color: '#34d399', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
+                  ✅ School notified! They will verify and mark as paid.
+                </div>
+              )}
+
+              <button onClick={() => { setPaymentModal(null); setNotified(false) }}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                Close
+              </button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
