@@ -42,7 +42,7 @@ export default function ParentPortal() {
       studentIds.length > 0
         ? supabase.from('students').select('*').in('id', studentIds).eq('status', 'active')
         : Promise.resolve({ data: [] }),
-      supabase.from('fees').select('*').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('created_at', { ascending: false }).limit(20),
+      supabase.from('fee_invoices').select('*, fee_installments(*)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('created_at', { ascending: false }),
       supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(10),
       supabase.from('attendance').select('*, students(full_name)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('date', { ascending: false }).limit(60)
     ])
@@ -113,9 +113,9 @@ export default function ParentPortal() {
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
-  const unpaidFees = fees.filter(f => f.status === 'unpaid')
-  const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.amount), 0)
-  const totalPaid = fees.filter(f => f.status === 'paid').reduce((sum, f) => sum + Number(f.amount), 0)
+  const unpaidFees = fees.filter(f => f.status !== 'paid')
+  const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.total_amount), 0)
+  const totalPaid = fees.filter(f => f.status === 'paid').reduce((sum, f) => sum + Number(f.total_amount), 0)
 
   // Attendance stats per child
   const getAttendanceStats = (studentId) => {
@@ -133,7 +133,6 @@ export default function ParentPortal() {
     { id: 'children', label: 'My Children', icon: '👶' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'fees', label: 'Fees', icon: '💳' },
-    { id: 'feestructure', label: 'Fee Structure', icon: '📊' },
     { id: 'curriculum', label: 'Curriculum', icon: '📚' },
     { id: 'moments', label: 'Moments', icon: '📸' },
     { id: 'messages', label: 'Messages', icon: '💬' },
@@ -369,107 +368,98 @@ export default function ParentPortal() {
               </>
             )}
 
-            {/* FEES TAB */}
             {activeTab === 'fees' && (
               <>
-                <div className="section-title">💳 Fee Status</div>
+                <div className="section-title">💳 My Fee Invoices</div>
                 <div className="stats-row" style={{ marginBottom: '20px' }}>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#ef4444' }}>₹{totalOwed.toLocaleString()}</div>
-                    <div className="stat-label">Total Unpaid</div>
+                    <div className="stat-value" style={{ color: '#ef4444' }}>₹{fees.filter(f=>f.status!=='paid').reduce((s,f)=>s+Number(f.total_amount),0).toLocaleString()}</div>
+                    <div className="stat-label">Total Pending</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#10b981' }}>₹{totalPaid.toLocaleString()}</div>
+                    <div className="stat-value" style={{ color: '#10b981' }}>₹{fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.total_amount),0).toLocaleString()}</div>
                     <div className="stat-label">Total Paid</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#f59e0b' }}>{unpaidFees.length}</div>
+                    <div className="stat-value" style={{ color: '#f59e0b' }}>{fees.filter(f=>f.status!=='paid').length}</div>
                     <div className="stat-label">Pending Invoices</div>
                   </div>
                 </div>
 
-                {unpaidFees.length > 0 && (
-                  <>
-                    <div className="section-title">⚠️ Unpaid</div>
-                    <div className="table-card" style={{ marginBottom: '20px' }}>
-                      {unpaidFees.map(f => (
-                        <div key={f.id} className="row">
-                          <div>
-                            <div style={{ fontWeight: 500, marginBottom: '3px' }}>{f.title}</div>
-                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{f.due_date ? `Due: ${f.due_date}` : new Date(f.created_at).toLocaleDateString()}</div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ fontWeight: 700, color: '#ef4444' }}>₹{Number(f.amount).toLocaleString()}</div>
-                            <span className="badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171' }}>Unpaid</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <div className="section-title">📋 All Invoices</div>
-                <div className="table-card">
-                  {fees.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.3)' }}>No fee records found.</div>
-                  ) : fees.map(f => (
-                    <div key={f.id} className="row">
-                      <div>
-                        <div style={{ fontWeight: 500, marginBottom: '3px' }}>{f.title}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{f.due_date ? `Due: ${f.due_date}` : new Date(f.created_at).toLocaleDateString()}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ fontWeight: 700, color: '#38bdf8' }}>₹{Number(f.amount).toLocaleString()}</div>
-                        <span className="badge" style={{
-                          background: f.status==='paid' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                          color: f.status==='paid' ? '#34d399' : '#f87171'
-                        }}>{f.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {activeTab === 'feestructure' && (
-              <>
-                <div className="section-title">📊 Fee Structure</div>
                 {students.map(child => {
-                  const childFees = feeStructures.filter(f => f.program === child.program)
-                  const total = childFees.reduce((s, f) => s + Number(f.amount), 0)
+                  const childInvoices = fees.filter(f => f.student_id === child.id)
+                  if (childInvoices.length === 0) return null
                   return (
-                    <div key={child.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <div>
-                          <div style={{ fontWeight: '700', fontSize: '16px' }}>{child.full_name}</div>
-                          <div style={{ color: '#a78bfa', fontSize: '13px' }}>{child.program}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ color: '#38bdf8', fontWeight: '700', fontSize: '18px' }}>₹{total.toLocaleString()}</div>
-                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>Total Annual Fees</div>
-                        </div>
+                    <div key={child.id} style={{ marginBottom: '28px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{child.full_name?.[0]}</div>
+                        <div style={{ fontWeight: '700', fontSize: '16px' }}>{child.full_name}</div>
+                        <span style={{ color: '#a78bfa', fontSize: '13px' }}>{child.program}</span>
                       </div>
-                      {childFees.length === 0 ? (
-                        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', textAlign: 'center', padding: '20px' }}>Fee structure not set yet.</div>
-                      ) : (
-                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                          {childFees.map(f => (
-                            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{f.fee_type}</span>
-                              <span style={{ color: '#10b981', fontWeight: '600', fontSize: '14px' }}>₹{Number(f.amount).toLocaleString()}</span>
+                      {childInvoices.map(inv => {
+                        const installments = inv.fee_installments || []
+                        const pendingInstallments = installments.filter(i => i.status !== 'paid')
+                        return (
+                          <div key={inv.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: `1px solid ${inv.status==='paid' ? 'rgba(16,185,129,0.2)' : inv.status==='partial' ? 'rgba(56,189,248,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: '14px', padding: '16px', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: installments.length > 0 ? '12px' : '0' }}>
+                              <div>
+                                <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{inv.fee_type}</div>
+                                {inv.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{inv.description}</div>}
+                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '4px' }}>
+                                  {inv.academic_year}{inv.due_date && ` · Due: ${inv.due_date}`}
+                                  {inv.payment_mode && ` · Paid via ${inv.payment_mode}`}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '700', color: '#38bdf8', fontSize: '16px' }}>₹{Number(inv.total_amount).toLocaleString()}</div>
+                                {inv.paid_amount > 0 && <div style={{ color: '#10b981', fontSize: '12px' }}>Paid: ₹{Number(inv.paid_amount).toLocaleString()}</div>}
+                                <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                                  background: inv.status==='paid'?'rgba(16,185,129,0.15)':inv.status==='partial'?'rgba(56,189,248,0.15)':'rgba(245,158,11,0.15)',
+                                  color: inv.status==='paid'?'#34d399':inv.status==='partial'?'#38bdf8':'#fbbf24' }}>
+                                  {inv.status}
+                                </span>
+                              </div>
                             </div>
-                          ))}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0' }}>
-                            <span style={{ fontWeight: '700', color: '#fff' }}>Total</span>
-                            <span style={{ fontWeight: '700', color: '#38bdf8', fontSize: '16px' }}>₹{total.toLocaleString()}</span>
+
+                            {/* Installments */}
+                            {installments.length > 0 && (
+                              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginBottom: '10px' }}>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '6px' }}>Installments:</div>
+                                {installments.map(inst => (
+                                  <div key={inst.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>#{inst.installment_number} · Due: {inst.due_date}</div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                      <span style={{ color: '#38bdf8', fontWeight: '600', fontSize: '13px' }}>₹{Number(inst.amount).toLocaleString()}</span>
+                                      <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                                        background: inst.status==='paid'?'rgba(16,185,129,0.15)':'rgba(245,158,11,0.15)',
+                                        color: inst.status==='paid'?'#34d399':'#fbbf24' }}>{inst.status}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Pay button */}
+                            {inv.status !== 'paid' && (
+                              <button
+                                onClick={() => alert('Payment gateway coming soon! Please pay via UPI to the school and notify admin.')}
+                                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                                💳 Pay Now — ₹{Number(inv.total_amount - (inv.paid_amount||0)).toLocaleString()} pending
+                              </button>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        )
+                      })}
                     </div>
                   )
                 })}
+                {fees.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No fee invoices found for your children.</div>
+                )}
               </>
-            )}
+            )}  
+
+
             {/* CURRICULUM TAB */}
             {activeTab === 'curriculum' && (
               <>
