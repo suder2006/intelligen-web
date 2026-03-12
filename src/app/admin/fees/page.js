@@ -14,6 +14,7 @@ const navItems = [
   { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
   { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
   { href: '/admin/fees', label: 'Fees', icon: '💳' },
+  { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
   { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
   { href: '/admin/messages', label: 'Messages', icon: '💬' },
 ]
