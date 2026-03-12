@@ -113,9 +113,9 @@ export default function ParentPortal() {
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
-  const unpaidFees = fees.filter(f => f.status !== 'paid')
-  const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.total_amount - (f.paid_amount || 0)), 0)
+const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
   const totalPaid = fees.reduce((sum, f) => sum + Number(f.paid_amount || 0), 0)
+  const unpaidFees = fees.filter(f => f.status !== 'paid')
 
   // Attendance stats per child
   const getAttendanceStats = (studentId) => {
@@ -270,7 +270,7 @@ export default function ParentPortal() {
                   const stats = getAttendanceStats(s.id)
                   const pct = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0
                   const childFees = fees.filter(f => f.student_id === s.id)
-                  const childUnpaid = childFees.filter(f => f.status === 'unpaid').reduce((sum, f) => sum + Number(f.amount), 0)
+                  const childUnpaid = childFees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
                   return (
                     <div key={s.id} className="card">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
