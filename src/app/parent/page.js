@@ -428,17 +428,26 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                             {installments.length > 0 && (
                               <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginBottom: '10px' }}>
                                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '6px' }}>Installments:</div>
-                                {installments.map(inst => (
-                                  <div key={inst.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>#{inst.installment_number} · Due: {inst.due_date}</div>
+                                                              {installments.map(inst => (
+                                  <div key={inst.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <div>
+                                      <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>#{inst.installment_number} · Due: {inst.due_date}</div>
+                                      {inst.notes && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>{inst.notes}</div>}
+                                    </div>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                       <span style={{ color: '#38bdf8', fontWeight: '600', fontSize: '13px' }}>₹{Number(inst.amount).toLocaleString()}</span>
                                       <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
                                         background: inst.status==='paid'?'rgba(16,185,129,0.15)':'rgba(245,158,11,0.15)',
                                         color: inst.status==='paid'?'#34d399':'#fbbf24' }}>{inst.status}</span>
+                                      {inst.status !== 'paid' && (
+                                        <button onClick={() => setPaymentModal({ ...inst, fee_type: `${inv.fee_type} - Installment #${inst.installment_number}`, total_amount: inst.amount, paid_amount: 0, academic_year: inv.academic_year, student_id: inv.student_id })}
+                                          style={{ padding: '3px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                          💳 Pay
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
-                                ))}
+                                ))}  
                               </div>
                             )}
 
