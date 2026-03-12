@@ -9,6 +9,7 @@ export default function ParentPortal() {
   const [profile, setProfile] = useState(null)
   const [students, setStudents] = useState([])
   const [fees, setFees] = useState([])
+  const [feeStructures, setFeeStructures] = useState([])
   const [announcements, setAnnouncements] = useState([])
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
@@ -84,6 +85,12 @@ export default function ParentPortal() {
     const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher')
     setTeachers(teachersData || [])
 
+      const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+    const { data: fsData } = await supabase.from('fee_structures')
+      .select('*')
+      .eq('academic_year', currentAY)
+      .order('fee_type')
+    setFeeStructures(fsData || [])
     setLoading(false)
   }
 
@@ -126,6 +133,7 @@ export default function ParentPortal() {
     { id: 'children', label: 'My Children', icon: '👶' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'fees', label: 'Fees', icon: '💳' },
+    { id: 'feestructure', label: 'Fee Structure', icon: '📊' },
     { id: 'curriculum', label: 'Curriculum', icon: '📚' },
     { id: 'moments', label: 'Moments', icon: '📸' },
     { id: 'messages', label: 'Messages', icon: '💬' },
@@ -423,6 +431,45 @@ export default function ParentPortal() {
               </>
             )}
 
+            {activeTab === 'feestructure' && (
+              <>
+                <div className="section-title">📊 Fee Structure</div>
+                {myChildren.map(child => {
+                  const childFees = feeStructures.filter(f => f.program === child.program)
+                  const total = childFees.reduce((s, f) => s + Number(f.amount), 0)
+                  return (
+                    <div key={child.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '16px' }}>{child.full_name}</div>
+                          <div style={{ color: '#a78bfa', fontSize: '13px' }}>{child.program}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ color: '#38bdf8', fontWeight: '700', fontSize: '18px' }}>₹{total.toLocaleString()}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>Total Annual Fees</div>
+                        </div>
+                      </div>
+                      {childFees.length === 0 ? (
+                        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', textAlign: 'center', padding: '20px' }}>Fee structure not set yet.</div>
+                      ) : (
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                          {childFees.map(f => (
+                            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{f.fee_type}</span>
+                              <span style={{ color: '#10b981', fontWeight: '600', fontSize: '14px' }}>₹{Number(f.amount).toLocaleString()}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0' }}>
+                            <span style={{ fontWeight: '700', color: '#fff' }}>Total</span>
+                            <span style={{ fontWeight: '700', color: '#38bdf8', fontSize: '16px' }}>₹{total.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
             {/* CURRICULUM TAB */}
             {activeTab === 'curriculum' && (
               <>
