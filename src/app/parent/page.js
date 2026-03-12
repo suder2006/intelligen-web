@@ -373,15 +373,15 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                 <div className="section-title">💳 My Fee Invoices</div>
                 <div className="stats-row" style={{ marginBottom: '20px' }}>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#ef4444' }}>₹{fees.filter(f=>f.status!=='paid').reduce((s,f)=>s+Number(f.total_amount),0).toLocaleString()}</div>
+                    <div className="stat-value" style={{ color: '#ef4444' }}>₹{totalOwed.toLocaleString()}</div>
                     <div className="stat-label">Total Pending</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#10b981' }}>₹{fees.filter(f=>f.status==='paid').reduce((s,f)=>s+Number(f.total_amount),0).toLocaleString()}</div>
+                    <div className="stat-value" style={{ color: '#10b981' }}>₹{totalPaid.toLocaleString()}</div>
                     <div className="stat-label">Total Paid</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value" style={{ color: '#f59e0b' }}>{fees.filter(f=>f.status!=='paid').length}</div>
+                    <div className="stat-value" style={{ color: '#f59e0b' }}>{unpaidFees.length}</div>
                     <div className="stat-label">Pending Invoices</div>
                   </div>
                 </div>
