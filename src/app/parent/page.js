@@ -114,7 +114,7 @@ export default function ParentPortal() {
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
   const unpaidFees = fees.filter(f => f.status !== 'paid')
-  const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.total_amount), 0)
+  const totalOwed = unpaidFees.reduce((sum, f) => sum + Number(f.total_amount - (f.paid_amount || 0)), 0)
   const totalPaid = fees.reduce((sum, f) => sum + Number(f.paid_amount || 0), 0)
 
   // Attendance stats per child
