@@ -434,7 +434,7 @@ export default function ParentPortal() {
             {activeTab === 'feestructure' && (
               <>
                 <div className="section-title">📊 Fee Structure</div>
-                {myChildren.map(child => {
+                {students.map(child => {
                   const childFees = feeStructures.filter(f => f.program === child.program)
                   const total = childFees.reduce((s, f) => s + Number(f.amount), 0)
                   return (
