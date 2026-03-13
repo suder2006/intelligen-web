@@ -45,6 +45,7 @@ export default function AdminDashboard() {
     { href: '/admin/messages', label: 'Messages', icon: '💬' },
     { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
     { href: '/admin/moments', label: 'Moments', icon: '📸' },
+    { href: '/admin/reports', label: 'Reports', icon: '📈' },
   ]
 
   const statCards = [

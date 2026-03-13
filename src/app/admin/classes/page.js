@@ -17,8 +17,12 @@ export default function ClassesPage() {
     { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
     { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
     { href: '/admin/fees', label: 'Fees', icon: '💳' },
+    { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
     { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
     { href: '/admin/messages', label: 'Messages', icon: '💬' },
+    { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
+    { href: '/admin/moments', label: 'Moments', icon: '📸' },
+    { href: '/admin/reports', label: 'Reports', icon: '📈' },
   ]
 
   useEffect(() => { fetchClasses() }, [])

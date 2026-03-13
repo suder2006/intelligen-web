@@ -17,6 +17,9 @@ const navItems = [
   { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
   { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
   { href: '/admin/messages', label: 'Messages', icon: '💬' },
+  { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
+  { href: '/admin/moments', label: 'Moments', icon: '📸' },
+  { href: '/admin/reports', label: 'Reports', icon: '📈' },
 ]
 
 export default function FeesPage() {
