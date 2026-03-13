@@ -529,7 +529,7 @@ const tabs = [
                 })}
               </>
             )}
-                        {activeTab === 'progress' && (
+            {activeTab === 'progress' && (
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
                 <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>Student Progress Tracking</div>
