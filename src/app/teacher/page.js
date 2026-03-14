@@ -533,7 +533,7 @@ const tabs = [
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
                 <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>Student Progress Tracking</div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Track developmental milestones, ratings and observations</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Rate skills per term and send reports to parents</div>
                 <a href='/teacher/progress'
                   style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', textDecoration: 'none', display: 'inline-block' }}>
                   📊 Open Progress Tracker
