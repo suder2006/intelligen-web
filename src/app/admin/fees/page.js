@@ -20,6 +20,7 @@ const navItems = [
   { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
   { href: '/admin/moments', label: 'Moments', icon: '📸' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
+  { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
 ]
 
 export default function FeesPage() {
