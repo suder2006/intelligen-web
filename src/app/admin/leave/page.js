@@ -42,12 +42,12 @@ export default function AdminLeavePage() {
   const fetchAll = async () => {
     setLoading(true)
     const [lrRes, balRes, absRes, staffRes] = await Promise.all([
-      supabase.from('leave_requests').select('*, profiles(full_name, role)').order('created_at', { ascending: false }),
+      supabase.from('leave_requests').select('*, profiles!leave_requests_staff_id_fkey(full_name, role)').order('created_at', { ascending: false }),
       supabase.from('leave_balances').select('*, profiles(full_name)').eq('academic_year', academicYear),
       supabase.from('student_absences').select('*, students(full_name, program), profiles(full_name)').order('absence_date', { ascending: false }).limit(100),
       supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'school_admin']).order('full_name')
     ])
-    console.log('Leave requests:', lrRes.data, 'Error:', lrRes.error)
+   
     setLeaveRequests(lrRes.data || [])
     setBalances(balRes.data || [])
     setAbsences(absRes.data || [])
