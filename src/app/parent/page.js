@@ -25,6 +25,10 @@ export default function ParentPortal() {
   const [paymentModal, setPaymentModal] = useState(null)
   const [notifying, setNotifying] = useState(false)
   const [notified, setNotified] = useState(false)
+  const [progressReports, setProgressReports] = useState([])
+  const [progressRatings, setProgressRatings] = useState([])
+  const [progressSkills, setProgressSkills] = useState([])
+  const [selectedProgressTerm, setSelectedProgressTerm] = useState('Term 1')
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -94,6 +98,17 @@ export default function ParentPortal() {
       .eq('academic_year', currentAY)
       .order('fee_type')
     setFeeStructures(fsData || [])
+    // Load progress reports (only sent ones)
+    if (studentIds.length > 0) {
+      const { data: prData } = await supabase.from('progress_reports').select('*')
+        .in('student_id', studentIds).eq('sent_to_parent', true).order('created_at', { ascending: false })
+      setProgressReports(prData || [])
+      if (prData && prData.length > 0) {
+        const { data: prRatings } = await supabase.from('progress_ratings').select('*, skill_activities(*, skill_masters(*))')
+          .in('student_id', studentIds)
+        setProgressRatings(prRatings || [])
+      }
+    }
     setLoading(false)
   }
 
@@ -140,6 +155,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'moments', label: 'Moments', icon: '📸' },
     { id: 'messages', label: 'Messages', icon: '💬' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
+    { id: 'progress', label: 'Progress', icon: '📊' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -638,6 +654,103 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                 ))}
               </>
             )}
+            {activeTab === 'progress' && (
+              <>
+                <div className="section-title">📊 Progress Reports</div>
+                {/* Term selector */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  {['Term 1', 'Term 2', 'Term 3'].map(term => (
+                    <button key={term} onClick={() => setSelectedProgressTerm(term)}
+                      style={{ padding: '8px 20px', borderRadius: '8px', border: `1px solid ${selectedProgressTerm === term ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedProgressTerm === term ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedProgressTerm === term ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                      {term}
+                    </button>
+                  ))}
+                </div>
+
+                {students.map(child => {
+                  const report = progressReports.find(r => r.student_id === child.id && r.term === selectedProgressTerm)
+                  if (!report) return (
+                    <div key={child.id} className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                      <div style={{ fontWeight: '700', marginBottom: '8px' }}>{child.full_name}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>No progress report for {selectedProgressTerm} yet.</div>
+                    </div>
+                  )
+                  const studentRatings = progressRatings.filter(r => r.student_id === child.id && r.term === selectedProgressTerm && r.academic_year === report.academic_year)
+
+                  // Group ratings by skill
+                  const skillsMap = {}
+                  studentRatings.forEach(r => {
+                    const skillName = r.skill_activities?.skill_masters?.name || 'General'
+                    if (!skillsMap[skillName]) skillsMap[skillName] = []
+                    skillsMap[skillName].push(r)
+                  })
+
+                  const ratingStyle = (rating) => ({
+                    padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                    background: rating === 'achieved' ? 'rgba(16,185,129,0.15)' : rating === 'developing' ? 'rgba(56,189,248,0.15)' : 'rgba(245,158,11,0.15)',
+                    color: rating === 'achieved' ? '#34d399' : rating === 'developing' ? '#38bdf8' : '#fbbf24'
+                  })
+
+                  const ratingLabel = (rating) => rating === 'achieved' ? '🌟 Achieved' : rating === 'developing' ? '🌿 Developing' : '🌱 Emerging'
+
+                  return (
+                    <div key={child.id} style={{ marginBottom: '28px' }}>
+                      {/* Child header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '16px' }}>{child.full_name?.[0]}</div>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '16px' }}>{child.full_name}</div>
+                          <div style={{ color: '#a78bfa', fontSize: '13px' }}>{child.program} · {selectedProgressTerm} · {report.academic_year}</div>
+                        </div>
+                        <span style={{ marginLeft: 'auto', padding: '4px 12px', background: 'rgba(16,185,129,0.15)', color: '#34d399', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>✅ Report Ready</span>
+                      </div>
+
+                      {/* Skills & Ratings */}
+                      {Object.entries(skillsMap).map(([skillName, skillRatings]) => (
+                        <div key={skillName} className="card" style={{ marginBottom: '12px' }}>
+                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '12px', color: '#38bdf8' }}>{skillName}</div>
+                          {skillRatings.map(r => (
+                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <div>
+                                <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>{r.skill_activities?.name}</div>
+                                {r.skill_activities?.description && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '2px' }}>{r.skill_activities.description}</div>}
+                              </div>
+                              <span style={ratingStyle(r.rating)}>{ratingLabel(r.rating)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+
+                      {/* Teacher Observations */}
+                      {(report.observations || report.strengths || report.areas_to_improve) && (
+                        <div className="card">
+                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '14px' }}>📝 Teacher's Observations</div>
+                          {report.observations && (
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '4px' }}>General</div>
+                              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: '1.6' }}>{report.observations}</div>
+                            </div>
+                          )}
+                          {report.strengths && (
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '4px' }}>🌟 Strengths</div>
+                              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: '1.6' }}>{report.strengths}</div>
+                            </div>
+                          )}
+                          {report.areas_to_improve && (
+                            <div>
+                              <div style={{ color: '#f59e0b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '4px' }}>🎯 Areas to Improve</div>
+                              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: '1.6' }}>{report.areas_to_improve}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
           </>
         )}
       </div>
