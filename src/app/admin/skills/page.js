@@ -18,6 +18,7 @@ const navItems = [
 ]
 
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+const TERMS = ['Term 1', 'Term 2', 'Term 3']
 
 export default function AdminSkillsPage() {
   const [loading, setLoading] = useState(true)
@@ -26,12 +27,12 @@ export default function AdminSkillsPage() {
   const [academicYears, setAcademicYears] = useState([CURRENT_AY])
   const [skills, setSkills] = useState([])
   const [programs, setPrograms] = useState([])
-  const [skillPrograms, setSkillPrograms] = useState({})
+  const [skillMaps, setSkillMaps] = useState([]) // {skill_id, program, term}
   const [expandedSkill, setExpandedSkill] = useState(null)
 
   // Modals
   const [showSkillModal, setShowSkillModal] = useState(false)
-  const [showActivityModal, setShowActivityModal] = useState(null) // skill_id
+  const [showActivityModal, setShowActivityModal] = useState(null)
   const [editingSkill, setEditingSkill] = useState(null)
   const [editingActivity, setEditingActivity] = useState(null)
   const [skillForm, setSkillForm] = useState({ name: '', description: '' })
@@ -51,12 +52,7 @@ export default function AdminSkillsPage() {
     setAcademicYears(years.sort().reverse())
     setSkills(skillsRes.data || [])
     setPrograms(progsRes?.data?.map(p => p.value) || [])
-    const map = {}
-    ;(mapsRes.data || []).forEach(m => {
-      if (!map[m.skill_id]) map[m.skill_id] = []
-      map[m.skill_id].push(m.program)
-    })
-    setSkillPrograms(map)
+    setSkillMaps(mapsRes.data || [])
     setLoading(false)
   }
 
@@ -114,14 +110,31 @@ export default function AdminSkillsPage() {
     await fetchAll()
   }
 
-  const toggleProgram = async (skillId, program) => {
-    const assigned = (skillPrograms[skillId] || []).includes(program)
+  const isAssigned = (skillId, program, term) => {
+    return skillMaps.some(m => m.skill_id === skillId && m.program === program && m.term === term)
+  }
+
+  const toggleAssignment = async (skillId, program, term) => {
+    const assigned = isAssigned(skillId, program, term)
     if (assigned) {
-      await supabase.from('skill_program_map').delete().eq('skill_id', skillId).eq('program', program)
+      await supabase.from('skill_program_map').delete()
+        .eq('skill_id', skillId).eq('program', program).eq('term', term)
     } else {
-      await supabase.from('skill_program_map').insert({ skill_id: skillId, program })
+      await supabase.from('skill_program_map').insert({ skill_id: skillId, program, term })
     }
     await fetchAll()
+  }
+
+  const getSkillSummary = (skillId) => {
+    const maps = skillMaps.filter(m => m.skill_id === skillId)
+    if (maps.length === 0) return null
+    // Group by program
+    const grouped = {}
+    maps.forEach(m => {
+      if (!grouped[m.program]) grouped[m.program] = []
+      grouped[m.program].push(m.term)
+    })
+    return grouped
   }
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }
@@ -145,7 +158,7 @@ export default function AdminSkillsPage() {
         .skill-body { padding: 0 20px 20px; border-top: 1px solid rgba(255,255,255,0.06); }
         .activity-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 12px; }
         .activity-row:last-child { border-bottom: none; }
-        .prog-chip { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+        .assign-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
         .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 480px; }
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } }
@@ -161,11 +174,10 @@ export default function AdminSkillsPage() {
       </div>
 
       <div className="main">
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>🎯 Skills & Progress Setup</h1>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Step 1: Add Skills → Step 2: Add Activities under each skill → Step 3: Assign to Programs</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Add skills → Add activities → Assign to Program + Term</p>
           </div>
           <button onClick={() => { setEditingSkill(null); setSkillForm({ name: '', description: '' }); setShowSkillModal(true) }} className="btn-primary">+ Add Skill</button>
         </div>
@@ -183,12 +195,12 @@ export default function AdminSkillsPage() {
             style={{ padding: '7px 14px', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px' }}>+ New Year</button>
         </div>
 
-        {/* How to use guide */}
+        {/* Guide */}
         <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', padding: '14px 18px', marginBottom: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.8' }}>
           <strong style={{ color: '#38bdf8' }}>How to set up:</strong><br/>
           1. Click <strong style={{ color: '#fff' }}>+ Add Skill</strong> → Enter skill name (e.g. Fine Motor Skills)<br/>
-          2. Click the skill card to expand → Click <strong style={{ color: '#fff' }}>+ Add Activity</strong> to add activities under it<br/>
-          3. Assign the skill to programs using the program chips at the bottom of each card
+          2. Expand the skill → Click <strong style={{ color: '#fff' }}>+ Add Activity</strong> to add activities<br/>
+          3. In the <strong style={{ color: '#fff' }}>Assign to Program & Term</strong> section → click each Program+Term combination to assign
         </div>
 
         {loading ? (
@@ -197,98 +209,110 @@ export default function AdminSkillsPage() {
           <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎯</div>
             <div style={{ fontSize: '16px', marginBottom: '8px' }}>No skills added yet for {academicYear}</div>
-            <div style={{ fontSize: '13px', marginBottom: '24px' }}>Start by clicking "+ Add Skill" above</div>
           </div>
-        ) : skills.map(skill => (
-          <div key={skill.id} className="skill-card">
-            {/* Skill Header */}
-            <div className="skill-header" onClick={() => setExpandedSkill(expandedSkill === skill.id ? null : skill.id)}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '16px', fontWeight: '700' }}>{skill.name}</span>
-                  <span style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8', padding: '2px 10px', borderRadius: '20px', fontSize: '12px' }}>
-                    {skill.skill_activities?.length || 0} activities
-                  </span>
-                  {(skillPrograms[skill.id] || []).length > 0 ? (
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {(skillPrograms[skill.id] || []).map(p => (
-                        <span key={p} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>{p}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned to any program</span>
-                  )}
+        ) : skills.map(skill => {
+          const summary = getSkillSummary(skill.id)
+          return (
+            <div key={skill.id} className="skill-card">
+              <div className="skill-header" onClick={() => setExpandedSkill(expandedSkill === skill.id ? null : skill.id)}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '16px', fontWeight: '700' }}>{skill.name}</span>
+                    <span style={{ background: 'rgba(56,189,248,0.1)', color: '#38bdf8', padding: '2px 10px', borderRadius: '20px', fontSize: '12px' }}>
+                      {skill.skill_activities?.length || 0} activities
+                    </span>
+                    {summary ? (
+                      Object.entries(summary).map(([prog, terms]) => (
+                        <span key={prog} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>
+                          {prog}: {terms.join(', ')}
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned yet</span>
+                    )}
+                  </div>
+                  {skill.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>{skill.description}</div>}
                 </div>
-                {skill.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>{skill.description}</div>}
+                <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => { setEditingSkill(skill); setSkillForm({ name: skill.name, description: skill.description || '' }); setShowSkillModal(true) }}
+                    style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                  <button onClick={() => deleteSkill(skill.id)}
+                    style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+                  <span style={{ color: 'rgba(255,255,255,0.3)', padding: '6px 4px', fontSize: '12px' }}>{expandedSkill === skill.id ? '▲' : '▼'}</span>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => { setEditingSkill(skill); setSkillForm({ name: skill.name, description: skill.description || '' }); setShowSkillModal(true) }}
-                  style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>✏️ Edit</button>
-                <button onClick={() => deleteSkill(skill.id)}
-                  style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
-                <span style={{ color: 'rgba(255,255,255,0.3)', padding: '6px 4px', fontSize: '12px' }}>{expandedSkill === skill.id ? '▲' : '▼'}</span>
-              </div>
-            </div>
 
-            {/* Expanded Body */}
-            {expandedSkill === skill.id && (
-              <div className="skill-body">
-                <div style={{ paddingTop: '16px' }}>
-                  {/* Activities */}
-                  {(skill.skill_activities || []).length === 0 ? (
-                    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', padding: '12px 0', textAlign: 'center' }}>
-                      No activities yet. Click "+ Add Activity" below to add.
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Activities</div>
-                      {(skill.skill_activities || []).sort((a, b) => a.order_index - b.order_index).map(act => (
-                        <div key={act.id} className="activity-row">
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '14px', fontWeight: '500', color: 'rgba(255,255,255,0.85)' }}>• {act.name}</div>
-                            {act.description && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '2px', paddingLeft: '12px' }}>{act.description}</div>}
+              {expandedSkill === skill.id && (
+                <div className="skill-body">
+                  <div style={{ paddingTop: '16px' }}>
+                    {/* Activities */}
+                    {(skill.skill_activities || []).length === 0 ? (
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', padding: '12px 0', textAlign: 'center' }}>No activities yet. Click "+ Add Activity" below.</div>
+                    ) : (
+                      <>
+                        <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Activities</div>
+                        {(skill.skill_activities || []).sort((a, b) => a.order_index - b.order_index).map(act => (
+                          <div key={act.id} className="activity-row">
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '14px', fontWeight: '500', color: 'rgba(255,255,255,0.85)' }}>• {act.name}</div>
+                              {act.description && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '2px', paddingLeft: '12px' }}>{act.description}</div>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button onClick={() => { setEditingActivity(act); setActivityForm({ name: act.name, description: act.description || '' }); setShowActivityModal(skill.id) }}
+                                style={{ padding: '4px 8px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>✏️</button>
+                              <button onClick={() => deleteActivity(act.id)}
+                                style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button onClick={() => { setEditingActivity(act); setActivityForm({ name: act.name, description: act.description || '' }); setShowActivityModal(skill.id) }}
-                              style={{ padding: '4px 8px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>✏️</button>
-                            <button onClick={() => deleteActivity(act.id)}
-                              style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  )}
+                        ))}
+                      </>
+                    )}
 
-                  {/* Add Activity Button */}
-                  <button onClick={() => { setEditingActivity(null); setActivityForm({ name: '', description: '' }); setShowActivityModal(skill.id) }}
-                    style={{ marginTop: '12px', padding: '10px 16px', background: 'rgba(16,185,129,0.08)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '13px', width: '100%', fontFamily: "'DM Sans', sans-serif" }}>
-                    + Add Activity under "{skill.name}"
-                  </button>
+                    <button onClick={() => { setEditingActivity(null); setActivityForm({ name: '', description: '' }); setShowActivityModal(skill.id) }}
+                      style={{ marginTop: '12px', padding: '10px 16px', background: 'rgba(16,185,129,0.08)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '13px', width: '100%', fontFamily: "'DM Sans', sans-serif" }}>
+                      + Add Activity under "{skill.name}"
+                    </button>
 
-                  {/* Program Assignment */}
-                  <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>Assign to Programs</div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {programs.map(prog => {
-                        const assigned = (skillPrograms[skill.id] || []).includes(prog)
-                        return (
-                          <button key={prog} className="prog-chip" onClick={() => toggleProgram(skill.id, prog)}
-                            style={{
-                              background: assigned ? 'rgba(167,139,250,0.2)' : 'transparent',
-                              borderColor: assigned ? '#a78bfa' : 'rgba(255,255,255,0.15)',
-                              color: assigned ? '#a78bfa' : 'rgba(255,255,255,0.4)'
-                            }}>
-                            {assigned ? '✓ ' : ''}{prog}
-                          </button>
-                        )
-                      })}
+                    {/* Program + Term Assignment Grid */}
+                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.5px' }}>Assign to Program & Term</div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ borderCollapse: 'collapse', minWidth: '400px' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: '600' }}>Program</th>
+                              {TERMS.map(term => (
+                                <th key={term} style={{ padding: '8px 12px', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: '600' }}>{term}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {programs.map(prog => (
+                              <tr key={prog}>
+                                <td style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.7)', fontSize: '14px', fontWeight: '500' }}>{prog}</td>
+                                {TERMS.map(term => {
+                                  const assigned = isAssigned(skill.id, prog, term)
+                                  return (
+                                    <td key={term} style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                      <button onClick={() => toggleAssignment(skill.id, prog, term)}
+                                        style={{ padding: '5px 14px', borderRadius: '20px', border: `1px solid ${assigned ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`, background: assigned ? 'rgba(167,139,250,0.2)' : 'transparent', color: assigned ? '#a78bfa' : 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                        {assigned ? '✓ On' : 'Off'}
+                                      </button>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Skill Modal */}
@@ -296,19 +320,17 @@ export default function AdminSkillsPage() {
         <div className="modal-overlay" onClick={() => { setShowSkillModal(false); setEditingSkill(null) }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '6px' }}>{editingSkill ? '✏️ Edit Skill' : '🎯 Add New Skill'}</h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>
-              A skill is a broad category like "Fine Motor Skills", "Cognitive Skills" etc.<br/>You will add specific activities under each skill.
-            </p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>A skill is a broad area like "Fine Motor Skills". You'll add specific activities under it.</p>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Skill Name *</label>
             <input value={skillForm.name} onChange={e => setSkillForm({ ...skillForm, name: e.target.value })}
-              placeholder='e.g. Fine Motor Skills, Gross Motor Skills, Language Skills...' style={inputStyle} autoFocus
+              placeholder='e.g. Fine Motor Skills, Gross Motor Skills...' style={inputStyle} autoFocus
               onKeyDown={e => e.key === 'Enter' && saveSkill()} />
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Description (optional)</label>
             <input value={skillForm.description} onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
-              placeholder='Brief description of this skill area' style={inputStyle} />
+              placeholder='Brief description' style={inputStyle} />
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button onClick={() => { setShowSkillModal(false); setEditingSkill(null) }} className="btn-secondary">Cancel</button>
-              <button onClick={saveSkill} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingSkill ? 'Update Skill' : 'Add Skill'}</button>
+              <button onClick={saveSkill} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingSkill ? 'Update' : 'Add Skill'}</button>
             </div>
           </div>
         </div>
@@ -319,13 +341,12 @@ export default function AdminSkillsPage() {
         <div className="modal-overlay" onClick={() => { setShowActivityModal(null); setEditingActivity(null) }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '6px' }}>{editingActivity ? '✏️ Edit Activity' : '➕ Add Activity'}</h3>
-            <p style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '6px' }}>Under: <strong>{skills.find(s => s.id === showActivityModal)?.name}</strong></p>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>An activity is a specific observable skill e.g. "Holds pencil correctly", "Cuts with scissors"</p>
+            <p style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '20px' }}>Under: <strong>{skills.find(s => s.id === showActivityModal)?.name}</strong></p>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Activity Name *</label>
             <input value={activityForm.name} onChange={e => setActivityForm({ ...activityForm, name: e.target.value })}
-              placeholder='e.g. Holds pencil correctly, Tracks a path...' style={inputStyle} autoFocus
+              placeholder='e.g. Holds pencil correctly' style={inputStyle} autoFocus
               onKeyDown={e => e.key === 'Enter' && saveActivity(showActivityModal)} />
-            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Description / What to observe (optional)</label>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>What to observe (optional)</label>
             <input value={activityForm.description} onChange={e => setActivityForm({ ...activityForm, description: e.target.value })}
               placeholder='What should the teacher look for?' style={inputStyle} />
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
