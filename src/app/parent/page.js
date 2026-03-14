@@ -29,6 +29,9 @@ export default function ParentPortal() {
   const [progressRatings, setProgressRatings] = useState([])
   const [progressSkills, setProgressSkills] = useState([])
   const [selectedProgressTerm, setSelectedProgressTerm] = useState('Term 1')
+  const [absenceForm, setAbsenceForm] = useState({ student_id: '', absence_date: new Date().toISOString().split('T')[0], reason: '' })
+  const [submittingAbsence, setSubmittingAbsence] = useState(false)
+  const [myAbsences, setMyAbsences] = useState([])
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -109,6 +112,12 @@ export default function ParentPortal() {
         setProgressRatings(prRatings || [])
       }
     }
+    // Load absence notifications
+    if (studentIds.length > 0) {
+      const { data: absData } = await supabase.from('student_absences').select('*, students(full_name)')
+        .in('student_id', studentIds).order('absence_date', { ascending: false }).limit(20)
+      setMyAbsences(absData || [])
+    }
     setLoading(false)
   }
 
@@ -127,6 +136,28 @@ export default function ParentPortal() {
       .order('created_at', { ascending: false }).limit(30)
     setMessages(msgsData || [])
     setSendingMessage(false)
+  }
+
+  const notifyAbsence = async () => {
+    if (!absenceForm.student_id || !absenceForm.absence_date) { alert('Please select student and date'); return }
+    setSubmittingAbsence(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('student_absences').insert({
+      student_id: absenceForm.student_id,
+      parent_id: user.id,
+      absence_date: absenceForm.absence_date,
+      reason: absenceForm.reason,
+      acknowledged: false
+    })
+    // Also mark attendance as absent
+    const existing = await supabase.from('attendance').select('id').eq('student_id', absenceForm.student_id).eq('date', absenceForm.absence_date).single()
+    if (!existing.data) {
+      await supabase.from('attendance').insert({ student_id: absenceForm.student_id, date: absenceForm.absence_date, status: 'absent', checked_in_at: new Date().toISOString() })
+    }
+    setAbsenceForm({ student_id: '', absence_date: new Date().toISOString().split('T')[0], reason: '' })
+    await loadData()
+    setSubmittingAbsence(false)
+    alert('Absence notified to school! ✅')
   }
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
@@ -156,6 +187,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'messages', label: 'Messages', icon: '💬' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
     { id: 'progress', label: 'Progress', icon: '📊' },
+    { id: 'absence', label: 'Notify Absence', icon: '📋' }
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -636,6 +668,63 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                     })}
                   </div>
                 )}
+              </>
+            )}
+            {activeTab === 'absence' && (
+              <>
+                <div className="section-title">📋 Notify Child Absence</div>
+ 
+                {/* Absence Form */}
+                <div className="card" style={{ marginBottom: '24px' }}>
+                  <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px', fontSize: '15px' }}>📝 Notify School of Absence</div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Select Child *</label>
+                    <select value={absenceForm.student_id} onChange={e => setAbsenceForm({ ...absenceForm, student_id: e.target.value })}
+                      style={{ ...inputStyle, marginTop: 0 }}>
+                      <option value=''>-- Select Child --</option>
+                      {students.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Absence Date *</label>
+                    <input type='date' value={absenceForm.absence_date} onChange={e => setAbsenceForm({ ...absenceForm, absence_date: e.target.value })}
+                      style={{ ...inputStyle, marginTop: 0 }} />
+                  </div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Reason (optional)</label>
+                    <input value={absenceForm.reason} onChange={e => setAbsenceForm({ ...absenceForm, reason: e.target.value })}
+                      placeholder='e.g. Fever, Family function, Travel...'
+                      style={{ ...inputStyle, marginTop: 0 }} />
+                  </div>
+                  <button onClick={notifyAbsence} disabled={submittingAbsence}
+                    style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    {submittingAbsence ? '⏳ Notifying...' : '📤 Notify School'}
+                  </button>
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '10px', textAlign: 'center' }}>
+                    Attendance will be automatically marked as absent
+                  </div>
+                </div>
+ 
+                {/* Absence History */}
+                <div className="section-title">📅 Absence History</div>
+                {myAbsences.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.3)' }}>No absence notifications yet.</div>
+                ) : myAbsences.map(ab => (
+                  <div key={ab.id} className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontWeight: '600' }}>{ab.students?.full_name}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>📅 {ab.absence_date}</div>
+                        {ab.reason && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '2px' }}>Reason: {ab.reason}</div>}
+                      </div>
+                      <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                        background: ab.acknowledged ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                        color: ab.acknowledged ? '#34d399' : '#fbbf24' }}>
+                        {ab.acknowledged ? '✅ Acknowledged by School' : '⏳ Pending Acknowledgement'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </>
             )}
 
