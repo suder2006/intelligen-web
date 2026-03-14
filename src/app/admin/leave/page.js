@@ -47,6 +47,7 @@ export default function AdminLeavePage() {
       supabase.from('student_absences').select('*, students(full_name, program), profiles(full_name)').order('absence_date', { ascending: false }).limit(100),
       supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'school_admin']).order('full_name')
     ])
+    console.log('Leave requests:', lrRes.data, 'Error:', lrRes.error)
     setLeaveRequests(lrRes.data || [])
     setBalances(balRes.data || [])
     setAbsences(absRes.data || [])
