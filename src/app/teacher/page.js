@@ -45,6 +45,7 @@ export default function TeacherPortal() {
   const [submittingLeave, setSubmittingLeave] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [scanResult, setScanResult] = useState(null)
+  const [holidays, setHolidays] = useState([])
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
@@ -95,6 +96,22 @@ export default function TeacherPortal() {
     setStudentAbsences(absData || [])
 
     await fetchAttendance()
+    // Load holidays for teacher's programs
+    //const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+    const { data: holData } = await supabase.from('holidays')
+      .select('*')
+      .eq('academic_year', currentAY)
+      .or(`applies_to.eq.all,applies_to.eq.staff_only`)
+      .order('from_date')
+    // Also get program-specific holidays
+    const { data: progHolData } = await supabase.from('holidays')
+      .select('*')
+      .eq('academic_year', currentAY)
+      .eq('applies_to', 'programs')
+      .order('from_date')
+    const progHols = (progHolData || []).filter(h => h.programs?.some(p => teacherPrograms.includes(p)))
+    setHolidays([...(holData || []), ...progHols].sort((a, b) => a.from_date.localeCompare(b.from_date)))
+
     setLoading(false)
   }
 
@@ -295,6 +312,7 @@ export default function TeacherPortal() {
     { id: 'progress', label: 'Progress', icon: '📊' },
     { id: 'leave', label: 'Leave', icon: '🏖️' },
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
+    { id: 'holidays', label: 'Holidays', icon: '📅' },
   ]
 
   return (
@@ -639,7 +657,40 @@ export default function TeacherPortal() {
                   </div>
                 </div>
               </>
-            )}  
+            )} 
+
+            {activeTab === 'holidays' && (
+              <>
+                <div className="section-title">📅 Holiday Calendar</div>
+                {holidays.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No holidays announced yet.</div>
+                ) : holidays.map(h => {
+                  const isUpcoming = new Date(h.from_date) >= new Date()
+                  const isPast = new Date(h.to_date) < new Date()
+                  const typeColor = {
+                    'National Holiday': '#f87171', 'School Holiday': '#38bdf8',
+                    'Program-specific Holiday': '#a78bfa', 'Staff Holiday': '#34d399', 'Optional Holiday': '#fbbf24'
+                  }
+                  return (
+                    <div key={h.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: `1px solid ${isUpcoming ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px', opacity: isPast ? 0.6 : 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '6px' }}>{h.name}</div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: `${typeColor[h.holiday_type]}22`, color: typeColor[h.holiday_type] }}>{h.holiday_type}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>📅 {h.from_date}{h.to_date !== h.from_date ? ` → ${h.to_date}` : ''}</span>
+                            {h.is_optional && <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>Optional</span>}
+                          </div>
+                          {h.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>{h.description}</div>}
+                        </div>
+                        {isUpcoming && <span style={{ padding: '4px 12px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>Upcoming</span>}
+                        {isPast && <span style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)', borderRadius: '20px', fontSize: '12px' }}>Past</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )} 
 
             {activeTab === 'leave' && (
               <>
