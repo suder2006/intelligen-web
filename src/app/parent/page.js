@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
 export default function ParentPortal() {
   const [moments, setMoments] = useState([])
@@ -32,6 +34,8 @@ export default function ParentPortal() {
   const [absenceForm, setAbsenceForm] = useState({ student_id: '', absence_date: new Date().toISOString().split('T')[0], reason: '' })
   const [submittingAbsence, setSubmittingAbsence] = useState(false)
   const [myAbsences, setMyAbsences] = useState([])
+  const [showParentScanner, setShowParentScanner] = useState(false)
+  const [parentScanResult, setParentScanResult] = useState(null)
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -160,6 +164,47 @@ export default function ParentPortal() {
     alert('Absence notified to school! ✅')
   }
 
+  const handleParentScan = async (decodedText) => {
+    setShowParentScanner(false)
+    // Extract student ID from QR
+    const url = new URL(decodedText)
+    const studentId = url.searchParams.get('student')
+    if (!studentId) {
+      setParentScanResult({ type: 'error', message: 'Invalid QR code. Please scan your child\'s ID card QR.' })
+      return
+    }
+    const student = students.find(s => s.id === studentId)
+    if (!student) {
+      setParentScanResult({ type: 'error', message: 'This student is not linked to your account.' })
+      return
+    }
+    const today = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const { data: existing } = await supabase.from('student_checkins').select('*').eq('student_id', studentId).eq('date', today).single()
+    if (!existing) {
+      await supabase.from('student_checkins').insert({
+        student_id: studentId, date: today,
+        checkin_time: now.toISOString(),
+        checkin_by: user.id, checkin_by_name: profile?.full_name || 'Parent',
+        checkin_method: 'qr', school_id: '554c668d-1668-474b-a8aa-f529941dbcf6'
+      })
+      const { data: attExisting } = await supabase.from('attendance').select('id').eq('student_id', studentId).eq('date', today).single()
+      if (!attExisting) {
+        await supabase.from('attendance').insert({ student_id: studentId, date: today, status: 'present', checked_in_at: now.toISOString() })
+      }
+      setParentScanResult({ type: 'success', action: 'checkin', message: `✅ ${student.full_name} checked in at ${now.toLocaleTimeString()}`, name: student.full_name })
+    } else if (!existing.checkout_time) {
+      await supabase.from('student_checkins').update({
+        checkout_time: now.toISOString(),
+        checkout_by: user.id, checkout_by_name: profile?.full_name || 'Parent',
+        checkout_method: 'qr'
+      }).eq('id', existing.id)
+      setParentScanResult({ type: 'success', action: 'checkout', message: `👋 ${student.full_name} checked out at ${now.toLocaleTimeString()}`, name: student.full_name })
+    } else {
+      setParentScanResult({ type: 'info', message: `${student.full_name} already checked in and out today.` })
+    }
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
 const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
@@ -187,7 +232,8 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'messages', label: 'Messages', icon: '💬' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
     { id: 'progress', label: 'Progress', icon: '📊' },
-    { id: 'absence', label: 'Notify Absence', icon: '📋' }
+    { id: 'absence', label: 'Notify Absence', icon: '📋' },
+    { id: 'checkin', label: 'Check-in', icon: '🚪' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -741,6 +787,55 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
               </>
             )}
 
+            {activeTab === 'checkin' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div className="section-title" style={{ margin: 0 }}>🚪 Student Check-in</div>
+                  <button onClick={() => { setParentScanResult(null); setShowParentScanner(true) }}
+                    style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>
+                    📷 Scan Child QR
+                  </button>
+                </div>
+
+                {parentScanResult && (
+                  <div style={{ background: parentScanResult.type === 'success' ? 'rgba(16,185,129,0.15)' : parentScanResult.type === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.1)', border: `1px solid ${parentScanResult.type === 'success' ? 'rgba(16,185,129,0.3)' : parentScanResult.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(56,189,248,0.2)'}`, borderRadius: '14px', padding: '20px', marginBottom: '20px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '36px', marginBottom: '8px' }}>{parentScanResult.action === 'checkin' ? '✅' : parentScanResult.action === 'checkout' ? '👋' : parentScanResult.type === 'error' ? '❌' : 'ℹ️'}</div>
+                    {parentScanResult.name && <div style={{ fontWeight: '700', marginBottom: '4px' }}>{parentScanResult.name}</div>}
+                    <div style={{ color: parentScanResult.type === 'success' ? '#34d399' : parentScanResult.type === 'error' ? '#f87171' : '#38bdf8', fontSize: '15px' }}>{parentScanResult.message}</div>
+                  </div>
+                )}
+
+                {/* Children with their QRs */}
+                {students.map(s => (
+                  <div key={s.id} className="card" style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{s.full_name?.[0]}</div>
+                      <div>
+                        <div style={{ fontWeight: '700' }}>{s.full_name}</div>
+                        <div style={{ color: '#a78bfa', fontSize: '13px' }}>{s.program}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px' }}>
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} alt='QR' style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#fff', padding: '4px' }} />
+                      <div>
+                        <div style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>📱 Child's QR Code</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '8px' }}>Show at gate or save to phone</div>
+                        <a href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} download target='_blank'
+                          style={{ padding: '5px 12px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', color: '#38bdf8', fontSize: '12px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}>⬇️ Save QR</a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px', textAlign: 'center', marginTop: '8px' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', lineHeight: '1.8' }}>
+                    📷 Click <strong style={{ color: '#38bdf8' }}>Scan Child QR</strong> to scan your child's ID card<br/>
+                    First scan = Check-in · Second scan = Check-out
+                  </div>
+                </div>
+              </>
+            )}  
+
             {/* ANNOUNCEMENTS TAB */}
             {activeTab === 'announcements' && (
               <>
@@ -856,6 +951,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
           </>
         )}
       </div>
+      {showParentScanner && <QRScanner title="Scan Child's ID Card QR" onScan={handleParentScan} onClose={() => setShowParentScanner(false)} />}
       {/* UPI Payment Modal */}
       {paymentModal && (() => {
         const pendingAmount = Number(paymentModal.total_amount) - Number(paymentModal.paid_amount || 0)

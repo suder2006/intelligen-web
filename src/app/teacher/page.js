@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
 export default function TeacherPortal() {
   const [profile, setProfile] = useState(null)
@@ -41,6 +43,8 @@ export default function TeacherPortal() {
   const [studentAbsences, setStudentAbsences] = useState([])
   const [leaveForm, setLeaveForm] = useState({ leave_type: 'Casual Leave', from_date: '', to_date: '', reason: '' })
   const [submittingLeave, setSubmittingLeave] = useState(false)
+  const [showScanner, setShowScanner] = useState(false)
+  const [scanResult, setScanResult] = useState(null)
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
@@ -159,6 +163,40 @@ export default function TeacherPortal() {
     await loadData()
   }
 
+  const handleStaffScan = async (decodedText) => {
+    setShowScanner(false)
+    if (decodedText !== 'https://intelligen-web.vercel.app/checkin?token=TIMEKIDS2026') {
+      setScanResult({ type: 'error', message: 'Invalid QR code. Please scan the school gate QR.' })
+      return
+    }
+    const { data: { user } } = await supabase.auth.getUser()
+    const today = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const timeStr = now.toTimeString().slice(0, 5)
+    const { data: existing } = await supabase.from('staff_attendance').select('*').eq('staff_id', user.id).eq('date', today).single()
+    if (!existing) {
+      const { data: grpData } = await supabase.from('staff_type_groups').select('*').eq('id', profile?.staff_group_id).single()
+      let status = 'present'
+      if (grpData) {
+        if (timeStr > grpData.halfday_before) status = 'half_day'
+        else if (timeStr > grpData.late_before) status = 'late'
+      }
+      await supabase.from('staff_attendance').insert({
+        staff_id: user.id, date: today,
+        checkin_time: now.toISOString(),
+        status, marked_by: 'qr',
+        school_id: '554c668d-1668-474b-a8aa-f529941dbcf6'
+      })
+      setScanResult({ type: 'success', action: 'checkin', message: `✅ Checked in at ${now.toLocaleTimeString()}`, status })
+    } else if (!existing.checkout_time) {
+      const workingHours = ((now - new Date(existing.checkin_time)) / (1000 * 60 * 60)).toFixed(1)
+      await supabase.from('staff_attendance').update({ checkout_time: now.toISOString(), working_hours: parseFloat(workingHours) }).eq('id', existing.id)
+      setScanResult({ type: 'success', action: 'checkout', message: `👋 Checked out at ${now.toLocaleTimeString()}. Hours: ${workingHours}h` })
+    } else {
+      setScanResult({ type: 'info', message: 'Already checked in and out today.' })
+    }
+  }
+
   const uploadMoment = async () => {
     if (!momentFile || !momentClass) { alert('Please select a photo and class'); return }
     setUploadingMoment(true)
@@ -256,6 +294,7 @@ export default function TeacherPortal() {
     { id: 'messages', label: 'Messages', icon: '💬' },
     { id: 'progress', label: 'Progress', icon: '📊' },
     { id: 'leave', label: 'Leave', icon: '🏖️' },
+    { id: 'checkin', label: 'Check-in', icon: '🚪' },
   ]
 
   return (
@@ -571,6 +610,37 @@ export default function TeacherPortal() {
               </div>
             )}
 
+            {activeTab === 'checkin' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div className="section-title" style={{ margin: 0 }}>🚪 My Attendance</div>
+                  <button onClick={() => { setScanResult(null); setShowScanner(true) }}
+                    style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>
+                    📷 Scan Gate QR
+                  </button>
+                </div>
+
+                {scanResult && (
+                  <div style={{ background: scanResult.type === 'success' ? 'rgba(16,185,129,0.15)' : scanResult.type === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(56,189,248,0.1)', border: `1px solid ${scanResult.type === 'success' ? 'rgba(16,185,129,0.3)' : scanResult.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(56,189,248,0.2)'}`, borderRadius: '14px', padding: '20px', marginBottom: '20px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '36px', marginBottom: '8px' }}>{scanResult.action === 'checkin' ? '✅' : scanResult.action === 'checkout' ? '👋' : scanResult.type === 'error' ? '❌' : 'ℹ️'}</div>
+                    <div style={{ fontWeight: '700', marginBottom: '4px' }}>{profile?.full_name}</div>
+                    <div style={{ color: scanResult.type === 'success' ? '#34d399' : scanResult.type === 'error' ? '#f87171' : '#38bdf8', fontSize: '15px' }}>{scanResult.message}</div>
+                  </div>
+                )}
+
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>📷</div>
+                  <div style={{ fontWeight: '600', marginBottom: '8px' }}>How to check in</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', lineHeight: '1.8' }}>
+                    1. Click <strong style={{ color: '#38bdf8' }}>📷 Scan Gate QR</strong> button above<br/>
+                    2. Point camera at the QR code at school entrance<br/>
+                    3. Check-in/out recorded automatically!<br/>
+                    4. Scan again when leaving to check out
+                  </div>
+                </div>
+              </>
+            )}  
+
             {activeTab === 'leave' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -697,6 +767,7 @@ export default function TeacherPortal() {
           </>
         )}
       </div>
+      {showScanner && <QRScanner title='Scan School Gate QR' onScan={handleStaffScan} onClose={() => setShowScanner(false)} />}
     </div>
   )
 }
