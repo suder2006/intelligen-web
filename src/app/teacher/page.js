@@ -46,6 +46,9 @@ export default function TeacherPortal() {
   const [showScanner, setShowScanner] = useState(false)
   const [scanResult, setScanResult] = useState(null)
   const [holidays, setHolidays] = useState([])
+  const [payslips, setPayslips] = useState([])
+  const [selectedPayslip, setSelectedPayslip] = useState(null)
+
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
@@ -111,6 +114,10 @@ export default function TeacherPortal() {
       .order('from_date')
     const progHols = (progHolData || []).filter(h => h.programs?.some(p => teacherPrograms.includes(p)))
     setHolidays([...(holData || []), ...progHols].sort((a, b) => a.from_date.localeCompare(b.from_date)))
+    // Load payslips
+    const { data: payslipData } = await supabase.from('payroll')
+      .select('*').eq('staff_id', user.id).order('month', { ascending: false })
+    setPayslips(payslipData || [])
 
     setLoading(false)
   }
@@ -313,6 +320,7 @@ export default function TeacherPortal() {
     { id: 'leave', label: 'Leave', icon: '🏖️' },
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
+    { id: 'payslip', label: 'Payslip', icon: '💰' },
   ]
 
   return (
@@ -692,6 +700,35 @@ export default function TeacherPortal() {
               </>
             )} 
 
+            {activeTab === 'payslip' && (
+              <>
+                <div className="section-title">💰 My Payslips</div>
+                {payslips.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No payslips generated yet.</div>
+                ) : payslips.map(p => (
+                  <div key={p.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px', marginBottom: '12px', cursor: 'pointer' }}
+                    onClick={() => setSelectedPayslip(p)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div>
+                        <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>📅 {p.month}</div>
+                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#10b981', fontSize: '13px' }}>✅ {p.present_days} Present</span>
+                          <span style={{ color: '#ef4444', fontSize: '13px' }}>❌ {p.absent_days} Absent</span>
+                          <span style={{ color: '#f59e0b', fontSize: '13px' }}>⏰ {p.late_days} Late</span>
+                          {p.leave_days > 0 && <span style={{ color: '#a78bfa', fontSize: '13px' }}>🏖️ {p.leave_days} Leave</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: '#38bdf8', fontWeight: '700', fontSize: '20px' }}>₹{Number(p.net_pay).toLocaleString()}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>Net Pay</div>
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: p.status === 'finalized' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: p.status === 'finalized' ? '#34d399' : '#fbbf24' }}>{p.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
             {activeTab === 'leave' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -818,6 +855,84 @@ export default function TeacherPortal() {
           </>
         )}
       </div>
+      {selectedPayslip && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+                onClick={() => setSelectedPayslip(null)}>
+                <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto' }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                    <div style={{ fontFamily: 'Playfair Display, serif', fontSize: '22px', marginBottom: '4px' }}>Intelli<span style={{ color: '#38bdf8' }}>Gen</span></div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Time Kids Preschool Anna Nagar</div>
+                    <div style={{ fontWeight: '700', fontSize: '18px', marginTop: '12px' }}>PAYSLIP</div>
+                    <div style={{ color: '#38bdf8', fontSize: '14px' }}>{selectedPayslip.month}</div>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: '700', marginBottom: '4px' }}>{profile?.full_name}</div>
+                    <div style={{ color: '#a78bfa', fontSize: '13px' }}>{profile?.role}</div>
+                  </div>
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>Attendance</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                      {[
+                        { label: 'Present', value: selectedPayslip.present_days, color: '#10b981' },
+                        { label: 'Absent', value: selectedPayslip.absent_days, color: '#ef4444' },
+                        { label: 'Late', value: selectedPayslip.late_days, color: '#f59e0b' },
+                        { label: 'Leave', value: selectedPayslip.leave_days, color: '#a78bfa' },
+                      ].map(item => (
+                        <div key={item.label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                          <div style={{ color: item.color, fontWeight: '700', fontSize: '18px' }}>{item.value}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{item.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
+                    <div style={{ fontWeight: '600', color: '#34d399', marginBottom: '8px' }}>💚 Earnings</div>
+                    {[
+                      ['Basic Salary', selectedPayslip.basic_salary],
+                      ['Overtime Pay', selectedPayslip.overtime_pay],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.6)' }}>{label}</span>
+                        <span style={{ color: '#34d399' }}>₹{Number(value || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', fontWeight: '700' }}>
+                      <span>Gross</span>
+                      <span style={{ color: '#34d399' }}>₹{Number(selectedPayslip.gross_earnings).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '10px', padding: '14px', marginBottom: '10px' }}>
+                    <div style={{ fontWeight: '600', color: '#f87171', marginBottom: '8px' }}>❤️ Deductions</div>
+                    {[
+                      ['Absent', selectedPayslip.absent_deduction],
+                      ['Late', selectedPayslip.late_deduction],
+                      ['Half Day', selectedPayslip.half_day_deduction],
+                      ['PF', selectedPayslip.pf_deduction],
+                      ['ESI', selectedPayslip.esi_deduction],
+                      ['Tax', selectedPayslip.tax_deduction],
+                    ].filter(([, v]) => Number(v) > 0).map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.6)' }}>{label}</span>
+                        <span style={{ color: '#f87171' }}>₹{Number(value || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', fontWeight: '700' }}>
+                      <span>Total Deductions</span>
+                      <span style={{ color: '#f87171' }}>₹{Number(selectedPayslip.total_deductions).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '10px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '16px' }}>💰 Net Pay</span>
+                    <span style={{ fontWeight: '700', fontSize: '24px', color: '#38bdf8' }}>₹{Number(selectedPayslip.net_pay).toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={() => window.print()} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px' }}>🖨️ Print</button>
+                    <button onClick={() => setSelectedPayslip(null)} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Close</button>
+                  </div>
+                </div>
+              </div>
+            )}
       {showScanner && <QRScanner title='Scan School Gate QR' onScan={handleStaffScan} onClose={() => setShowScanner(false)} />}
     </div>
   )
