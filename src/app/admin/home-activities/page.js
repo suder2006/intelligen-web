@@ -35,6 +35,8 @@ export default function HomeActivitiesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingActivity, setEditingActivity] = useState(null)
   const [expandedActivity, setExpandedActivity] = useState(null)
+  const [completions, setCompletions] = useState([])
+  const [students, setStudents] = useState([])
   const [form, setForm] = useState({
     title: '', goal: '', skills_built: '', you_need: '',
     do_this: '', video_link: '', month: filterMonth,
@@ -47,10 +49,14 @@ export default function HomeActivitiesPage() {
     setLoading(true)
     const [actRes, progRes] = await Promise.all([
       supabase.from('home_activities').select('*').eq('academic_year', academicYear).order('month').order('order_index'),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
+      supabase.from('home_activity_completions').select('*, students(full_name, program), profiles(full_name)'),
+      supabase.from('students').select('*').eq('status', 'active')
     ])
     setActivities(actRes.data || [])
     setPrograms(progRes?.data?.map(p => p.value) || [])
+    setCompletions(compRes.data || [])
+    setStudents(studRes.data || [])
     setLoading(false)
   }
 
@@ -189,6 +195,19 @@ export default function HomeActivitiesPage() {
                     <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{activity.title}</div>
                     {activity.goal && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>🎯 {activity.goal}</div>}
                     {activity.skills_built && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>⚡ Skills: {activity.skills_built}</div>}
+                  {/* Completion stats */}
+                    {(() => {
+                      const actCompletions = completions.filter(c => c.activity_id === activity.id)
+                      const totalStudents = students.filter(s => s.program === activity.program).length
+                      return (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: '4px', background: '#10b981', width: totalStudents > 0 ? `${(actCompletions.length / totalStudents) * 100}%` : '0%' }} />
+                          </div>
+                          <span style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>{actCompletions.length}/{totalStudents} done</span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                     <button onClick={e => { e.stopPropagation(); setEditingActivity(activity); setForm({ title: activity.title, goal: activity.goal || '', skills_built: activity.skills_built || '', you_need: activity.you_need || '', do_this: activity.do_this || '', video_link: activity.video_link || '', month: activity.month, programs: [activity.program], academic_year: activity.academic_year }); setShowForm(true) }}
@@ -213,15 +232,36 @@ export default function HomeActivitiesPage() {
                         <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>{activity.do_this}</div>
                       </div>
                     )}
-                    {activity.video_link && (
+                 {activity.video_link && (
                       <a href={activity.video_link} target='_blank' rel='noreferrer'
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
                         ▶️ Watch Video
                       </a>
                     )}
+                    {/* Who completed */}
+                    {(() => {
+                      const actCompletions = completions.filter(c => c.activity_id === activity.id)
+                      if (actCompletions.length === 0) return (
+                        <div style={{ marginTop: '14px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No completions yet.</div>
+                      )
+                      return (
+                        <div style={{ marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                          <div style={{ color: '#10b981', fontWeight: '600', fontSize: '13px', marginBottom: '8px' }}>✅ Completed by:</div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {actCompletions.map(c => (
+                              <span key={c.id} style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
+                                {c.students?.full_name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
+
+
             ))}
           </>
         )}

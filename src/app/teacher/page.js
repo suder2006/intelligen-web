@@ -48,6 +48,8 @@ export default function TeacherPortal() {
   const [holidays, setHolidays] = useState([])
   const [payslips, setPayslips] = useState([])
   const [selectedPayslip, setSelectedPayslip] = useState(null)
+  const [activityCompletions, setActivityCompletions] = useState([])
+  const [homeActivities, setHomeActivities] = useState([])
 
 
   useEffect(() => { loadData() }, [])
@@ -118,6 +120,18 @@ export default function TeacherPortal() {
     const { data: payslipData } = await supabase.from('payroll')
       .select('*').eq('staff_id', user.id).order('month', { ascending: false })
     setPayslips(payslipData || [])
+
+    // Load home activity completions for teacher's students
+    const currentMonth = new Date().toLocaleString('en-US', { month: 'long' })
+    const { data: teacherActData } = await supabase.from('home_activities')
+      .select('*').eq('academic_year', currentAY)
+      .in('program', teacherPrograms).order('month').order('order_index')
+    setHomeActivities(teacherActData || [])
+    if (studentIds.length > 0) {
+      const { data: actCompData } = await supabase.from('home_activity_completions')
+        .select('*, students(full_name)').in('student_id', studentIds)
+      setActivityCompletions(actCompData || [])
+    }
 
     setLoading(false)
   }
@@ -633,6 +647,53 @@ export default function TeacherPortal() {
                   style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', textDecoration: 'none', display: 'inline-block' }}>
                   📊 Open Progress Tracker
                 </a>
+                {activeTab === 'progress' && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+                <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>Student Progress Tracking</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Rate skills per term and send reports to parents</div>
+                <a href='/teacher/progress'
+                  style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', textDecoration: 'none', display: 'inline-block' }}>
+                  📊 Open Progress Tracker
+                </a>
+
+                {/* Home Activity Completions */}
+                <div style={{ marginTop: '32px', textAlign: 'left' }}>
+                  <div className="section-title">🏠 Home Activity Completions</div>
+                  {homeActivities.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.3)' }}>No home activities this month.</div>
+                  ) : homeActivities.map(activity => {
+                    const completedStudents = activityCompletions.filter(c => c.activity_id === activity.id)
+                    const totalStudents = students.filter(s => s.program === activity.program).length
+                    const pct = totalStudents > 0 ? Math.round((completedStudents.length / totalStudents) * 100) : 0
+                    return (
+                      <div key={activity.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontWeight: '700', marginBottom: '2px' }}>{activity.title}</div>
+                            <div style={{ color: '#a78bfa', fontSize: '12px' }}>{activity.program} · {activity.month}</div>
+                          </div>
+                          <span style={{ color: '#10b981', fontWeight: '700', fontSize: '15px' }}>{completedStudents.length}/{totalStudents}</span>
+                        </div>
+                        <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' }}>
+                          <div style={{ height: '100%', background: pct >= 75 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444', borderRadius: '4px', width: `${pct}%` }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {completedStudents.map(c => (
+                            <span key={c.id} style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>✅ {c.students?.full_name}</span>
+                          ))}
+                          {students.filter(s => s.program === activity.program && !completedStudents.find(c => c.student_id === s.id)).map(s => (
+                            <span key={s.id} style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>○ {s.full_name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+              </div>
+            )}
+
               </div>
             )}
 
