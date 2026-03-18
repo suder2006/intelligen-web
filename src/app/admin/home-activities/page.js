@@ -47,7 +47,7 @@ export default function HomeActivitiesPage() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [actRes, progRes] = await Promise.all([
+    const [actRes, progRes, compRes, studRes] = await Promise.all([
       supabase.from('home_activities').select('*').eq('academic_year', academicYear).order('month').order('order_index'),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
       supabase.from('home_activity_completions').select('*, students(full_name, program), profiles(full_name)'),
