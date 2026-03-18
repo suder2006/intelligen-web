@@ -37,6 +37,9 @@ export default function ParentPortal() {
   const [showParentScanner, setShowParentScanner] = useState(false)
   const [parentScanResult, setParentScanResult] = useState(null)
   const [holidays, setHolidays] = useState([])
+  const [homeActivities, setHomeActivities] = useState([])
+  const [activityCompletions, setActivityCompletions] = useState([])
+  const [selectedActivityChild, setSelectedActivityChild] = useState(null)
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -132,6 +135,21 @@ export default function ParentPortal() {
       .select('*').eq('academic_year', currentAY).eq('applies_to', 'programs').order('from_date')
     const progHols = (progHolData || []).filter(h => h.programs?.some(p => parentPrograms.includes(p)))
     setHolidays([...(holData || []), ...progHols].sort((a, b) => a.from_date.localeCompare(b.from_date)))
+    
+    // Load home activities
+    if (parentPrograms.length > 0) {
+      const currentMonth = new Date().toLocaleString('en-US', { month: 'long' })
+      const { data: actData } = await supabase.from('home_activities')
+        .select('*').eq('academic_year', currentAY)
+        .in('program', parentPrograms).order('month').order('order_index')
+      setHomeActivities(actData || [])
+      // Load completions
+      if (studentIds.length > 0) {
+        const { data: compData } = await supabase.from('home_activity_completions')
+          .select('*').in('student_id', studentIds)
+        setActivityCompletions(compData || [])
+      }
+    }
 
     setLoading(false)
   }
@@ -173,6 +191,19 @@ export default function ParentPortal() {
     await loadData()
     setSubmittingAbsence(false)
     alert('Absence notified to school! ✅')
+  }
+
+  const toggleActivityComplete = async (activityId, studentId) => {
+    const existing = activityCompletions.find(c => c.activity_id === activityId && c.student_id === studentId)
+    if (existing) {
+      await supabase.from('home_activity_completions').delete().eq('id', existing.id)
+      setActivityCompletions(prev => prev.filter(c => c.id !== existing.id))
+    } else {
+      const { data } = await supabase.from('home_activity_completions').insert({
+        activity_id: activityId, student_id: studentId, parent_id: user.id
+      }).select().single()
+      if (data) setActivityCompletions(prev => [...prev, data])
+    }
   }
 
   const handleParentScan = async (decodedText) => {
@@ -246,6 +277,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'absence', label: 'Notify Absence', icon: '📋' },
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
+    { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -847,6 +879,106 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                 </div>
               </>
             )}  
+
+            {activeTab === 'homeactivities' && (
+              <>
+                <div className="section-title">🏠 Home Activities</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>Fun activities to do with your child at home this month!</div>
+
+                {/* Child selector if multiple children */}
+                {students.length > 1 && (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                    <button onClick={() => setSelectedActivityChild(null)}
+                      style={{ padding: '7px 16px', borderRadius: '20px', border: `1px solid ${!selectedActivityChild ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: !selectedActivityChild ? 'rgba(56,189,248,0.15)' : 'transparent', color: !selectedActivityChild ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                      All Children
+                    </button>
+                    {students.map(s => (
+                      <button key={s.id} onClick={() => setSelectedActivityChild(s.id)}
+                        style={{ padding: '7px 16px', borderRadius: '20px', border: `1px solid ${selectedActivityChild === s.id ? '#a78bfa' : 'rgba(255,255,255,0.1)'}`, background: selectedActivityChild === s.id ? 'rgba(167,139,250,0.15)' : 'transparent', color: selectedActivityChild === s.id ? '#a78bfa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                        {s.full_name.split(' ')[0]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Activities grouped by child */}
+                {(selectedActivityChild ? students.filter(s => s.id === selectedActivityChild) : students).map(child => {
+                  const childActivities = homeActivities.filter(a => a.program === child.program)
+                  if (childActivities.length === 0) return null
+                  // Group by month
+                  const months = [...new Set(childActivities.map(a => a.month))]
+                  return (
+                    <div key={child.id} style={{ marginBottom: '28px' }}>
+                      {students.length > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{child.full_name?.[0]}</div>
+                          <div>
+                            <div style={{ fontWeight: '700' }}>{child.full_name}</div>
+                            <div style={{ color: '#a78bfa', fontSize: '13px' }}>{child.program}</div>
+                          </div>
+                        </div>
+                      )}
+                      {months.map(month => {
+                        const monthActivities = childActivities.filter(a => a.month === month)
+                        const completedCount = monthActivities.filter(a => activityCompletions.some(c => c.activity_id === a.id && c.student_id === child.id)).length
+                        return (
+                          <div key={month} style={{ marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <div style={{ fontWeight: '600', color: '#38bdf8', fontSize: '15px' }}>📅 {month}</div>
+                              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{completedCount}/{monthActivities.length} done</span>
+                            </div>
+                            {monthActivities.map(activity => {
+                              const isCompleted = activityCompletions.some(c => c.activity_id === activity.id && c.student_id === child.id)
+                              return (
+                                <div key={activity.id} className="card" style={{ borderColor: isCompleted ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.07)', background: isCompleted ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.04)', marginBottom: '12px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{activity.title}</div>
+                                      {activity.goal && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginBottom: '4px' }}>🎯 {activity.goal}</div>}
+                                      {activity.skills_built && <div style={{ color: '#a78bfa', fontSize: '12px' }}>⚡ Skills: {activity.skills_built}</div>}
+                                    </div>
+                                    <button onClick={() => toggleActivityComplete(activity.id, child.id)}
+                                      style={{ padding: '8px 14px', background: isCompleted ? '#10b981' : 'rgba(255,255,255,0.06)', border: `1px solid ${isCompleted ? '#10b981' : 'rgba(255,255,255,0.1)'}`, borderRadius: '10px', color: isCompleted ? '#fff' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                      {isCompleted ? '✅ Done!' : '○ Mark Done'}
+                                    </button>
+                                  </div>
+                                  {activity.you_need && (
+                                    <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.1)', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
+                                      <div style={{ color: '#38bdf8', fontWeight: '600', fontSize: '12px', marginBottom: '6px' }}>🧰 YOU NEED</div>
+                                      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{activity.you_need}</div>
+                                    </div>
+                                  )}
+                                  {activity.do_this && (
+                                    <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.1)', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
+                                      <div style={{ color: '#34d399', fontWeight: '600', fontSize: '12px', marginBottom: '6px' }}>✅ DO THIS</div>
+                                      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>{activity.do_this}</div>
+                                    </div>
+                                  )}
+                                  {activity.video_link && (
+                                    <a href={activity.video_link} target='_blank' rel='noreferrer'
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>
+                                      ▶️ Watch Video Guide
+                                    </a>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+
+                {homeActivities.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏠</div>
+                    <div>No home activities yet. Check back soon!</div>
+                  </div>
+                )}
+              </>
+            )}
+ 
 
             {activeTab === 'holidays' && (
               <>
