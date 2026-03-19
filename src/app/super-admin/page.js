@@ -104,6 +104,7 @@ export default function SuperAdminDashboard() {
         <div className="logo">Intelli<span>Gen</span></div>
         <div className="role-badge">⭐ Super Admin</div>
         <Link href="/super-admin" className="nav-item active">🏫 All Schools</Link>
+        <Link href="/super-admin/schools" className="nav-item">🏫 Manage Schools</Link>
         <Link href="/admin" className="nav-item">⊞ School Dashboard</Link>
         <div style={{ flex: 1 }} />
         <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
