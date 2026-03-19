@@ -19,15 +19,24 @@ export default function StudentsPage() {
     parent_phone: '', parent_email: '', address: ''
   })
 
+const [schoolId, setSchoolId] = useState(null)
+
   useEffect(() => {
-    fetchStudents()
-    supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
-      .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: prof } = await supabase.from('profiles').select('school_id').eq('id', user.id).single()
+      setSchoolId(prof?.school_id)
+      fetchStudents(prof?.school_id)
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+        .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
+    }
+    init()
   }, [])
 
-  async function fetchStudents() {
+  async function fetchStudents(sid) {
     setLoading(true)
-    const { data } = await supabase.from('students').select('*').order('full_name')
+    const id = sid || schoolId
+    const { data } = await supabase.from('students').select('*').eq('school_id', id).order('full_name')
     setStudents(data || [])
     setLoading(false)
   }
@@ -35,7 +44,7 @@ export default function StudentsPage() {
   async function save() {
     if (!form.full_name) { alert('Please enter student name'); return }
     setSaving(true)
-    const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
+    const SCHOOL_ID = schoolId
     try {
       let studentId = editing
       if (editing) {
