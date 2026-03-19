@@ -16,17 +16,21 @@ export default function AdminDashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/'); return }
       setUser(user)
-      const [s, st, cl, f, ad, at] = await Promise.all([
-        supabase.from('students').select('id', { count: 'exact' }),
-        supabase.from('staff').select('id', { count: 'exact' }),
-        supabase.from('classes').select('id', { count: 'exact' }),
+    // Get school_id from profile
+      const { data: prof } = await supabase.from('profiles').select('*, schools(name)').eq('id', user.id).single()
+      const schoolId = prof?.school_id
+      setSchoolName(prof?.schools?.name || 'My School')
+
+      const [s, st, f, ad, at] = await Promise.all([
+        supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
+        supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']).eq('school_id', schoolId),
         supabase.from('fees').select('amount').eq('status', 'unpaid'),
-        supabase.from('admissions').select('id', { count: 'exact' }).eq('status', 'pending'),
+        supabase.from('admissions').select('id', { count: 'exact' }).eq('status', 'pending').eq('school_id', schoolId),
         supabase.from('attendance').select('id', { count: 'exact' }).eq('date', new Date().toISOString().split('T')[0])
       ])
       const totalUnpaid = f.data?.reduce((sum, r) => sum + Number(r.amount), 0) || 0
-      setStats({ students: s.count || 0, staff: st.count || 0, classes: cl.count || 0, fees: totalUnpaid, admissions: ad.count || 0, attendance: at.count || 0 })
-      setLoading(false)
+      setStats({ students: s.count || 0, staff: st.count || 0, classes: 0, fees: totalUnpaid, admissions: ad.count || 0, attendance: at.count || 0 })
+      setLoading(false)  
     }
     load()
   }, [])
@@ -105,7 +109,7 @@ export default function AdminDashboard() {
       <div className="main">
         <div className="topbar">
           <div>
-            <div className="page-title">Dashboard</div>
+            <div className="page-title">{schoolName}</div>
             <div className="page-sub">Welcome back! Here's what's happening today.</div>
           </div>
           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
