@@ -17,10 +17,10 @@ export default function AdminDashboard() {
       if (!user) { router.push('/'); return }
       setUser(user)
     // Get school_id from profile
-      const { data: prof } = await supabase.from('profiles').select('*, schools(name)').eq('id', user.id).single()
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      const { data: schoolData } = await supabase.from('schools').select('name').eq('id', prof?.school_id).single()
+      setSchoolName(schoolData?.name || 'My School')
       const schoolId = prof?.school_id
-      setSchoolName(prof?.schools?.name || 'My School')
-
       const [s, st, f, ad, at] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
         supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']).eq('school_id', schoolId),
