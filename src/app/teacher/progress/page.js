@@ -53,16 +53,17 @@ export default function TeacherProgressPage() {
     const { data: maps } = await supabase.from('skill_program_map').select('skill_id').eq('program', selectedProgram)
     const skillIds = maps?.map(m => m.skill_id) || []
     if (skillIds.length === 0) { setSkills([]); return }
-    const { data: skillsData } = await supabase.from('skill_masters')
+      const { data: skillsData } = await supabase.from('skill_masters')
       .select('*, skill_activities(*)')
       .eq('academic_year', academicYear)
+      .eq('school_id', profile.school_id)
       .in('id', skillIds)
       .order('order_index')
     setSkills(skillsData || [])
 
     // Fetch students for this program
     const { data: sData } = await supabase.from('students').select('*')
-      .eq('status', 'active').eq('program', selectedProgram).order('full_name')
+      .eq('status', 'active').eq('program', selectedProgram).eq('school_id', profile.school_id).order('full_name')
     setStudents(sData || [])
     setSelectedStudent(null)
     setRatings({})
