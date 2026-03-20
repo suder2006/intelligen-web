@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
+
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -50,16 +51,17 @@ export default function PayrollPage() {
     half_day_deduction_percent: 50, overtime_rate_multiplier: 1.5,
     leave_encashment_applicable: false
   })
+  const { schoolId } = useSchool()
 
-  useEffect(() => { fetchAll() }, [filterMonth])
+  useEffect(() => { if (schoolId) fetchAll() }, [filterMonth, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [staffRes, salRes, payRes, grpRes, rulesRes] = await Promise.all([
-      supabase.from('profiles').select('*, staff_type_groups(name, id)').in('role', ['teacher', 'staff', 'school_admin']).order('full_name'),
+      supabase.from('profiles').select('*, staff_type_groups(name, id)').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name'),
       supabase.from('staff_salary').select('*'),
-      supabase.from('payroll').select('*, profiles(full_name, role)').eq('month', filterMonth).order('created_at', { ascending: false }),
-      supabase.from('staff_type_groups').select('*').order('name'),
+      supabase.from('payroll').select('*, profiles(full_name, role)').eq('month', filterMonth).eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabase.from('staff_type_groups').select('*').eq('school_id', schoolId).order('name'),
       supabase.from('payroll_rules').select('*')
     ])
     setStaff(staffRes.data || [])
@@ -74,7 +76,7 @@ export default function PayrollPage() {
     if (!showSalaryForm) return
     setSaving(true)
     const existing = salaries.find(s => s.staff_id === showSalaryForm.id && s.academic_year === salaryForm.academic_year)
-    const data = { ...salaryForm, staff_id: showSalaryForm.id, school_id: SCHOOL_ID, basic_salary: parseFloat(salaryForm.basic_salary) || 0, hourly_rate: parseFloat(salaryForm.hourly_rate) || 0 }
+    const data = { ...salaryForm, staff_id: showSalaryForm.id, school_id: schoolId, basic_salary: parseFloat(salaryForm.basic_salary) || 0, hourly_rate: parseFloat(salaryForm.hourly_rate) || 0 }
     if (existing) {
       await supabase.from('staff_salary').update(data).eq('id', existing.id)
     } else {
@@ -89,7 +91,7 @@ export default function PayrollPage() {
     if (!showRulesForm) return
     setSaving(true)
     const existing = rules.find(r => r.staff_group_id === showRulesForm.id)
-    const data = { ...rulesForm, staff_group_id: showRulesForm.id, school_id: SCHOOL_ID }
+    const data = { ...rulesForm, staff_group_id: showRulesForm.id, school_id: schoolId }
     if (existing) {
       await supabase.from('payroll_rules').update(data).eq('id', existing.id)
     } else {
@@ -174,7 +176,7 @@ export default function PayrollPage() {
       total_deductions: parseFloat(totalDeductions.toFixed(2)),
       overtime_pay: parseFloat(overtimePay.toFixed(2)),
       net_pay: parseFloat(netPay.toFixed(2)),
-      status: 'draft', school_id: SCHOOL_ID
+      status: 'draft', school_id: schoolId
     }
 
     const existing = payrollRecords.find(p => p.staff_id === staffMember.id)
