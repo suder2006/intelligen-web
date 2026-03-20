@@ -40,6 +40,9 @@ export default function ParentPortal() {
   const [homeActivities, setHomeActivities] = useState([])
   const [activityCompletions, setActivityCompletions] = useState([])
   const [selectedActivityChild, setSelectedActivityChild] = useState(null)
+  const [schoolId, setSchoolId] = useState(null)
+  const [schoolName, setSchoolName] = useState('')
+  const [schoolUpi, setSchoolUpi] = useState({ upi_id: '', upi_name: '', upi_description: '' })
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -52,6 +55,13 @@ export default function ParentPortal() {
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
 
+    const sid = prof?.school_id
+    setSchoolId(sid)
+    // Fetch school details including UPI
+    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description').eq('id', sid).single()
+    setSchoolName(schoolData?.name || '')
+    setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
+
     const { data: linkedStudents } = await supabase
       .from('parent_students').select('student_id').eq('parent_id', user.id)
     const studentIds = linkedStudents?.map(ls => ls.student_id) || []
@@ -61,7 +71,7 @@ export default function ParentPortal() {
         ? supabase.from('students').select('*').in('id', studentIds).eq('status', 'active')
         : Promise.resolve({ data: [] }),
       supabase.from('fee_invoices').select('*, fee_installments(*)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('created_at', { ascending: false }),
-      supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(10),
+      supabase.from('announcements').select('*').eq('school_id', sid).order('created_at', { ascending: false }).limit(10),
       supabase.from('attendance').select('*, students(full_name)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('date', { ascending: false }).limit(60)
     ])
     setStudents(s.data || [])
@@ -100,7 +110,7 @@ export default function ParentPortal() {
     setMessages(msgsData || [])
 
     // Load teachers
-    const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher')
+    const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher').eq('school_id', sid)
     setTeachers(teachersData || [])
 
       const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
@@ -228,7 +238,7 @@ export default function ParentPortal() {
         student_id: studentId, date: today,
         checkin_time: now.toISOString(),
         checkin_by: user.id, checkin_by_name: profile?.full_name || 'Parent',
-        checkin_method: 'qr', school_id: '554c668d-1668-474b-a8aa-f529941dbcf6'
+        checkin_method: 'qr', school_id: student.school_id
       })
       const { data: attExisting } = await supabase.from('attendance').select('id').eq('student_id', studentId).eq('date', today).single()
       if (!attExisting) {
@@ -1132,8 +1142,8 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
       {/* UPI Payment Modal */}
       {paymentModal && (() => {
         const pendingAmount = Number(paymentModal.total_amount) - Number(paymentModal.paid_amount || 0)
-        const upiId = 'getepay.ucbqrapp703536@icici'
-        const upiName = 'Time Kids Preschool Anna Nagar'
+        const upiId = schoolUpi.upi_id
+        const upiName = schoolUpi.upi_name || schoolName  
         const upiNote = `${paymentModal.fee_type} - ${paymentModal.academic_year}`
         const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${pendingAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUrl)}`
@@ -1146,7 +1156,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
           const { data: ps } = await supabase.from('parent_students').select('*').eq('parent_id', user.id)
           await supabase.from('chat_messages').insert({
             sender_id: user.id,
-            receiver_id: '554c668d-1668-474b-a8aa-f529941dbcf6',
+            receiver_id: schoolId,
             sender_name: profile?.full_name || 'Parent',
             content: `💳 Payment Notification: I have paid ₹${pendingAmount.toLocaleString()} for ${paymentModal.fee_type} (${paymentModal.academic_year}) via UPI. Please verify and mark as paid. Student: ${students.find(s => s.id === paymentModal.student_id)?.full_name}`
           })
