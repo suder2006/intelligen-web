@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function NewsletterPage() {
   const router = useRouter()
+  const { schoolId, schoolName } = useSchool()
   const [blocks, setBlocks] = useState([])
   const [selectedBlock, setSelectedBlock] = useState('')
   const [weekStart, setWeekStart] = useState('')
@@ -16,12 +18,13 @@ export default function NewsletterPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.from('curriculum_blocks').select('*').order('start_date').then(({ data }) => setBlocks(data || []))
+    if (!schoolId) return
+    supabase.from('curriculum_blocks').select('*').eq('school_id', schoolId).order('start_date').then(({ data }) => setBlocks(data || []))
     fetchNewsletters()
-  }, [])
+  }, [schoolId])
 
-  async function fetchNewsletters() {
-    const { data } = await supabase.from('curriculum_newsletter').select('*').order('created_at', { ascending: false })
+async function fetchNewsletters() {
+    const { data } = await supabase.from('curriculum_newsletter').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
     setNewsletters(data || [])
   }
 
@@ -60,7 +63,7 @@ export default function NewsletterPage() {
       items.forEach(i => { text += `• ${i.day}: ${i.planned_activity || 'Activity planned'} (${i.time_slot})\n` })
       text += '\n'
     })
-    text += `We look forward to another exciting week ahead!\n\nWarm regards,\nTime Kids Preschool Team 🎓`
+    text += `We look forward to another exciting week ahead!\n\nWarm regards,\n${schoolName} Team 🎓`
     setContent(text)
     setGenerating(false)
   }
@@ -68,9 +71,8 @@ export default function NewsletterPage() {
   async function saveAndSend() {
     if (!content) return
     setSaving(true)
-    await supabase.from('curriculum_newsletter').insert({ block_id: selectedBlock, week_start: weekStart, content })
-    // Send push to parents
-    const { data: parents } = await supabase.from('profiles').select('push_token').eq('role', 'parent')
+    await supabase.from('curriculum_newsletter').insert({ block_id: selectedBlock, week_start: weekStart, content, school_id: schoolId })
+    const { data: parents } = await supabase.from('profiles').select('push_token').eq('role', 'parent').eq('school_id', schoolId)
     const tokens = parents?.map(p => p.push_token).filter(Boolean)
     if (tokens?.length > 0) {
       await fetch('https://exp.host/--/api/v2/push/send', {
