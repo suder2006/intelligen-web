@@ -2,12 +2,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 const TIME_SLOTS = ['Morning Circle', 'Pre-Lunch', 'Post-Lunch', 'Evening']
 
 export default function PlannerPage() {
   const router = useRouter()
+  const { schoolId } = useSchool()
   const [blocks, setBlocks] = useState([])
   const [masters, setMasters] = useState([])
   const [curriculum, setCurriculum] = useState([])
@@ -22,9 +24,10 @@ export default function PlannerPage() {
   const [showForm, setShowForm] = useState(false)
 
   useEffect(() => {
-    supabase.from('curriculum_blocks').select('*').order('start_date').then(({ data }) => setBlocks(data || []))
-    supabase.from('curriculum_masters').select('*').order('value').then(({ data }) => setMasters(data || []))
-  }, [])
+    if (!schoolId) return
+    supabase.from('curriculum_blocks').select('*').eq('school_id', schoolId).order('start_date').then(({ data }) => setBlocks(data || []))
+    supabase.from('curriculum_masters').select('*').eq('school_id', schoolId).order('value').then(({ data }) => setMasters(data || []))
+  }, [schoolId])
 
   useEffect(() => { if (selectedBlock) fetchCurriculum() }, [selectedBlock])
 
@@ -38,7 +41,7 @@ export default function PlannerPage() {
   async function save() {
     if (!form.program || !form.day || !form.time_slot) { alert('Please fill Program, Day and Time Slot'); return }
     setSaving(true)
-    const payload = { ...form, block_id: selectedBlock }
+    const payload = { ...form, block_id: selectedBlock, school_id: schoolId }
     if (editing) {
       await supabase.from('curriculum').update(payload).eq('id', editing)
     } else {

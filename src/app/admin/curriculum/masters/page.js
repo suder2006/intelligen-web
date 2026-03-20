@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 const TYPES = [
   { key: 'program', label: '🏫 Programs' },
@@ -12,22 +13,23 @@ const TYPES = [
 
 export default function MastersPage() {
   const router = useRouter()
+  const { schoolId } = useSchool()
   const [masters, setMasters] = useState([])
   const [activeType, setActiveType] = useState('program')
   const [newValue, setNewValue] = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { fetchMasters() }, [])
+useEffect(() => { if (schoolId) fetchMasters() }, [schoolId])
 
   async function fetchMasters() {
-    const { data } = await supabase.from('curriculum_masters').select('*').order('type').order('value')
+    const { data } = await supabase.from('curriculum_masters').select('*').eq('school_id', schoolId).order('type').order('value')
     setMasters(data || [])
   }
 
   async function addItem() {
     if (!newValue.trim()) return
     setLoading(true)
-    await supabase.from('curriculum_masters').insert({ type: activeType, value: newValue.trim() })
+    await supabase.from('curriculum_masters').insert({ type: activeType, value: newValue.trim(), school_id: schoolId })
     setNewValue('')
     await fetchMasters()
     setLoading(false)
