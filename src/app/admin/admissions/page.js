@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function AdmissionsPage() {
   const [admissions, setAdmissions] = useState([])
@@ -10,6 +11,8 @@ export default function AdmissionsPage() {
   const [filter, setFilter] = useState('all')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ child_name: '', date_of_birth: '', parent_name: '', parent_email: '', parent_phone: '', notes: '' })
+
+  const { schoolId } = useSchool()
 
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -27,11 +30,11 @@ export default function AdmissionsPage() {
     { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
   ]
 
-  useEffect(() => { fetchAdmissions() }, [])
+  useEffect(() => { if (schoolId) fetchAdmissions() }, [schoolId])
 
   const fetchAdmissions = async () => {
     setLoading(true)
-    const { data } = await supabase.from('admissions').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase.from('admissions').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
     setAdmissions(data || [])
     setLoading(false)
   }
@@ -39,7 +42,8 @@ export default function AdmissionsPage() {
   const addAdmission = async () => {
     if (!form.child_name || !form.parent_name) return
     setSaving(true)
-    await supabase.from('admissions').insert([{ ...form, status: 'pending' }])
+    await supabase.from('admissions').insert([{ ...form, status: 'pending', school_id: schoolId }])
+
     setForm({ child_name: '', date_of_birth: '', parent_name: '', parent_email: '', parent_phone: '', notes: '' })
     setShowAdd(false)
     setSaving(false)
