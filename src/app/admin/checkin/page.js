@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
-const SCHOOL_TOKEN = 'TIMEKIDS2026'
+
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -35,16 +35,24 @@ export default function AdminCheckinPage() {
   const [manualForm, setManualForm] = useState({ staff_id: '', status: 'present', date: new Date().toISOString().split('T')[0] })
   const [showManualForm, setShowManualForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [schoolToken, setSchoolToken] = useState('')
 
-  useEffect(() => { fetchAll() }, [date, filterMonth])
+  const { schoolId, schoolName } = useSchool()
+  useEffect(() => {
+    if (!schoolId) return
+    supabase.from('school_qr_tokens').select('token').eq('school_id', schoolId).single()
+      .then(({ data }) => setSchoolToken(data?.token || ''))
+  }, [schoolId])
 
-  const fetchAll = async () => {
+  useEffect(() => { if (schoolId) fetchAll() }, [date, schoolId])
+
+const fetchAll = async () => {
     setLoading(true)
     const [saRes, scRes, staffRes, studRes] = await Promise.all([
       supabase.from('staff_attendance').select('*, profiles(full_name, role, staff_type_groups(name))').eq('date', date).order('checkin_time'),
       supabase.from('student_checkins').select('*, students(full_name, program)').eq('date', date).order('checkin_time'),
-      supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'school_admin']).order('full_name'),
-      supabase.from('students').select('*').eq('status', 'active').order('full_name')
+      supabase.from('profiles').select('*').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name'),
+      supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name')
     ])
     setStaffAttendance(saRes.data || [])
     setStudentCheckins(scRes.data || [])
@@ -61,7 +69,7 @@ export default function AdminCheckinPage() {
     } else {
       await supabase.from('staff_attendance').insert({
         staff_id: staffId, date, status,
-        marked_by: 'admin', admin_override: true, school_id: SCHOOL_ID
+        marked_by: 'admin', admin_override: true, school_id: schoolId
       })
     }
     await fetchAll()
@@ -76,7 +84,7 @@ export default function AdminCheckinPage() {
       await supabase.from('student_checkins').insert({
         student_id: studentId, date,
         checkin_time: now.toISOString(),
-        checkin_method: 'manual', school_id: SCHOOL_ID
+        checkin_method: 'manual', school_id: schoolId
       })
       const { data: attExisting } = await supabase.from('attendance').select('id').eq('student_id', studentId).eq('date', date).single()
       if (!attExisting) {
@@ -108,8 +116,8 @@ export default function AdminCheckinPage() {
   const statusColor = { present: '#10b981', late: '#f59e0b', half_day: '#38bdf8', absent: '#ef4444', early: '#a78bfa' }
   const statusBg = { present: 'rgba(16,185,129,0.15)', late: 'rgba(245,158,11,0.15)', half_day: 'rgba(56,189,248,0.15)', absent: 'rgba(239,68,68,0.15)', early: 'rgba(167,139,250,0.15)' }
 
-  const gateQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?token=${SCHOOL_TOKEN}`)}`
-  const checkinUrl = `https://intelligen-web.vercel.app/checkin?token=${SCHOOL_TOKEN}`
+  const gateQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?token=${schoolToken}`)}`
+  const checkinUrl = `https://intelligen-web.vercel.app/checkin?token=${schoolToken}`
 
   const presentStaff = staffAttendance.filter(a => a.status === 'present').length
   const lateStaff = staffAttendance.filter(a => a.status === 'late').length
