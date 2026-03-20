@@ -2,18 +2,20 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function BlocksPage() {
   const router = useRouter()
+  const { schoolId } = useSchool()
   const [blocks, setBlocks] = useState([])
   const [form, setForm] = useState({ name: '', academic_year: '', start_date: '', end_date: '' })
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { fetchBlocks() }, [])
+useEffect(() => { if (schoolId) fetchBlocks() }, [schoolId])
 
   async function fetchBlocks() {
-    const { data } = await supabase.from('curriculum_blocks').select('*').order('start_date')
+    const { data } = await supabase.from('curriculum_blocks').select('*').eq('school_id', schoolId).order('start_date')
     setBlocks(data || [])
   }
 
@@ -23,7 +25,7 @@ export default function BlocksPage() {
     if (editing) {
       await supabase.from('curriculum_blocks').update(form).eq('id', editing)
     } else {
-      await supabase.from('curriculum_blocks').insert(form)
+      await supabase.from('curriculum_blocks').insert({ ...form, school_id: schoolId })
     }
     setForm({ name: '', academic_year: '', start_date: '', end_date: '' })
     setEditing(null)
