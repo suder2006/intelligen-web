@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -37,17 +38,20 @@ export default function AdminLeavePage() {
   const [rejectComment, setRejectComment] = useState('')
   const [showRejectModal, setShowRejectModal] = useState(null)
 
+  const { schoolId } = useSchool()
+
   useEffect(() => { fetchAll() }, [academicYear])
+
+useEffect(() => { if (schoolId) fetchAll() }, [academicYear, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [lrRes, balRes, absRes, staffRes] = await Promise.all([
-      supabase.from('leave_requests').select('*, profiles!leave_requests_staff_id_fkey(full_name, role)').order('created_at', { ascending: false }),
+      supabase.from('leave_requests').select('*, profiles!leave_requests_staff_id_fkey(full_name, role)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('leave_balances').select('*, profiles(full_name)').eq('academic_year', academicYear),
       supabase.from('student_absences').select('*, students(full_name, program), profiles(full_name)').order('absence_date', { ascending: false }).limit(100),
-      supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'school_admin']).order('full_name')
+      supabase.from('profiles').select('*').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name')
     ])
-   
     setLeaveRequests(lrRes.data || [])
     setBalances(balRes.data || [])
     setAbsences(absRes.data || [])
