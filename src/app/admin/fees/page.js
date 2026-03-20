@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
 const FEE_TYPES = ['Registration Fee', 'Admission Fee', 'Annual Fee', 'Tuition Fee', 'Books & Materials', 'Uniform', 'Event Fee', 'Daycare Fee', 'Transport Fee']
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Online']
 
@@ -41,6 +41,8 @@ export default function FeesPage() {
   const [searchStudent, setSearchStudent] = useState('')
   const [activeInvoice, setActiveInvoice] = useState(null)
 
+  const { schoolId } = useSchool()
+
   const [invoiceForm, setInvoiceForm] = useState({
     student_id: '', fee_type: 'Tuition Fee', description: '', total_amount: '',
     due_date: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1), notes: ''
@@ -54,13 +56,13 @@ export default function FeesPage() {
     program: '', fee_type: 'Tuition Fee', amount: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1)
   })
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [s, inv, inst, str] = await Promise.all([
-      supabase.from('students').select('id, full_name, program, student_id').eq('status', 'active').order('full_name'),
-      supabase.from('fee_invoices').select('*, students(full_name, program)').order('created_at', { ascending: false }),
+      supabase.from('students').select('id, full_name, program, student_id').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
+      supabase.from('fee_invoices').select('*, students(full_name, program)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('fee_installments').select('*').order('due_date'),
       supabase.from('fee_structures').select('*').order('program')
     ])
@@ -81,7 +83,7 @@ export default function FeesPage() {
       total_amount: parseFloat(invoiceForm.total_amount),
       paid_amount: 0,
       status: 'unpaid',
-      school_id: SCHOOL_ID
+      school_id: schoolId
     })
     if (error) { alert('Error: ' + error.message); setSaving(false); return }
     setShowInvoiceForm(false)
@@ -165,9 +167,9 @@ export default function FeesPage() {
     if (!ps || ps.length === 0) { alert('No parent linked to this student'); return }
     for (const { parent_id } of ps) {
       await supabase.from('chat_messages').insert({
-        sender_id: SCHOOL_ID,
+        sender_id: schoolId,
         receiver_id: parent_id,
-        sender_name: 'Time Kids Admin',
+        sender_name: 'School Admin',
         content: `📢 Fee Reminder: ${invoice.fee_type} of ₹${invoice.total_amount} is due on ${invoice.due_date || 'soon'}. Please make the payment at the earliest. Thank you! 🙏`
       })
     }
