@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 const FEE_TYPES = ['Registration Fee', 'Admission Fee', 'Annual Fee', 'Tuition Fee', 'Books & Materials', 'Uniform', 'Event Fee', 'Daycare Fee', 'Transport Fee']
 
@@ -35,18 +36,19 @@ export default function FeeStructurePage() {
   const [showAddProgram, setShowAddProgram] = useState(false)
   const [newProgram, setNewProgram] = useState('')
 
-  useEffect(() => { fetchAll() }, [])
+  const { schoolId } = useSchool()
+
+  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [str, progs] = await Promise.all([
-      supabase.from('fee_structures').select('*').order('program'),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+      supabase.from('fee_structures').select('*').eq('school_id', schoolId).order('program'),
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     const allStructures = str.data || []
     setStructures(allStructures)
     setPrograms(progs?.data?.map(p => p.value) || [])
-    // Collect all academic years from structures + current
     const years = [...new Set([currentAY, ...allStructures.map(s => s.academic_year).filter(Boolean)])]
     years.sort().reverse()
     setAcademicYears(years)
@@ -65,7 +67,7 @@ export default function FeeStructurePage() {
     if (existing) {
       await supabase.from('fee_structures').update({ amount: parseFloat(amount) }).eq('id', existing.id)
     } else {
-      await supabase.from('fee_structures').insert({ program, fee_type: feeType, amount: parseFloat(amount), academic_year: selectedYear })
+      await supabase.from('fee_structures').insert({ program, fee_type: feeType, amount: parseFloat(amount), academic_year: selectedYear, school_id: schoolId })
     }
     setEditingCell(null)
     setEditValue('')
@@ -102,7 +104,7 @@ export default function FeeStructurePage() {
     for (const s of prevStructures) {
       const exists = structures.find(x => x.program === s.program && x.fee_type === s.fee_type && x.academic_year === selectedYear)
       if (!exists) {
-        await supabase.from('fee_structures').insert({ program: s.program, fee_type: s.fee_type, amount: s.amount, academic_year: selectedYear })
+        await supabase.from('fee_structures').insert({ program: s.program, fee_type: s.fee_type, amount: s.amount, academic_year: selectedYear, school_id: schoolId })
       }
     }
     await fetchAll()
