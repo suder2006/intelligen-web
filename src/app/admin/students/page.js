@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function StudentsPage() {
   const router = useRouter()
+  const { schoolId } = useSchool()
   const [students, setStudents] = useState([])
   const [programs, setPrograms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -19,24 +21,18 @@ export default function StudentsPage() {
     parent_phone: '', parent_email: '', address: ''
   })
 
-const [schoolId, setSchoolId] = useState(null)
+//const [schoolId, setSchoolId] = useState(null)
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: prof } = await supabase.from('profiles').select('school_id').eq('id', user.id).single()
-      setSchoolId(prof?.school_id)
-      fetchStudents(prof?.school_id)
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
-        .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
-    }
-    init()
-  }, [])
+useEffect(() => {
+    if (!schoolId) return
+    fetchStudents(schoolId)
+    supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
+      .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
+  }, [schoolId])
 
   async function fetchStudents(sid) {
     setLoading(true)
-    const id = sid || schoolId
-    const { data } = await supabase.from('students').select('*').eq('school_id', id).order('full_name')
+    const { data } = await supabase.from('students').select('*').eq('school_id', sid || schoolId).order('full_name')
     setStudents(data || [])
     setLoading(false)
   }
