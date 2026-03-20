@@ -57,11 +57,7 @@ export default function ParentPortal() {
 
     const sid = prof?.school_id
     setSchoolId(sid)
-    // Fetch school details including UPI
-    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description').eq('id', sid).single()
-    setSchoolName(schoolData?.name || '')
-    setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
-
+    
     const { data: linkedStudents } = await supabase
       .from('parent_students').select('student_id').eq('parent_id', user.id)
     const studentIds = linkedStudents?.map(ls => ls.student_id) || []
@@ -78,6 +74,15 @@ export default function ParentPortal() {
     setFees(f.data || [])
     setAnnouncements(a.data || [])
     setAttendance(at.data || [])
+
+        // Get school_id from first student if parent has no school_id
+    const effectiveSid = sid || s.data?.[0]?.school_id
+    setSchoolId(effectiveSid)
+    if (effectiveSid) {
+      const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description').eq('id', effectiveSid).single()
+      setSchoolName(schoolData?.name || '')
+      setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
+    }
 
     // Load curriculum
     const today = new Date()
