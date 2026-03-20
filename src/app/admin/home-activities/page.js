@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 const MONTHS = ['June','July','August','September','October','November','December','January','February','March','April','May']
 
@@ -43,15 +43,17 @@ export default function HomeActivitiesPage() {
     programs: [], academic_year: CURRENT_AY
   })
 
-  useEffect(() => { fetchAll() }, [academicYear])
+  const { schoolId } = useSchool()
+
+  useEffect(() => { if (schoolId) fetchAll() }, [academicYear, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [actRes, progRes, compRes, studRes] = await Promise.all([
-      supabase.from('home_activities').select('*').eq('academic_year', academicYear).order('month').order('order_index'),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
+      supabase.from('home_activities').select('*').eq('academic_year', academicYear).eq('school_id', schoolId).order('month').order('order_index'),
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value'),
       supabase.from('home_activity_completions').select('*, students(full_name, program), profiles(full_name)'),
-      supabase.from('students').select('*').eq('status', 'active')
+      supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId)
     ])
     setActivities(actRes.data || [])
     setPrograms(progRes?.data?.map(p => p.value) || [])
@@ -79,7 +81,7 @@ export default function HomeActivitiesPage() {
           title: form.title, goal: form.goal, skills_built: form.skills_built,
           you_need: form.you_need, do_this: form.do_this, video_link: form.video_link,
           month: form.month, program: prog, academic_year: academicYear,
-          order_index: count, school_id: SCHOOL_ID
+          order_index: count, school_id: schoolId
         })
       }
     }
