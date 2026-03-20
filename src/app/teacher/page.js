@@ -60,7 +60,10 @@ export default function TeacherPortal() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    const { data: schoolData } = await supabase.from('schools').select('name').eq('id', prof.school_id).single()
+    prof.school_name = schoolData?.name || ''
     setProfile(prof)
+
     const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
     const teacherPrograms = spData?.map(p => p.program) || []
 
@@ -70,18 +73,18 @@ export default function TeacherPortal() {
       .in('program', teacherPrograms.length > 0 ? teacherPrograms : ['__none__'])
       .order('full_name')
 
-    const { data: aData } = await supabase.from('announcements')
-      .select('*').order('created_at', { ascending: false }).limit(10)
+      const { data: aData } = await supabase.from('announcements')
+      .select('*').eq('school_id', prof.school_id).order('created_at', { ascending: false }).limit(10)
 
     setStudents(sData || [])
     setAnnouncements(aData || [])
 
     await fetchCurriculum()
     await fetchMoments()
-    const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+    const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', prof.school_id).order('value')
     setPrograms(progs?.map(p => p.value) || [])
     await fetchMessages()
-    const { data: parentsData } = await supabase.from('profiles').select('*').eq('role', 'parent')
+    const { data: parentsData } = await supabase.from('profiles').select('*').eq('role', 'parent').eq('school_id', prof.school_id)
     setParents(parentsData || [])
 
     // Load leave data
@@ -106,6 +109,7 @@ export default function TeacherPortal() {
     const { data: holData } = await supabase.from('holidays')
       .select('*')
       .eq('academic_year', currentAY)
+      .eq('school_id', prof.school_id)
       .or(`applies_to.eq.all,applies_to.eq.staff_only`)
       .order('from_date')
     // Also get program-specific holidays
@@ -203,7 +207,8 @@ export default function TeacherPortal() {
 
   const handleStaffScan = async (decodedText) => {
     setShowScanner(false)
-    if (decodedText !== 'https://intelligen-web.vercel.app/checkin?token=TIMEKIDS2026') {
+      const { data: tokenData } = await supabase.from('school_qr_tokens').select('token').eq('school_id', profile.school_id).single()
+      if (!tokenData || !decodedText.includes(tokenData.token)) {
       setScanResult({ type: 'error', message: 'Invalid QR code. Please scan the school gate QR.' })
       return
     }
@@ -223,7 +228,7 @@ export default function TeacherPortal() {
         staff_id: user.id, date: today,
         checkin_time: now.toISOString(),
         status, marked_by: 'qr',
-        school_id: '554c668d-1668-474b-a8aa-f529941dbcf6'
+        school_id: profile.school_id
       })
       setScanResult({ type: 'success', action: 'checkin', message: `✅ Checked in at ${now.toLocaleTimeString()}`, status })
     } else if (!existing.checkout_time) {
@@ -913,7 +918,7 @@ export default function TeacherPortal() {
                   onClick={e => e.stopPropagation()}>
                   <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                     <div style={{ fontFamily: 'Playfair Display, serif', fontSize: '22px', marginBottom: '4px' }}>Intelli<span style={{ color: '#38bdf8' }}>Gen</span></div>
-                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Time Kids Preschool Anna Nagar</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{profile?.school_name || 'School'}</div>
                     <div style={{ fontWeight: '700', fontSize: '18px', marginTop: '12px' }}>PAYSLIP</div>
                     <div style={{ color: '#38bdf8', fontSize: '14px' }}>{selectedPayslip.month}</div>
                   </div>
