@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function AttendancePage() {
   const [students, setStudents] = useState([])
@@ -9,6 +10,8 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  
+  const { schoolId } = useSchool()
 
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -26,12 +29,12 @@ export default function AttendancePage() {
     { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
   ]
 
-  useEffect(() => { fetchData() }, [date])
+  useEffect(() => { if (schoolId) fetchData() }, [date, schoolId])
 
   const fetchData = async () => {
     setLoading(true)
     const [s, a] = await Promise.all([
-      supabase.from('students').select('*').eq('status', 'active').order('full_name'),
+      supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
       supabase.from('attendance').select('*').eq('date', date)
     ])
     setStudents(s.data || [])
