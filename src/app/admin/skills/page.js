@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -38,15 +39,17 @@ export default function AdminSkillsPage() {
   const [skillForm, setSkillForm] = useState({ name: '', description: '' })
   const [activityForm, setActivityForm] = useState({ name: '', description: '' })
 
-  useEffect(() => { fetchAll() }, [academicYear])
+  const { schoolId } = useSchool()
+
+  useEffect(() => { if (schoolId) fetchAll() }, [academicYear, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [skillsRes, progsRes, mapsRes, ayRes] = await Promise.all([
-      supabase.from('skill_masters').select(`*, skill_activities(*)`).eq('academic_year', academicYear).order('order_index').order('created_at'),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
+      supabase.from('skill_masters').select(`*, skill_activities(*)`).eq('academic_year', academicYear).eq('school_id', schoolId).order('order_index').order('created_at'),
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value'),
       supabase.from('skill_program_map').select('*'),
-      supabase.from('skill_masters').select('academic_year')
+      supabase.from('skill_masters').select('academic_year').eq('school_id', schoolId)
     ])
     const years = [...new Set([CURRENT_AY, ...(ayRes.data?.map(s => s.academic_year) || [])])]
     setAcademicYears(years.sort().reverse())
@@ -64,7 +67,8 @@ export default function AdminSkillsPage() {
     } else {
       const { data: newSkill } = await supabase.from('skill_masters').insert({
         name: skillForm.name, description: skillForm.description,
-        academic_year: academicYear, order_index: skills.length
+        academic_year: academicYear, order_index: skills.length,
+        school_id: schoolId
       }).select().single()
       if (newSkill) setExpandedSkill(newSkill.id)
     }
