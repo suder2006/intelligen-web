@@ -3,8 +3,6 @@ import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSearchParams } from 'next/navigation'
 
-const SCHOOL_TOKEN = 'TIMEKIDS2026'
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
 
 function CheckinContent() {
   const [user, setUser] = useState(null)
@@ -15,6 +13,8 @@ function CheckinContent() {
   const [studentSearch, setStudentSearch] = useState('')
   const [students, setStudents] = useState([])
   const [searchResults, setSearchResults] = useState([])
+  const [schoolId, setSchoolId] = useState(null)
+  const [schoolName, setSchoolName] = useState('IntelliGen')
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
   const studentId = searchParams.get('student')
@@ -23,28 +23,48 @@ function CheckinContent() {
 
   const init = async () => {
     setLoading(true)
+    // Look up school from token
+    if (token) {
+      const { data: tokenData } = await supabase.from('school_qr_tokens')
+        .select('*, schools(name)').eq('token', token).single()
+      if (tokenData) {
+        setSchoolId(tokenData.school_id)
+        setSchoolName(tokenData.schools?.name || 'IntelliGen')
+      }
+    }
+    // Look up school from student QR
+    if (studentId) {
+      const { data: stuData } = await supabase.from('students')
+        .select('*, schools(name)').eq('id', studentId).single()
+      if (stuData) {
+        setSchoolId(stuData.school_id)
+        setSchoolName(stuData.schools?.name || 'IntelliGen')
+      }
+    }
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       setUser(user)
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       setProfile(prof)
-      if (token === SCHOOL_TOKEN && prof?.role !== 'parent') {
-        await processStaffCheckin(user, prof)
+      if (token && prof?.role !== 'parent') {
+        await processStaffCheckin(user, prof, prof.school_id)
         setLoading(false)
         return
       }
     }
-    const { data: sData } = await supabase.from('students').select('*').eq('status', 'active').order('full_name')
-    setStudents(sData || [])
-    // Handle student QR scan
-    if (studentId && sData) {
-      const student = sData.find(s => s.id === studentId)
-      if (student) await processStudentCheckin(student, 'qr', user)
+    if (schoolId || studentId) {
+      const sid = schoolId || (await supabase.from('students').select('school_id').eq('id', studentId).single()).data?.school_id
+      const { data: sData } = await supabase.from('students').select('*').eq('status', 'active').eq('school_id', sid).order('full_name')
+      setStudents(sData || [])
+      if (studentId && sData) {
+        const student = sData.find(s => s.id === studentId)
+        if (student) await processStudentCheckin(student, 'qr', user)
+      }
     }
     setLoading(false)
   }
 
-  const processStaffCheckin = async (u, prof) => {
+  const processStaffCheckin = async (u, prof, sid) => {
     if (!u || !prof) return
     setProcessing(true)
     const today = new Date().toISOString().split('T')[0]
@@ -63,7 +83,7 @@ function CheckinContent() {
       await supabase.from('staff_attendance').insert({
         staff_id: u.id, date: today,
         checkin_time: now.toISOString(),
-        status, marked_by: 'qr', school_id: SCHOOL_ID
+        status, marked_by: 'qr', school_id: sid || prof.school_id
       })
       setResult({ type: 'success', action: 'checkin', message: `✅ Check-in recorded at ${now.toLocaleTimeString()}`, status, name: prof.full_name })
     } else if (!existing.checkout_time) {
@@ -92,7 +112,7 @@ function CheckinContent() {
         checkin_time: now.toISOString(),
         checkin_by: currentUser?.id,
         checkin_by_name: profile?.full_name || 'Gate',
-        checkin_method: method, school_id: SCHOOL_ID
+        checkin_method: method, school_id: student.school_id
       })
       const { data: attExisting } = await supabase.from('attendance')
         .select('id').eq('student_id', student.id).eq('date', today).single()
@@ -137,7 +157,7 @@ function CheckinContent() {
       <div style={{ width: '100%', maxWidth: '480px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ fontFamily: 'Playfair Display, serif', fontSize: '28px', marginBottom: '8px' }}>Intelli<span style={{ color: '#38bdf8' }}>Gen</span></div>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Time Kids Preschool Anna Nagar</div>
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>{schoolName}</div>
           <div style={{ color: '#38bdf8', fontSize: '13px', marginTop: '4px' }}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
         </div>
 
