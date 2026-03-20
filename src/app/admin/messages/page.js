@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function MessagesPage() {
   const [announcements, setAnnouncements] = useState([])
@@ -9,6 +10,8 @@ export default function MessagesPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', audience: 'all' })
+
+  const { schoolId } = useSchool()
 
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -26,11 +29,11 @@ export default function MessagesPage() {
     { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
   ]
 
-  useEffect(() => { fetchAnnouncements() }, [])
+  useEffect(() => { if (schoolId) fetchAnnouncements() }, [schoolId])
 
   const fetchAnnouncements = async () => {
     setLoading(true)
-    const { data } = await supabase.from('announcements').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase.from('announcements').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
     setAnnouncements(data || [])
     setLoading(false)
   }
@@ -40,11 +43,11 @@ export default function MessagesPage() {
   setSaving(true)
   
   // Save to database
-  await supabase.from('announcements').insert([form])
+  await supabase.from('announcements').insert([{ ...form, school_id: schoolId }])
 
   // Send push notifications to parents
   try {
-    let query = supabase.from('profiles').select('push_token').not('push_token', 'is', null)
+    let query = supabase.from('profiles').select('push_token').eq('school_id', schoolId).not('push_token', 'is', null)
     if (form.audience === 'parents') query = query.eq('role', 'parent')
     else if (form.audience === 'teachers') query = query.eq('role', 'teacher')
     else if (form.audience === 'all') query = query.in('role', ['parent', 'teacher'])
