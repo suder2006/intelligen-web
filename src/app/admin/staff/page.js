@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function StaffPage() {
   const [staff, setStaff] = useState([])
@@ -14,6 +15,8 @@ export default function StaffPage() {
   const [selectedPrograms, setSelectedPrograms] = useState([])
   const [editingPrograms, setEditingPrograms] = useState(null)
   const [editPrograms, setEditPrograms] = useState([])
+
+  const { schoolId } = useSchool()
 
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -30,15 +33,15 @@ export default function StaffPage() {
     { href: '/admin/reports', label: 'Reports', icon: '📈' },
   ]
 
-  useEffect(() => { fetchAll() }, [])
+    useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
-  const fetchAll = async () => {
+    const fetchAll = async () => {
     setLoading(true)
     const [{ data: staffData }, { data: progsData }, { data: spData }] = await Promise.all([
-      supabase.from('profiles').select('*').in('role', ['teacher', 'school_admin']).order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').in('role', ['teacher', 'school_admin']).eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
       supabase.from('staff_programs').select('*')
-    ])
+    ])  
     setStaff(staffData || [])
     setPrograms(progsData?.map(p => p.value) || [])
     // Build map: staff_id -> [programs]
@@ -62,14 +65,15 @@ export default function StaffPage() {
     if (!form.full_name || !form.email || !form.password) { alert('Name, email and password are required'); return }
     setSaving(true)
     try {
-      const { data, error } = await supabase.functions.invoke('create-staff-user', {
+    const { data, error } = await supabase.functions.invoke('create-staff-user', {
         body: {
           full_name: form.full_name,
           email: form.email,
           password: form.password,
           phone: form.phone,
           role: form.role,
-          programs: selectedPrograms
+          programs: selectedPrograms,
+          school_id: schoolId
         }
       })
       if (error) throw error
