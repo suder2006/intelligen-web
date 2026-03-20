@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -31,17 +32,19 @@ export default function StaffAttendanceReport() {
   const [selectedStaff, setSelectedStaff] = useState(null)
   const [view, setView] = useState('summary') // summary | detail | daily
 
-  useEffect(() => { fetchAll() }, [filterMonth])
+  const { schoolId } = useSchool()
+
+    useEffect(() => { if (schoolId) fetchAll() }, [filterMonth, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const monthStart = `${filterMonth}-01`
     const monthEnd = `${filterMonth}-31`
     const [staffRes, attRes, leaveRes, grpRes] = await Promise.all([
-      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff', 'school_admin']).order('full_name'),
+      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name'),
       supabase.from('staff_attendance').select('*').gte('date', monthStart).lte('date', monthEnd).order('date'),
-      supabase.from('leave_requests').select('*').eq('status', 'approved').gte('from_date', monthStart).lte('to_date', monthEnd),
-      supabase.from('staff_type_groups').select('*').order('name')
+      supabase.from('leave_requests').select('*').eq('status', 'approved').eq('school_id', schoolId).gte('from_date', monthStart).lte('to_date', monthEnd),
+      supabase.from('staff_type_groups').select('*').eq('school_id', schoolId).order('name')
     ])
     setStaff(staffRes.data || [])
     setStaffAttendance(attRes.data || [])
