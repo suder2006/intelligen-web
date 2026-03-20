@@ -38,7 +38,7 @@ export default function StaffPage() {
     const fetchAll = async () => {
     setLoading(true)
     const [{ data: staffData }, { data: progsData }, { data: spData }] = await Promise.all([
-      supabase.from('profiles').select('*').in('role', ['teacher', 'school_admin']).eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
       supabase.from('staff_programs').select('*')
     ])  
