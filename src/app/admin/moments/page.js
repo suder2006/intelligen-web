@@ -2,9 +2,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useSchool } from '@/hooks/useSchool'
 
 export default function ClassroomMomentsAdmin() {
   const router = useRouter()
+  const { schoolId } = useSchool()
   const [moments, setMoments] = useState([])
   const [classes, setClasses] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -16,13 +18,14 @@ export default function ClassroomMomentsAdmin() {
   const [selectedFile, setSelectedFile] = useState(null)
   const fileRef = useRef()
 
-  useEffect(() => {
+useEffect(() => {
+    if (!schoolId) return
     fetchMoments()
-    supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value').then(({ data }) => setClasses(data?.map(d => ({ id: d.id, name: d.value })) || []))
-  }, [])
+    supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value').then(({ data }) => setClasses(data?.map(d => ({ id: d.id, name: d.value })) || []))
+  }, [schoolId])
 
-  async function fetchMoments() {
-    const { data } = await supabase.from('classroom_moments').select('*').order('created_at', { ascending: false })
+async function fetchMoments() {
+    const { data } = await supabase.from('classroom_moments').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
     setMoments(data || [])
   }
 
@@ -48,7 +51,7 @@ export default function ClassroomMomentsAdmin() {
         class_name: className, caption, photo_url: publicUrl,
         storage_path: path, uploaded_by: user.id,
         uploaded_by_name: prof?.full_name || 'Admin',
-        moment_date: selectedDate
+        moment_date: selectedDate, school_id: schoolId
       })
       setCaption('')
       setPreview(null)
