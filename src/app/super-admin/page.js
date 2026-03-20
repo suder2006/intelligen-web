@@ -22,10 +22,18 @@ export default function SuperAdminDashboard() {
     const [sc, st, sf, ad] = await Promise.all([
       supabase.from('schools').select('*').order('created_at', { ascending: false }),
       supabase.from('students').select('id', { count: 'exact' }),
-      supabase.from('staff').select('id', { count: 'exact' }),
+      supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']),
       supabase.from('admissions').select('id', { count: 'exact' }).eq('status', 'pending'),
     ])
-    setSchools(sc.data || [])
+    // Get per-school student and staff counts
+    const schoolsWithStats = await Promise.all((sc.data || []).map(async school => {
+      const [stuCount, staffCount] = await Promise.all([
+        supabase.from('students').select('id', { count: 'exact' }).eq('school_id', school.id).eq('status', 'active'),
+        supabase.from('profiles').select('id', { count: 'exact' }).eq('school_id', school.id).in('role', ['teacher', 'staff'])
+      ])
+      return { ...school, student_count: stuCount.count || 0, staff_count: staffCount.count || 0 }
+    }))
+    setSchools(schoolsWithStats)
     setStats({ schools: sc.data?.length || 0, students: st.count || 0, staff: sf.count || 0, admissions: ad.count || 0 })
     setLoading(false)
   }
@@ -148,11 +156,15 @@ export default function SuperAdminDashboard() {
                 {school.address && <div className="school-info">📍 {school.address}</div>}
                 {school.phone && <div className="school-info">📞 {school.phone}</div>}
                 {school.email && <div className="school-info">✉️ {school.email}</div>}
-                <div className="school-info" style={{ marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '16px', margin: '10px 0', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>👶 {school.student_count} Students</span>
+                  <span style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600' }}>👩‍🏫 {school.staff_count} Staff</span>
+                </div>
+                <div className="school-info">
                   Added {new Date(school.created_at).toLocaleDateString()}
                 </div>
                 <div className="school-actions">
-                  <Link href="/admin" className="btn-manage">⊞ Manage</Link>
+                  <a href={`/super-admin/schools?id=${school.id}`} className="btn-manage">⊞ Manage</a>
                   <button className="del-btn" onClick={() => deleteSchool(school.id)}>🗑 Delete</button>
                 </div>
               </div>
