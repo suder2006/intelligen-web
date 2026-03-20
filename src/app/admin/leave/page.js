@@ -17,6 +17,7 @@ const navItems = [
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
   { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
   { href: '/admin/leave', label: 'Leave Management', icon: '🏖️' },
+  { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
 ]
 
 const LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Annual Leave', 'Emergency Leave']

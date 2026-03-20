@@ -22,6 +22,7 @@ const navItems = [
   { href: '/admin/payroll', label: 'Payroll', icon: '💰' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
   { href: '/admin/skills', label: 'Skills', icon: '🎯' },
+  { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
 ]
 
 export default function HomeActivitiesPage() {

@@ -27,6 +27,7 @@ export default function AttendancePage() {
     { href: '/admin/moments', label: 'Moments', icon: '📸' },
     { href: '/admin/reports', label: 'Reports', icon: '📈' },
     { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
+    { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
   ]
 
   useEffect(() => { if (schoolId) fetchData() }, [date, schoolId])

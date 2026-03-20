@@ -30,6 +30,7 @@ const navItems = [
   { href: '/admin/messages', label: 'Messages', icon: '💬' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
   { href: '/admin/skills', label: 'Skills', icon: '🎯' },
+  { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
 ]
 
 export default function AdminHolidaysPage() {
