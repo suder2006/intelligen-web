@@ -35,7 +35,14 @@ export default function SuperAdminSchools() {
       supabase.from('schools').select('*').order('created_at', { ascending: false }),
       supabase.from('school_registrations').select('*').order('created_at', { ascending: false })
     ])
-    setSchools(schRes.data || [])
+    const schoolsWithStats = await Promise.all((schRes.data || []).map(async school => {
+      const [stuCount, staffCount] = await Promise.all([
+        supabase.from('students').select('id', { count: 'exact' }).eq('school_id', school.id).eq('status', 'active'),
+        supabase.from('profiles').select('id', { count: 'exact' }).eq('school_id', school.id).in('role', ['teacher', 'staff'])
+      ])
+      return { ...school, student_count: stuCount.count || 0, staff_count: staffCount.count || 0 }
+    }))
+    setSchools(schoolsWithStats)
     setRegistrations(regRes.data || [])
     setLoading(false)
   }
@@ -219,6 +226,10 @@ export default function SuperAdminSchools() {
                         <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{school.name}</div>
                         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{school.email} · {school.phone}</div>
                         {school.address && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '2px' }}>{school.address}</div>}
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+                          <span style={{ color: '#10b981', fontSize: '12px', fontWeight: '600' }}>👶 {school.student_count} Students</span>
+                          <span style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '600' }}>👩‍🏫 {school.staff_count} Staff</span>
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
