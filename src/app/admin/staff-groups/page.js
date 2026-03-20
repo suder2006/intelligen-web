@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -34,13 +34,15 @@ export default function StaffGroupsPage() {
     checkin_closes: '10:00', checkout_time: '16:00', working_hours: 8
   })
 
-  useEffect(() => { fetchAll() }, [])
+  const { schoolId } = useSchool()
+
+  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [grpRes, staffRes] = await Promise.all([
-      supabase.from('staff_type_groups').select('*').eq('school_id', SCHOOL_ID).order('name'),
-      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff', 'school_admin']).order('full_name')
+      supabase.from('staff_type_groups').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name')
     ])
     setGroups(grpRes.data || [])
     setStaff(staffRes.data || [])
@@ -53,7 +55,7 @@ export default function StaffGroupsPage() {
     if (editingGroup) {
       await supabase.from('staff_type_groups').update(form).eq('id', editingGroup.id)
     } else {
-      await supabase.from('staff_type_groups').insert({ ...form, school_id: SCHOOL_ID })
+      await supabase.from('staff_type_groups').insert({ ...form, school_id: schoolId })
     }
     setShowForm(false)
     setEditingGroup(null)
