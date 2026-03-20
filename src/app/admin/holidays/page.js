@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
-const SCHOOL_ID = '554c668d-1668-474b-a8aa-f529941dbcf6'
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 const HOLIDAY_TYPES = ['National Holiday', 'School Holiday', 'Program-specific Holiday', 'Staff Holiday', 'Optional Holiday']
 const APPLIES_TO = [
@@ -48,13 +48,15 @@ export default function AdminHolidaysPage() {
     academic_year: CURRENT_AY
   })
 
-  useEffect(() => { fetchAll() }, [academicYear])
+  const { schoolId } = useSchool()
+
+  useEffect(() => { if (schoolId) fetchAll() }, [academicYear, schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [holRes, progRes] = await Promise.all([
-      supabase.from('holidays').select('*').eq('academic_year', academicYear).order('from_date'),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+      supabase.from('holidays').select('*').eq('academic_year', academicYear).eq('school_id', schoolId).order('from_date'),
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     setHolidays(holRes.data || [])
     setPrograms(progRes?.data?.map(p => p.value) || [])
@@ -65,7 +67,7 @@ export default function AdminHolidaysPage() {
     if (!form.name || !form.from_date) { alert('Please enter name and date'); return }
     if (!form.to_date) form.to_date = form.from_date
     setSaving(true)
-    const data = { ...form, school_id: SCHOOL_ID, academic_year: academicYear, to_date: form.to_date || form.from_date }
+    const data = { ...form, school_id: schoolId, academic_year: academicYear, to_date: form.to_date || form.from_date }
     if (editingHoliday) {
       await supabase.from('holidays').update(data).eq('id', editingHoliday.id)
     } else {
