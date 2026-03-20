@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useSchool } from '@/hooks/useSchool'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -30,17 +31,19 @@ export default function ReportsPage() {
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7))
   const [filterProgram, setFilterProgram] = useState('all')
   const [programs, setPrograms] = useState([])
+  
+  const { schoolId } = useSchool()
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   const fetchAll = async () => {
     setLoading(true)
     const [s, inv, inst, att, progs] = await Promise.all([
-      supabase.from('students').select('*').eq('status', 'active').order('full_name'),
-      supabase.from('fee_invoices').select('*, students(full_name, program)').order('created_at', { ascending: false }),
+      supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
+      supabase.from('fee_invoices').select('*, students(full_name, program)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('fee_installments').select('*').order('due_date'),
       supabase.from('attendance').select('*, students(full_name, program)').order('date', { ascending: false }),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value')
+      supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     setStudents(s.data || [])
     setInvoices(inv.data || [])
