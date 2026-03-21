@@ -67,9 +67,10 @@ export default function TeacherPortal() {
     const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
     const teacherPrograms = spData?.map(p => p.program) || []
 
-    const { data: sData } = await supabase.from('students')
+const { data: sData } = await supabase.from('students')
       .select('*')
       .eq('status', 'active')
+      .eq('school_id', prof.school_id)
       .in('program', teacherPrograms.length > 0 ? teacherPrograms : ['__none__'])
       .order('full_name')
 
@@ -80,7 +81,7 @@ export default function TeacherPortal() {
     setAnnouncements(aData || [])
 
     await fetchCurriculum()
-    await fetchMoments()
+    await fetchMoments(prof.school_id)
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', prof.school_id).order('value')
     setPrograms(progs?.map(p => p.value) || [])
     await fetchMessages()
@@ -129,6 +130,7 @@ export default function TeacherPortal() {
     const currentMonth = new Date().toLocaleString('en-US', { month: 'long' })
     const { data: teacherActData } = await supabase.from('home_activities')
       .select('*').eq('academic_year', currentAY)
+      .eq('school_id', prof.school_id)
       .in('program', teacherPrograms).order('month').order('order_index')
     setHomeActivities(teacherActData || [])
     if (studentIds.length > 0) {
@@ -140,12 +142,13 @@ export default function TeacherPortal() {
     setLoading(false)
   }
 
-  const fetchMoments = async () => {
+const fetchMoments = async (schoolId) => {
     const { data: { user } } = await supabase.auth.getUser()
     const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
     const teacherPrograms = spData?.map(p => p.program) || []
     const { data } = await supabase.from('classroom_moments')
       .select('*')
+      .eq('school_id', schoolId)
       .in('class_name', teacherPrograms.length > 0 ? teacherPrograms : ['__none__'])
       .order('created_at', { ascending: false })
       .limit(50)
