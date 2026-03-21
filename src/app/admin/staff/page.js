@@ -257,16 +257,34 @@ export default function StaffPage() {
       )}
       {credentials && (
         <div className="modal-overlay" onClick={() => setCredentials(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Staff Added!</div>
-            <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
-              <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }}>Share these credentials with {credentials.name}:</div>
-              <div style={{ fontFamily: 'monospace', fontSize: '15px', marginBottom: '8px' }}>Email: <strong style={{ color: '#38bdf8' }}>{credentials.email}</strong></div>
-              <div style={{ fontFamily: 'monospace', fontSize: '15px' }}>Password: <strong style={{ color: '#38bdf8' }}>{credentials.password}</strong></div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
+            <div className="modal-title" style={{ marginBottom: '4px' }}>Staff Added!</div>
+            <p style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '20px' }}>Share these credentials with {credentials.name}</p>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px', marginBottom: '20px', textAlign: 'left' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Name</div>
+                <div style={{ fontWeight: '600' }}>{credentials.name}</div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login Email</div>
+                <div style={{ fontWeight: '600', color: '#38bdf8' }}>{credentials.email}</div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Password</div>
+                <div style={{ fontWeight: '600', color: '#10b981' }}>{credentials.password}</div>
+              </div>
+              <div>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login URL</div>
+                <div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>https://intelligen-web.vercel.app</div>
+              </div>
             </div>
-            <div className="modal-btns">
-              <button className="btn-primary" onClick={() => { navigator.clipboard.writeText(`Email: ${credentials.email}\nPassword: ${credentials.password}`); alert('Copied!') }}>Copy Credentials</button>
-              <button className="btn-cancel" onClick={() => setCredentials(null)}>Close</button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => { navigator.clipboard.writeText(`IntelliGen Staff Login\nName: ${credentials.name}\nEmail: ${credentials.email}\nPassword: ${credentials.password}\nURL: https://intelligen-web.vercel.app`); alert('Copied!') }}
+                style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                📋 Copy Credentials
+              </button>
+              <button onClick={() => setCredentials(null)} className="btn-primary" style={{ flex: 1 }}>Done</button>
             </div>
           </div>
         </div>
