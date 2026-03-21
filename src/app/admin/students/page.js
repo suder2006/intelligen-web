@@ -13,6 +13,8 @@ export default function StudentsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [parentCredentials, setParentCredentials] = useState(null)
+  const [copiedCredentials, setCopiedCredentials] = useState(false)
   const [search, setSearch] = useState('')
   const [filterProgram, setFilterProgram] = useState('')
   const [form, setForm] = useState({
@@ -52,15 +54,23 @@ useEffect(() => {
         studentId = data.id
       }
 
-      // Auto-link parent if email provided
-      if (form.parent_email && studentId) {
-        await supabase.functions.invoke('create-parent-user', {
+// Auto-link parent if email provided
+      if (form.parent_email && studentId && !editing) {
+        const { data: parentRes } = await supabase.functions.invoke('create-parent-user', {
           body: {
             student_id: studentId,
             parent_name: form.parent_name || '',
             parent_email: form.parent_email,
             parent_phone: form.parent_phone || ''
           }
+        })
+        // Show credentials popup
+        setParentCredentials({
+          student_name: form.full_name,
+          parent_name: form.parent_name || '',
+          email: form.parent_email,
+          password: 'Parent@123456',
+          url: 'https://intelligen-web.vercel.app'
         })
       }
 
@@ -248,6 +258,51 @@ useEffect(() => {
           </table>
         </div>
       </div>
+      {/* Parent Credentials Modal */}
+      {parentCredentials && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+          onClick={() => setParentCredentials(null)}>
+          <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '420px', textAlign: 'center' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
+            <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>Student Added!</div>
+            <div style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '20px' }}>Parent account created for {parentCredentials.student_name}</div>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '20px', marginBottom: '20px', textAlign: 'left' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Parent Name</div>
+                <div style={{ fontWeight: '600' }}>{parentCredentials.parent_name || '—'}</div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login Email</div>
+                <div style={{ fontWeight: '600', color: '#38bdf8' }}>{parentCredentials.email}</div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Password</div>
+                <div style={{ fontWeight: '600', color: '#10b981' }}>{parentCredentials.password}</div>
+              </div>
+              <div>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login URL</div>
+                <div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>{parentCredentials.url}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => {
+                const text = `IntelliGen Parent Login\nStudent: ${parentCredentials.student_name}\nParent: ${parentCredentials.parent_name}\nEmail: ${parentCredentials.email}\nPassword: ${parentCredentials.password}\nURL: ${parentCredentials.url}`
+                navigator.clipboard.writeText(text)
+                setCopiedCredentials(true)
+                setTimeout(() => setCopiedCredentials(false), 2000)
+              }} style={{ flex: 1, padding: '11px', background: copiedCredentials ? '#10b981' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: copiedCredentials ? '#fff' : 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                {copiedCredentials ? '✅ Copied!' : '📋 Copy Credentials'}
+              </button>
+              <button onClick={() => { setParentCredentials(null); setCopiedCredentials(false) }}
+                style={{ flex: 1, padding: '11px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}    
+
     </div>
   )
 }
