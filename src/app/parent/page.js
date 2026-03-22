@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { APP_URL } from '@/lib/config'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
@@ -465,10 +466,10 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                       <div style={{ marginTop: '12px', padding: '12px 14px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px' }}>
                         <div style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>📱 Student QR Code (for check-in)</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} alt='Student QR' style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#fff', padding: '4px' }} />
+                          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`${APP_URL}/checkin?student=${s.id}`)}`} alt='Student QR' style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#fff', padding: '4px' }} />
                           <div>
                             <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', marginBottom: '6px' }}>Show this QR at school gate or save to phone</div>
-                            <a href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} download target='_blank'
+                            <a href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${APP_URL}/checkin?student=${s.id}`)}`} download target='_blank'
                               style={{ padding: '5px 12px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', color: '#38bdf8', fontSize: '12px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}>⬇️ Save QR</a>
                           </div>
                         </div>
@@ -875,11 +876,11 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px' }}>
-                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} alt='QR' style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#fff', padding: '4px' }} />
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(`${APP_URL}/checkin?student=${s.id}`)}`} alt='QR' style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#fff', padding: '4px' }} />
                       <div>
                         <div style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>📱 Child's QR Code</div>
                         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '8px' }}>Show at gate or save to phone</div>
-                        <a href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?student=${s.id}`)}`} download target='_blank'
+                        <a href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${APP_URL}/checkin?student=${s.id}`)}`} download target='_blank'
                           style={{ padding: '5px 12px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', color: '#38bdf8', fontSize: '12px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}>⬇️ Save QR</a>
                       </div>
                     </div>

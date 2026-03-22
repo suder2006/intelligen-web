@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
+import { APP_URL } from '@/lib/config'
 
 
 
@@ -117,8 +118,8 @@ const fetchAll = async () => {
   const statusColor = { present: '#10b981', late: '#f59e0b', half_day: '#38bdf8', absent: '#ef4444', early: '#a78bfa' }
   const statusBg = { present: 'rgba(16,185,129,0.15)', late: 'rgba(245,158,11,0.15)', half_day: 'rgba(56,189,248,0.15)', absent: 'rgba(239,68,68,0.15)', early: 'rgba(167,139,250,0.15)' }
 
-  const gateQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`https://intelligen-web.vercel.app/checkin?token=${schoolToken}`)}`
-  const checkinUrl = `https://intelligen-web.vercel.app/checkin?token=${schoolToken}`
+  const gateQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${APP_URL}/checkin?token=${schoolToken}`)}`
+  const checkinUrl = `${APP_URL}/checkin?token=${schoolToken}`
 
   const presentStaff = staffAttendance.filter(a => a.status === 'present').length
   const lateStaff = staffAttendance.filter(a => a.status === 'late').length

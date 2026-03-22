@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
+import { APP_URL } from '@/lib/config'
 
 export default function StudentsPage() {
   const router = useRouter()
@@ -70,7 +71,7 @@ useEffect(() => {
           parent_name: form.parent_name || '',
           email: form.parent_email,
           password: 'Parent@123456',
-          url: 'https://intelligen-web.vercel.app'
+          url: APP_URL
         })
       }
 

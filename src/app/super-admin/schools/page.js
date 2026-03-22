@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { APP_URL } from '@/lib/config'
 
 export default function SuperAdminSchools() {
   const [view, setView] = useState('schools') // schools | registrations
@@ -140,7 +141,7 @@ export default function SuperAdminSchools() {
   }
 
   const copyCredentials = () => {
-    const text = `IntelliGen Login Credentials\nSchool: ${showCredentials.school}\nEmail: ${showCredentials.email}\nPassword: ${showCredentials.password}\nURL: https://intelligen-web.vercel.app`
+    const text = `IntelliGen Login Credentials\nSchool: ${showCredentials.school}\nEmail: ${showCredentials.email}\nPassword: ${showCredentials.password}\nURL: ${APP_URL}`
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -372,7 +373,7 @@ export default function SuperAdminSchools() {
               </div>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '2px' }}>Login URL</div>
-                <div style={{ fontWeight: '600', fontSize: '13px' }}>https://intelligen-web.vercel.app</div>
+                <div style={{ fontWeight: '600', fontSize: '13px' }}>{APP_URL}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
+import { APP_URL } from '@/lib/config'
 
 export default function StaffPage() {
   const [staff, setStaff] = useState([])
@@ -276,11 +277,11 @@ export default function StaffPage() {
               </div>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login URL</div>
-                <div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>https://intelligen-web.vercel.app</div>
+                <div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>{APP_URL}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => { navigator.clipboard.writeText(`IntelliGen Staff Login\nName: ${credentials.name}\nEmail: ${credentials.email}\nPassword: ${credentials.password}\nURL: https://intelligen-web.vercel.app`); alert('Copied!') }}
+              <button onClick={() => { navigator.clipboard.writeText(`IntelliGen Staff Login\nName: ${credentials.name}\nEmail: ${credentials.email}\nPassword: ${credentials.password}\nURL: ${APP_URL}`); alert('Copied!') }}
                 style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
                 📋 Copy Credentials
               </button>
