@@ -161,8 +161,11 @@ export default function IDCardPage() {
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
-          .print-area { background: white !important; padding: 10mm !important; }
+          .print-area { background: white !important; padding: 10mm !important; display: block !important; }
           .id-card-grid { display: flex; flex-wrap: wrap; gap: 4mm; }
+        }
+        @media screen {
+          .print-area { display: none; }
         }
       `}</style>
 
@@ -232,8 +235,8 @@ export default function IDCardPage() {
         )}
       </div>
 
-      {/* Print area */}
-      <div className="print-area" style={{ display: 'none' }}>
+{/* Print area */}
+      <div className="print-area">
         <div className="id-card-grid">
           {students.filter(s => selectedStudents.includes(s.id)).map(s => (
             <IDCard key={s.id} student={s} />
