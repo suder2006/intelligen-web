@@ -130,10 +130,14 @@ useEffect(() => {
             <button onClick={() => router.back()} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>← Back</button>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold' }}>👶 Students ({students.length})</h1>
           </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Link href='/admin/students/idcard' style={{ padding: '10px 20px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '10px', color: '#38bdf8', fontWeight: '600', fontSize: '14px', textDecoration: 'none', display: 'inline-block' }}>🪪 Print ID Cards</Link>
+          
           <button onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' }) }}
             style={{ padding: '10px 24px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
             ➕ Add Student
           </button>
+          </div>
         </div>
 
         {/* Add/Edit Form */}
