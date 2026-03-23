@@ -21,7 +21,11 @@ export default function StudentsPage() {
   const [form, setForm] = useState({
     student_id: '', full_name: '', date_of_birth: '', gender: '',
     program: '', status: 'active', parent_name: '',
-    parent_phone: '', parent_email: '', address: ''
+    parent_phone: '', parent_email: '', address: '',
+    blood_group: '', emergency_contact: '', admission_date: '',
+    authorized_pickup: '', medical_info: '', allergies: '',
+    immunization_complete: false, medical_alert: false,
+    medical_alert_note: '', child_aadhar: '', father_aadhar: '', mother_aadhar: ''
   })
 
 //const [schoolId, setSchoolId] = useState(null)
@@ -93,7 +97,19 @@ useEffect(() => {
 
   function startEdit(s) {
     setEditing(s.id)
-    setForm({ full_name: s.full_name, date_of_birth: s.date_of_birth || '', gender: s.gender || '', program: s.program || '', status: s.status || 'active', parent_name: s.parent_name || '', parent_phone: s.parent_phone || '', parent_email: s.parent_email || '', address: s.address || '' })
+    setForm({
+      student_id: s.student_id || '', full_name: s.full_name, date_of_birth: s.date_of_birth || '',
+      gender: s.gender || '', program: s.program || '', status: s.status || 'active',
+      parent_name: s.parent_name || '', parent_phone: s.parent_phone || '',
+      parent_email: s.parent_email || '', address: s.address || '',
+      blood_group: s.blood_group || '', emergency_contact: s.emergency_contact || '',
+      admission_date: s.admission_date || '', authorized_pickup: s.authorized_pickup || '',
+      medical_info: s.medical_info || '', allergies: s.allergies || '',
+      immunization_complete: s.immunization_complete || false,
+      medical_alert: s.medical_alert || false, medical_alert_note: s.medical_alert_note || '',
+      child_aadhar: s.child_aadhar || '', father_aadhar: s.father_aadhar || '',
+      mother_aadhar: s.mother_aadhar || ''
+    })
     setShowForm(true)
     window.scrollTo(0, 0)
   }
@@ -175,6 +191,60 @@ useEffect(() => {
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Address</label>
                 <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder='Home address' style={inputStyle} />
               </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Admission Date</label>
+                <input type='date' value={form.admission_date} onChange={e => setForm({ ...form, admission_date: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Blood Group</label>
+                <select value={form.blood_group} onChange={e => setForm({ ...form, blood_group: e.target.value })} style={inputStyle}>
+                  <option value=''>-- Select --</option>
+                  {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Emergency Contact</label>
+                <input value={form.emergency_contact} onChange={e => setForm({ ...form, emergency_contact: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Authorized Pickup Persons</label>
+                <input value={form.authorized_pickup} onChange={e => setForm({ ...form, authorized_pickup: e.target.value })} placeholder='e.g. Father, Mother, Grandparent' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Allergies</label>
+                <input value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder='e.g. Nuts, Dairy, Gluten' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Medical Info / Conditions</label>
+                <input value={form.medical_info} onChange={e => setForm({ ...form, medical_info: e.target.value })} placeholder='e.g. Asthma, Diabetes' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Medical Alert Note</label>
+                <input value={form.medical_alert_note} onChange={e => setForm({ ...form, medical_alert_note: e.target.value })} placeholder='e.g. Carry EpiPen at all times' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Child Aadhar Number</label>
+                <input value={form.child_aadhar} onChange={e => setForm({ ...form, child_aadhar: e.target.value })} placeholder='12 digit Aadhar number' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Father Aadhar Number</label>
+                <input value={form.father_aadhar} onChange={e => setForm({ ...form, father_aadhar: e.target.value })} placeholder='12 digit Aadhar number' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Mother Aadhar Number</label>
+                <input value={form.mother_aadhar} onChange={e => setForm({ ...form, mother_aadhar: e.target.value })} placeholder='12 digit Aadhar number' style={inputStyle} />
+              </div>
+            </div>
+                        {/* Checkboxes */}
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>
+                <input type='checkbox' checked={form.immunization_complete} onChange={e => setForm({ ...form, immunization_complete: e.target.checked })} />
+                ✅ Immunization Complete
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>
+                <input type='checkbox' checked={form.medical_alert} onChange={e => setForm({ ...form, medical_alert: e.target.checked })} />
+                🚨 Medical Alert
+              </label>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={save} disabled={saving}
