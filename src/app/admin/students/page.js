@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
 import { APP_URL } from '@/lib/config'
+import Link from 'next/link'
 
 export default function StudentsPage() {
   const router = useRouter()
