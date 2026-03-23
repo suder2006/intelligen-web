@@ -128,7 +128,7 @@ useEffect(() => {
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => router.back()} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>← Back</button>
+            <Link href='/admin' style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', textDecoration: 'none' }}>← Back</Link>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold' }}>👶 Students ({students.length})</h1>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
