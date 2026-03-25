@@ -343,8 +343,8 @@ const fetchMoments = async (schoolId) => {
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
     { id: 'payslip', label: 'Payslip', icon: '💰' },
-    { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
+    { id: 'ptm', label: 'PTM', icon: '🤝' },
   ]
 
   return (
