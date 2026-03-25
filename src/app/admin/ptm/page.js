@@ -41,6 +41,7 @@ export default function AdminPTMPage() {
   const saveEvent = async () => {
     if (!form.title || !form.from_date) { alert('Please enter title and date'); return }
     setSaving(true)
+    console.log('schoolId:', schoolId, 'form:', form) /*debug */
     const data = { ...form, school_id: schoolId }
     if (editingEvent) {
       await supabase.from('ptm_events').update(data).eq('id', editingEvent.id)
