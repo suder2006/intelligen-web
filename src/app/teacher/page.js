@@ -343,6 +343,7 @@ const fetchMoments = async (schoolId) => {
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
     { id: 'payslip', label: 'Payslip', icon: '💰' },
+    { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
   ]
 
@@ -750,6 +751,18 @@ const fetchMoments = async (schoolId) => {
                   </div>
                 ))}
               </>
+            )}
+
+            {activeTab === 'ptm' && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤝</div>
+                <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>Parent Teacher Meeting</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Manage your PTM slots, bookings and meeting notes</div>
+                <a href='/teacher/ptm'
+                  style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', textDecoration: 'none', display: 'inline-block' }}>
+                  🤝 Open PTM Portal
+                </a>
+              </div>
             )}
 
             {activeTab === 'homeactivities' && (
