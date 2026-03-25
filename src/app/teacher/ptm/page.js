@@ -15,12 +15,13 @@ export default function TeacherPTMPage() {
   const [showSlotForm, setShowSlotForm] = useState(false)
   const [showNoteForm, setShowNoteForm] = useState(null) // booking object
   const [editingSlot, setEditingSlot] = useState(null)
+  const [teacherPrograms, setTeacherPrograms] = useState([])
   const router = useRouter()
 
-  const [slotForm, setSlotForm] = useState({
+const [slotForm, setSlotForm] = useState({
     event_id: '', slot_date: '', start_time: '', end_time: '',
     duration_minutes: 15, meeting_type: 'in-person',
-    meeting_link: '', location: '', max_bookings: 1
+    meeting_link: '', location: '', max_bookings: 1, program: ''
   })
 
   const [noteForm, setNoteForm] = useState({
@@ -37,6 +38,8 @@ export default function TeacherPTMPage() {
     if (!user) { router.push('/'); return }
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
+    const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
+    setTeacherPrograms(spData?.map(p => p.program) || [])
 
     const [evRes, slRes, bkRes, ntRes] = await Promise.all([
       supabase.from('ptm_events').select('*').eq('school_id', prof.school_id).eq('status', 'upcoming').order('from_date'),
@@ -138,7 +141,8 @@ export default function TeacherPTMPage() {
         meeting_type: slotForm.meeting_type,
         meeting_link: slotForm.meeting_link,
         location: slotForm.location,
-        max_bookings: slotForm.max_bookings
+        max_bookings: slotForm.max_bookings,
+        program: slotForm.program || null
       })
       current = next
     }
@@ -377,6 +381,11 @@ export default function TeacherPTMPage() {
         <div className="modal-overlay" onClick={() => setShowSlotForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>🕐 Create Time Slots</h3>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Program (optional - leave blank for all)</label>
+            <select value={slotForm.program} onChange={e => setSlotForm({ ...slotForm, program: e.target.value })} style={inputStyle}>
+              <option value=''>-- All Programs --</option>
+              {teacherPrograms.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>PTM Event *</label>
             <select value={slotForm.event_id} onChange={e => setSlotForm({ ...slotForm, event_id: e.target.value })} style={inputStyle}>
               <option value=''>-- Select Event --</option>
