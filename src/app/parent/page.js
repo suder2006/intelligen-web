@@ -41,6 +41,13 @@ export default function ParentPortal() {
   const [homeActivities, setHomeActivities] = useState([])
   const [activityCompletions, setActivityCompletions] = useState([])
   const [selectedActivityChild, setSelectedActivityChild] = useState(null)
+  const [ptmEvents, setPtmEvents] = useState([])
+  const [ptmSlots, setPtmSlots] = useState([])
+  const [ptmBookings, setPtmBookings] = useState([])
+  const [ptmNotes, setPtmNotes] = useState([])
+  const [bookingForm, setBookingForm] = useState({ slot_id: '', student_id: '', parent_notes: '' })
+  const [bookingSlot, setBookingSlot] = useState(null)
+  const [bookingLoading, setBookingLoading] = useState(false)
   const [schoolId, setSchoolId] = useState(null)
   const [schoolName, setSchoolName] = useState('')
   const [schoolUpi, setSchoolUpi] = useState({ upi_id: '', upi_name: '', upi_description: '' })
@@ -166,6 +173,19 @@ export default function ParentPortal() {
         setActivityCompletions(compData || [])
       }
     }
+    // Load PTM data
+    if (effectiveSid) {
+      const [evRes, slRes, bkRes, ntRes] = await Promise.all([
+        supabase.from('ptm_events').select('*').eq('school_id', effectiveSid).in('status', ['upcoming', 'ongoing']).order('from_date'),
+        supabase.from('ptm_slots').select('*, profiles!ptm_slots_teacher_id_fkey(full_name)').eq('school_id', effectiveSid).eq('is_available', true).order('slot_date').order('start_time'),
+        supabase.from('ptm_bookings').select('*, ptm_slots(*), profiles!ptm_bookings_teacher_id_fkey(full_name)').eq('parent_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('ptm_notes').select('*, students(full_name)').eq('parent_id', user.id).eq('shared_with_parent', true).order('created_at', { ascending: false })
+      ])
+      setPtmEvents(evRes.data || [])
+      setPtmSlots(slRes.data || [])
+      setPtmBookings(bkRes.data || [])
+      setPtmNotes(ntRes.data || [])
+    }
 
     setLoading(false)
   }
@@ -262,6 +282,32 @@ export default function ParentPortal() {
       setParentScanResult({ type: 'info', message: `${student.full_name} already checked in and out today.` })
     }
   }
+  const bookSlot = async () => {
+    if (!bookingForm.slot_id || !bookingForm.student_id) { alert('Please select slot and child'); return }
+    setBookingLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const slot = ptmSlots.find(s => s.id === bookingForm.slot_id)
+    // Check if already booked
+    const alreadyBooked = ptmBookings.find(b => b.slot_id === bookingForm.slot_id)
+    if (alreadyBooked) { alert('This slot is already booked!'); setBookingLoading(false); return }
+    await supabase.from('ptm_bookings').insert({
+      school_id: schoolId,
+      event_id: slot.event_id,
+      slot_id: bookingForm.slot_id,
+      teacher_id: slot.teacher_id,
+      parent_id: user.id,
+      student_id: bookingForm.student_id,
+      parent_notes: bookingForm.parent_notes,
+      status: 'booked'
+    })
+    // Mark slot as unavailable
+    await supabase.from('ptm_slots').update({ is_available: false }).eq('id', bookingForm.slot_id)
+    setBookingSlot(null)
+    setBookingForm({ slot_id: '', student_id: '', parent_notes: '' })
+    await loadData()
+    setBookingLoading(false)
+    alert('✅ Slot booked successfully!')
+  }
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
@@ -294,6 +340,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
+    { id: 'ptm', label: 'PTM', icon: '🤝' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -994,7 +1041,122 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                 )}
               </>
             )}
- 
+            {activeTab === 'ptm' && (
+              <>
+                <div className="section-title">🤝 Parent Teacher Meeting</div>
+
+                {/* Upcoming Events */}
+                {ptmEvents.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤝</div>
+                    <div>No PTM events scheduled yet.</div>
+                  </div>
+                ) : ptmEvents.map(event => {
+                  const eventSlots = ptmSlots.filter(s => s.event_id === event.id)
+                  const eventBookings = ptmBookings.filter(b => b.event_id === event.id)
+                  return (
+                    <div key={event.id} className="card" style={{ marginBottom: '20px' }}>
+                      <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{event.title}</div>
+                      {event.description && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginBottom: '8px' }}>{event.description}</div>}
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {event.from_date}{event.to_date && event.to_date !== event.from_date ? ` → ${event.to_date}` : ''}</span>
+                        <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>{event.meeting_type}</span>
+                      </div>
+
+                      {/* Already booked slots */}
+                      {eventBookings.length > 0 && (
+                        <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px' }}>
+                          <div style={{ color: '#34d399', fontWeight: '600', fontSize: '13px', marginBottom: '8px' }}>✅ Your Bookings</div>
+                          {eventBookings.map(b => (
+                            <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: '600' }}>{b.ptm_slots?.slot_date} at {b.ptm_slots?.start_time}</div>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>👩‍🏫 {b.profiles?.full_name}</div>
+                                {b.ptm_slots?.meeting_type === 'online' && b.ptm_slots?.meeting_link && (
+                                  <a href={b.ptm_slots.meeting_link} target='_blank' rel='noreferrer'
+                                    style={{ color: '#38bdf8', fontSize: '12px', textDecoration: 'none' }}>🔗 Join Meeting</a>
+                                )}
+                                {b.ptm_slots?.meeting_type === 'in-person' && b.ptm_slots?.location && (
+                                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>📍 {b.ptm_slots.location}</div>
+                                )}
+                              </div>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                                background: b.status === 'confirmed' ? 'rgba(16,185,129,0.15)' : b.status === 'completed' ? 'rgba(167,139,250,0.15)' : 'rgba(56,189,248,0.15)',
+                                color: b.status === 'confirmed' ? '#34d399' : b.status === 'completed' ? '#a78bfa' : '#38bdf8' }}>{b.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Available slots */}
+                      {eventSlots.length > 0 && eventBookings.length === 0 && (
+                        <>
+                          <div style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>Available Slots:</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {[...new Set(eventSlots.map(s => s.slot_date))].sort().map(date => (
+                              <div key={date} style={{ marginBottom: '10px', width: '100%' }}>
+                                <div style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>
+                                  📅 {new Date(date).toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                  {eventSlots.filter(s => s.slot_date === date).map(slot => (
+                                    <button key={slot.id} onClick={() => { setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: students[0]?.id || '', parent_notes: '' }) }}
+                                      style={{ padding: '8px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                      {slot.start_time} - {slot.end_time}
+                                      <span style={{ marginLeft: '6px', fontSize: '11px', color: slot.meeting_type === 'online' ? '#a78bfa' : '#34d399' }}>
+                                        {slot.meeting_type === 'online' ? '💻' : '🏫'}
+                                      </span>
+                                      <span style={{ marginLeft: '4px', color: '#94a3b8', fontSize: '11px' }}>{slot.profiles?.full_name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {eventSlots.length === 0 && eventBookings.length === 0 && (
+                        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No slots available yet. Check back soon!</div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Meeting Notes from Teacher */}
+                {ptmNotes.length > 0 && (
+                  <>
+                    <div className="section-title" style={{ marginTop: '24px' }}>📝 Meeting Notes from Teacher</div>
+                    {ptmNotes.map(note => (
+                      <div key={note.id} className="card">
+                        <div style={{ fontWeight: '700', marginBottom: '8px' }}>{note.students?.full_name}</div>
+                        {note.discussion_points && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>💬 Discussion Points</div>
+                            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{note.discussion_points}</div>
+                          </div>
+                        )}
+                        {note.action_items && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>✅ Action Items</div>
+                            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{note.action_items}</div>
+                          </div>
+                        )}
+                        {note.teacher_observations && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>👁️ Teacher Observations</div>
+                            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{note.teacher_observations}</div>
+                          </div>
+                        )}
+                        {note.follow_up_required && (
+                          <div style={{ color: '#fbbf24', fontSize: '13px', marginTop: '6px' }}>⚠️ Follow-up: {note.follow_up_notes}</div>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
 
             {activeTab === 'holidays' && (
               <>
@@ -1224,7 +1386,42 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
             </div>
           </div>
         )
-      })()}
+      })()} 
+    {/* PTM Booking Modal */}
+      {bookingSlot && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+          onClick={() => setBookingSlot(null)}>
+          <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '420px' }}
+            onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>🤝 Book PTM Slot</h3>
+            <p style={{ color: '#38bdf8', fontSize: '14px', marginBottom: '20px' }}>
+              📅 {bookingSlot.slot_date} · {bookingSlot.start_time} - {bookingSlot.end_time}
+              · {bookingSlot.meeting_type === 'online' ? '💻 Online' : '🏫 In-Person'}
+              · 👩‍🏫 {bookingSlot.profiles?.full_name}
+            </p>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Select Child *</label>
+            <select value={bookingForm.student_id} onChange={e => setBookingForm({ ...bookingForm, student_id: e.target.value })}
+              style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', marginBottom: '12px' }}>
+              <option value=''>-- Select Child --</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            </select>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Notes for Teacher (optional)</label>
+            <textarea value={bookingForm.parent_notes} onChange={e => setBookingForm({ ...bookingForm, parent_notes: e.target.value })}
+              placeholder="e.g. I want to discuss my child\'s progress in reading..."
+              rows={3} style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', marginBottom: '16px', resize: 'vertical', fontFamily: "'DM Sans', sans-serif" }} />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setBookingSlot(null)}
+                style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                Cancel
+              </button>
+              <button onClick={bookSlot} disabled={bookingLoading}
+                style={{ flex: 1, padding: '11px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {bookingLoading ? '⏳ Booking...' : '✅ Confirm Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
