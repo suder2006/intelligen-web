@@ -1406,13 +1406,10 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
             <select value={bookingForm.student_id} onChange={e => setBookingForm({ ...bookingForm, student_id: e.target.value })}
               style={{ width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', marginBottom: '12px' }}>
               <option value=''>-- Select Child --</option>
-              {students.filter(s => {
-                // Only show students whose program matches teacher's programs
-                const teacherPrograms = ptmSlots
-                  .filter(sl => sl.teacher_id === bookingSlot.teacher_id)
-                  .map(sl => sl.program).filter(Boolean)
-                if (teacherPrograms.length === 0) return true // if no program filter, show all
-                return teacherPrograms.includes(s.program)
+                {students.filter(s => {
+                // Filter by slot's program directly
+                if (!bookingSlot.program) return true // no program restriction
+                return s.program === bookingSlot.program
               }).map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>)}
             </select>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Notes for Teacher (optional)</label>
