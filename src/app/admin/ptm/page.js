@@ -211,7 +211,49 @@ export default function AdminPTMPage() {
                             style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                         </div>
                       </div>
-
+                      {/* Slots for this event */}
+                      {evSlots.length > 0 && (
+                        <div style={{ marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px' }}>
+                          <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '10px' }}>Slots ({evSlots.length})</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {evSlots.map(slot => {
+                              const isBooked = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
+                              return (
+                                <div key={slot.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: isBooked ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${isBooked ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: '8px' }}>
+                                  <span style={{ fontSize: '12px', color: isBooked ? '#fbbf24' : '#34d399', fontWeight: '600' }}>
+                                    {slot.slot_date} {slot.start_time}-{slot.end_time}
+                                  </span>
+                                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                                    {slot.profiles?.full_name}
+                                  </span>
+                                  {slot.program && <span style={{ fontSize: '11px', color: '#a78bfa' }}>{slot.program}</span>}
+                                  <span style={{ fontSize: '11px', color: isBooked ? '#fbbf24' : '#34d399' }}>
+                                    {isBooked ? '🔴 Booked' : '🟢 Free'}
+                                  </span>
+                                  <button onClick={async () => {
+                                    if (!confirm('Delete this slot? If booked, the booking will be cancelled.')) return
+                                    // Cancel any bookings for this slot
+                                    await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
+                                    // Delete the slot
+                                    await supabase.from('ptm_slots').delete().eq('id', slot.id)
+                                    await fetchAll()
+                                  }}
+                                    style={{ padding: '2px 6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                                  {isBooked && (
+                                    <button onClick={async () => {
+                                      if (!confirm('Free up this slot? The booking will be cancelled and parent can rebook.')) return
+                                      await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
+                                      await supabase.from('ptm_slots').update({ is_available: true }).eq('id', slot.id)
+                                      await fetchAll()
+                                    }}
+                                      style={{ padding: '2px 6px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>🔓 Free Up</button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {/* Bookings for this event */}
                       {evBookings.length > 0 && (
                         <div style={{ marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px' }}>
