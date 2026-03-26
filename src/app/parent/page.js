@@ -1103,8 +1103,9 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                                 </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                   {eventSlots.filter(s => s.slot_date === date).map(slot => (
-                                    <button key={slot.id} onClick={() => { setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: students[0]?.id || '', parent_notes: '' }) }}
-                                      style={{ padding: '8px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                    /* <button key={slot.id} onClick={() => { setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: students[0]?.id || '', parent_notes: '' }) }} */
+                                    <button key={slot.id} onClick={() => { console.log('Slot selected:', slot); setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: '', parent_notes: '' }) }}  /* debug */
+                                    style={{ padding: '8px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
                                       {slot.start_time} - {slot.end_time}
                                       <span style={{ marginLeft: '6px', fontSize: '11px', color: slot.meeting_type === 'online' ? '#a78bfa' : '#34d399' }}>
                                         {slot.meeting_type === 'online' ? '💻' : '🏫'}
