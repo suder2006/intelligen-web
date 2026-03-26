@@ -123,7 +123,7 @@ export default function ParentPortal() {
     setMessages(msgsData || [])
 
     // Load teachers
-    const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher').eq('school_id', sid)
+    const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher').eq('school_id', effectiveSid)
     setTeachers(teachersData || [])
 
       const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
