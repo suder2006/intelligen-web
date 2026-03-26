@@ -230,21 +230,42 @@ export default function AdminPTMPage() {
                                   <span style={{ fontSize: '11px', color: isBooked ? '#fbbf24' : '#34d399' }}>
                                     {isBooked ? '🔴 Booked' : '🟢 Free'}
                                   </span>
-                                  <button onClick={async () => {
+                                    <button onClick={async () => {
                                     if (!confirm('Delete this slot? If booked, the booking will be cancelled.')) return
-                                    // Cancel any bookings for this slot
+                                    const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
                                     await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
-                                    // Delete the slot
                                     await supabase.from('ptm_slots').delete().eq('id', slot.id)
+                                    if (booking?.parent_id) {
+                                      await supabase.from('chat_messages').insert({
+                                        sender_id: schoolId,
+                                        receiver_id: booking.parent_id,
+                                        sender_name: schoolName,
+                                        content: `⚠️ Your PTM slot on ${slot.slot_date} at ${slot.start_time} has been cancelled by the school. Please go to the PTM tab in your portal and rebook a new slot.`
+                                      })
+                                    }
                                     await fetchAll()
                                   }}
                                     style={{ padding: '2px 6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
                                   {isBooked && (
-                                    <button onClick={async () => {
+                                      <button onClick={async () => {
                                       if (!confirm('Free up this slot? The booking will be cancelled and parent can rebook.')) return
+                                      // Get booking details for notification
+                                      const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
+                                      // Cancel booking
                                       await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
+                                      // Free up slot
                                       await supabase.from('ptm_slots').update({ is_available: true }).eq('id', slot.id)
+                                      // Notify parent
+                                      if (booking?.parent_id) {
+                                        await supabase.from('chat_messages').insert({
+                                          sender_id: schoolId,
+                                          receiver_id: booking.parent_id,
+                                          sender_name: schoolName,
+                                          content: `⚠️ Your PTM slot on ${slot.slot_date} at ${slot.start_time} has been cancelled by the school. Please go to the PTM tab in your portal and rebook a new slot.`
+                                        })
+                                      }
                                       await fetchAll()
+                                      alert('✅ Slot freed up and parent notified!')
                                     }}
                                       style={{ padding: '2px 6px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>🔓 Free Up</button>
                                   )}

@@ -1043,7 +1043,10 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
             )}
             {activeTab === 'ptm' && (
               <>
-                <div className="section-title">🤝 Parent Teacher Meeting</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: 'rgba(255,255,255,0.8)' }}>🤝 Parent Teacher Meeting</div>
+                  <button onClick={loadData} style={{ padding: '6px 14px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>🔄 Refresh Slots</button>
+                </div>
 
                 {/* Upcoming Events */}
                 {ptmEvents.length === 0 ? (
