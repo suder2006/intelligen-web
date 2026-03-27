@@ -98,58 +98,68 @@ function EnquiryContent() {
     else setDuplicate(null)
   }
 
-  const submitEnquiry = async () => {
+const submitEnquiry = async () => {
     if (!form.parent_name || !form.phone || !form.child_name) {
       alert('Please fill Parent Name, Phone and Child Name'); return
     }
     if (!schoolParam) { alert('Invalid school link'); return }
     setSubmitting(true)
-    const dob = form.child_dob ? new Date(form.child_dob) : null
-    const today = new Date()
-    const ageMonths = dob ? (today.getFullYear() - dob.getFullYear()) * 12 + (today.getMonth() - dob.getMonth()) : null
-    const ageYears = ageMonths ? Math.floor(ageMonths / 12) : null
 
-    const { data: newEnquiry, error } = await supabase.from('enquiries').insert({
-      school_id: schoolParam,
-      parent_name: form.parent_name, phone: form.phone, email: form.email,
-      child_name: form.child_name, child_dob: form.child_dob || null,
-      child_age_years: ageYears, child_age_months: ageMonths,
-      program: form.program, lead_source: form.lead_source,
-      preferred_visit_date: form.preferred_visit_date || null,
-      notes: form.notes, status: 'new',
-      is_duplicate: !!duplicate, duplicate_of: duplicate?.id || null
-    }).select().single()
-
-    if (error) { alert('Error: ' + error.message); setSubmitting(false); return }
-
-    setEnquiryId(newEnquiry.id)
-    // Auto create follow-up task
-    const dueDate = new Date()
-    dueDate.setHours(dueDate.getHours() + 1)
-    await supabase.from('follow_ups').insert({
-      school_id: schoolParam, enquiry_id: newEnquiry.id,
-      due_date: dueDate.toISOString().split('T')[0],
-      due_time: dueDate.toTimeString().slice(0, 5),
-      task_type: 'call', status: 'pending'
-    })
-    setSubmitting(false)
-    setStep(2) // Show visit booking popup
+    try {
+      const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_id: schoolParam,
+          parent_name: form.parent_name,
+          phone: form.phone,
+          email: form.email,
+          child_name: form.child_name,
+          child_dob: form.child_dob,
+          program: form.program,
+          lead_source: form.lead_source,
+          preferred_visit_date: form.preferred_visit_date,
+          notes: form.notes
+        })
+      })
+      const data = await res.json()
+      if (data.error) { alert('Error: ' + data.error); setSubmitting(false); return }
+      setEnquiryId(data.enquiry_id)
+      setSubmitting(false)
+      setStep(2)
+    } catch (e) {
+      alert('Error: ' + e.message)
+      setSubmitting(false)
+    }
   }
 
-  const bookVisit = async () => {
+const bookVisit = async () => {
     if (!visitForm.slot_time) { alert('Please select a time slot'); return }
     setSubmitting(true)
-    await supabase.from('visit_bookings').insert({
-      school_id: schoolParam, enquiry_id: enquiryId,
-      visit_date: visitForm.visit_date, slot_time: visitForm.slot_time,
-      status: 'scheduled'
-    })
-    // Update enquiry status
-    await supabase.from('enquiries').update({ status: 'visit_booked' }).eq('id', enquiryId)
-    // Update follow-up task
-    await supabase.from('follow_ups').update({ task_type: 'confirm_visit' }).eq('enquiry_id', enquiryId)
-    setSubmitting(false)
-    setStep(3)
+
+    try {
+      const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_id: schoolParam,
+          parent_name: form.parent_name,
+          phone: form.phone,
+          child_name: form.child_name,
+          enquiry_id: enquiryId,
+          visit_date: visitForm.visit_date,
+          slot_time: visitForm.slot_time,
+          update_visit_only: true
+        })
+      })
+      const data = await res.json()
+      if (data.error) { alert('Error: ' + data.error); setSubmitting(false); return }
+      setSubmitting(false)
+      setStep(3)
+    } catch (e) {
+      alert('Error: ' + e.message)
+      setSubmitting(false)
+    }
   }
 
   const skipVisit = () => setStep(3)
