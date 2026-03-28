@@ -106,9 +106,12 @@ const submitEnquiry = async () => {
     setSubmitting(true)
 
     try {
-      const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
+        const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+        },
         body: JSON.stringify({
           school_id: schoolParam,
           parent_name: form.parent_name,
@@ -138,9 +141,12 @@ const bookVisit = async () => {
     setSubmitting(true)
 
     try {
-      const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
+        const res = await fetch('https://wmxywsbrfbmyatzaehre.supabase.co/functions/v1/submit-enquiry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+        },
         body: JSON.stringify({
           school_id: schoolParam,
           parent_name: form.parent_name,
