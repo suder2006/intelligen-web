@@ -110,7 +110,9 @@ const submitEnquiry = async () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+          //'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+          'apikey': 'sb_publishable_RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5',
+          'Authorization': 'Bearer sb_publishable_RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
         },
         body: JSON.stringify({
           school_id: schoolParam,
@@ -145,7 +147,9 @@ const bookVisit = async () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+          //'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndteXdzYnJmYm15YXR6YWVocmUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc0MDk5NjQ5MCwiZXhwIjoyMDU2NTcyNDkwfQ.RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
+          'apikey': 'sb_publishable_RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5',
+          'Authorization': 'Bearer sb_publishable_RbwxJkZPkfbDKqaZPxQT5g_zKZjK8P5'
         },
         body: JSON.stringify({
           school_id: schoolParam,

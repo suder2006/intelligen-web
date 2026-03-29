@@ -238,6 +238,8 @@ export default function StaffPage() {
             <label className="form-label">Role</label>
             <select className="form-input" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
               <option value="teacher">Teacher</option>
+              <option value="staff">Staff</option>
+              <option value="center_head">Center Head</option>
               <option value="school_admin">School Admin</option>
             </select>
             <label className="form-label">Assign Programs</label>

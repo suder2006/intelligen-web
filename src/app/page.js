@@ -29,6 +29,7 @@ export default function LoginPage() {
     else if (profile?.role === 'school_admin') router.push('/admin')
     else if (profile?.role === 'teacher') router.push('/teacher')
     else if (profile?.role === 'parent') router.push('/parent')
+    else if (profile?.role === 'center_head') router.push('/center-head')
     else router.push('/admin')
     setLoading(false)
   }
@@ -101,6 +102,7 @@ export default function LoginPage() {
           <div className="role-badge"><span className="role-dot" style={{background:'#10b981'}}></span>School Admin</div>
           <div className="role-badge"><span className="role-dot" style={{background:'#38bdf8'}}></span>Teacher</div>
           <div className="role-badge"><span className="role-dot" style={{background:'#a78bfa'}}></span>Parent</div>
+          <div className="role-badge"><span className="role-dot" style={{background:'#34d399'}}></span>Center Head</div>
         </div>
       </div>
     </div>
