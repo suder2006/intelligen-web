@@ -24,11 +24,11 @@ export default function AdminDashboard() {
       const [s, st, f, ad, at] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
         supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']).eq('school_id', schoolId),
-        supabase.from('fees').select('amount').eq('status', 'unpaid'),
+        supabase.from('fee_invoices').select('total_amount, paid_amount').eq('school_id', schoolId).neq('status', 'paid'),
         supabase.from('admissions').select('id', { count: 'exact' }).eq('status', 'pending').eq('school_id', schoolId),
         supabase.from('attendance').select('id', { count: 'exact' }).eq('date', new Date().toISOString().split('T')[0])
       ])
-      const totalUnpaid = f.data?.reduce((sum, r) => sum + Number(r.amount), 0) || 0
+      const totalUnpaid = f.data?.reduce((sum, r) => sum + Math.max(0, Number(r.total_amount) - Number(r.paid_amount || 0)), 0) || 0
       setStats({ students: s.count || 0, staff: st.count || 0, classes: 0, fees: totalUnpaid, admissions: ad.count || 0, attendance: at.count || 0 })
       setLoading(false)  
     }
@@ -40,16 +40,26 @@ export default function AdminDashboard() {
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
     { href: '/admin/students', label: 'Students', icon: '👶' },
-    { href: '/admin/classes', label: 'Classes', icon: '📚' },
     { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
+    { href: '/admin/staff-groups', label: 'Staff Groups', icon: '⏰' },
     { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
+    { href: '/admin/enquiries', label: 'Enquiries CRM', icon: '🎯' },
     { href: '/admin/fees', label: 'Fees', icon: '💳' },
     { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
     { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
+    { href: '/admin/checkin', label: 'Check-in/out', icon: '🚪' },
+    { href: '/admin/leave', label: 'Leave', icon: '🏖️' },
+    { href: '/admin/holidays', label: 'Holidays', icon: '📅' },
+    { href: '/admin/staff-report', label: 'Staff Report', icon: '📋' },
+    { href: '/admin/payroll', label: 'Payroll', icon: '💰' },
     { href: '/admin/messages', label: 'Messages', icon: '💬' },
-    { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
+    { href: '/admin/curriculum/masters', label: 'Curriculum', icon: '📖' },
     { href: '/admin/moments', label: 'Moments', icon: '📸' },
+    { href: '/admin/skills', label: 'Skills', icon: '🎯' },
+    { href: '/admin/home-activities', label: 'Home Activities', icon: '🏠' },
+    { href: '/admin/ptm', label: 'PTM', icon: '🤝' },
     { href: '/admin/reports', label: 'Reports', icon: '📈' },
+    { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   ]
 
   const statCards = [
@@ -57,7 +67,7 @@ export default function AdminDashboard() {
     { label: 'Staff Members', value: stats.staff, icon: '👩‍🏫', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
     { label: 'Active Classes', value: stats.classes, icon: '📚', color: '#a78bfa', bg: 'rgba(167,139,250,0.1)' },
     { label: 'Pending Admissions', value: stats.admissions, icon: '📋', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-    { label: 'Unpaid Fees ($)', value: `$${stats.fees.toLocaleString()}`, icon: '💳', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+    { label: 'Unpaid Fees (₹)', value: `₹${stats.fees.toLocaleString()}`, icon: '💳', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
     { label: "Today's Attendance", value: stats.attendance, icon: '✅', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
   ]
 
