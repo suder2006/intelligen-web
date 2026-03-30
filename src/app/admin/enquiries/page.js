@@ -195,6 +195,7 @@ export default function AdminEnquiriesPage() {
       const wb = XLSX.read(evt.target.result, { type: 'binary' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws)
+      console.log('Raw Excel data:', JSON.stringify(data[0])) // ADD THIS for debug
       // Validate and map data
       const mapped = data.map((row, index) => ({
         row: index + 2,
