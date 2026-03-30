@@ -197,17 +197,25 @@ export default function AdminEnquiriesPage() {
       const data = XLSX.utils.sheet_to_json(ws)
       console.log('Raw Excel data:', JSON.stringify(data[0])) // ADD THIS for debug
       // Validate and map data
+      // Helper to convert Excel serial date to YYYY-MM-DD
+      const excelDateToString = (serial) => {
+        if (!serial) return ''
+        if (typeof serial === 'string' && serial.includes('-')) return serial
+        const date = new Date(Math.round((serial - 25569) * 86400 * 1000))
+        return date.toISOString().split('T')[0]
+      }
+
       const mapped = data.map((row, index) => ({
         row: index + 2,
         parent_name: row['Parent Name'] || '',
-        phone: String(row['Phone'] || '').trim(),
+        phone: String(row['Phone'] || '').trim().replace(/\D/g, ''),
         email: row['Email'] || '',
         child_name: row['Child Name'] || '',
-        child_dob: row['Child DOB'] || '',
+        child_dob: excelDateToString(row['Child DOB']),
         program: row['Program'] || '',
         lead_source: row['Lead Source'] || 'walk-in',
         notes: row['Notes'] || '',
-        preferred_visit_date: row['Preferred Visit Date'] || ''
+        preferred_visit_date: excelDateToString(row['Preferred Visit Date'])
       }))
       // Validate
       const errors = []
