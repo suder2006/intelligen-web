@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import { APP_URL } from '@/lib/config'
+import * as XLSX from 'xlsx'
 
 const LEAD_STATUSES = ['new', 'contacted', 'visit_booked', 'visit_completed', 'enrolled', 'closed']
 const LEAD_SOURCES = ['walk-in', 'google_ads', 'meta_ads', 'referral', 'website', 'other']
@@ -57,6 +58,11 @@ export default function AdminEnquiriesPage() {
     due_date: new Date().toISOString().split('T')[0],
     due_time: '10:00', task_type: 'call', comments: ''
   })
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadData, setUploadData] = useState([])
+  const [uploadErrors, setUploadErrors] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState(null)
 
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
@@ -161,6 +167,117 @@ export default function AdminEnquiriesPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const downloadTemplate = () => {
+    const template = [
+      {
+        'Parent Name': 'e.g. Priya Sharma',
+        'Phone': 'e.g. 9876543210',
+        'Email': 'e.g. priya@email.com',
+        'Child Name': 'e.g. Aarav Sharma',
+        'Child DOB': 'e.g. 2022-01-15',
+        'Program': 'e.g. Nursery',
+        'Lead Source': 'e.g. walk-in',
+        'Notes': 'e.g. Interested in morning batch',
+        'Preferred Visit Date': 'e.g. 2026-04-01'
+      }
+    ]
+    const ws = XLSX.utils.json_to_sheet(template)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Enquiries')
+    XLSX.writeFile(wb, 'enquiry-template.xlsx')
+  }
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const wb = XLSX.read(evt.target.result, { type: 'binary' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const data = XLSX.utils.sheet_to_json(ws)
+      // Validate and map data
+      const mapped = data.map((row, index) => ({
+        row: index + 2,
+        parent_name: row['Parent Name'] || '',
+        phone: String(row['Phone'] || '').trim(),
+        email: row['Email'] || '',
+        child_name: row['Child Name'] || '',
+        child_dob: row['Child DOB'] || '',
+        program: row['Program'] || '',
+        lead_source: row['Lead Source'] || 'walk-in',
+        notes: row['Notes'] || '',
+        preferred_visit_date: row['Preferred Visit Date'] || ''
+      }))
+      // Validate
+      const errors = []
+      mapped.forEach(row => {
+        if (!row.parent_name) errors.push(`Row ${row.row}: Parent Name is required`)
+        if (!row.phone) errors.push(`Row ${row.row}: Phone is required`)
+        if (!row.child_name) errors.push(`Row ${row.row}: Child Name is required`)
+      })
+      setUploadData(mapped)
+      setUploadErrors(errors)
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const processUpload = async () => {
+    if (uploadErrors.length > 0) { alert('Please fix errors before uploading'); return }
+    setUploading(true)
+    let imported = 0
+    let skipped = 0
+    const skippedList = []
+
+    for (const row of uploadData) {
+      // Check duplicate
+      const existing = enquiries.find(e => e.phone === row.phone)
+      if (existing) {
+        skipped++
+        skippedList.push(`${row.parent_name} (${row.phone}) - duplicate`)
+        continue
+      }
+      // Calculate age
+      const dob = row.child_dob ? new Date(row.child_dob) : null
+      const now = new Date()
+      const ageMonths = dob ? (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) : null
+      // Insert
+      const { data: newEnq } = await supabase.from('enquiries').insert({
+        school_id: schoolId,
+        parent_name: row.parent_name,
+        phone: row.phone,
+        email: row.email || null,
+        child_name: row.child_name,
+        child_dob: row.child_dob || null,
+        child_age_years: ageMonths ? Math.floor(ageMonths / 12) : null,
+        child_age_months: ageMonths,
+        program: row.program || null,
+        lead_source: row.lead_source || 'walk-in',
+        notes: row.notes || null,
+        preferred_visit_date: row.preferred_visit_date || null,
+        status: 'new'
+      }).select().single()
+
+      if (newEnq) {
+        // Auto create follow-up
+        const dueDate = new Date()
+        dueDate.setHours(dueDate.getHours() + 1)
+        await supabase.from('follow_ups').insert({
+          school_id: schoolId,
+          enquiry_id: newEnq.id,
+          due_date: dueDate.toISOString().split('T')[0],
+          due_time: dueDate.toTimeString().slice(0, 5),
+          task_type: 'call',
+          status: 'pending'
+        })
+        imported++
+      }
+    }
+
+    setUploadResult({ imported, skipped, skippedList })
+    setUploading(false)
+    await fetchAll()
+  }
+
   const filteredEnquiries = enquiries.filter(e => {
     const matchStatus = filterStatus === 'all' || e.status === filterStatus
     const matchSource = filterSource === 'all' || e.lead_source === filterSource
@@ -246,6 +363,7 @@ export default function AdminEnquiriesPage() {
             <a href={enquiryUrl} target='_blank' rel='noreferrer' className="btn-secondary" style={{ textDecoration: 'none', display: 'inline-block' }}>
               👁️ Preview Form
             </a>
+            <button onClick={() => { setShowUploadModal(true); setUploadData([]); setUploadErrors([]); setUploadResult(null) }} className="btn-secondary">📤 Upload Excel</button>
             <button onClick={() => setShowAddForm(true)} className="btn-primary">+ Add Enquiry</button>
           </div>
         </div>
@@ -709,6 +827,123 @@ export default function AdminEnquiriesPage() {
               <button onClick={() => setShowAddForm(false)} className="btn-secondary">Cancel</button>
               <button onClick={saveAddForm} disabled={saving2} className="btn-primary">{saving2 ? 'Saving...' : 'Add Enquiry'}</button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Excel Upload Modal */}
+      {showUploadModal && (
+        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '6px' }}>📤 Upload Enquiries from Excel</h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>Upload multiple enquiries at once using an Excel file</p>
+
+            {!uploadResult ? (
+              <>
+                {/* Download Template */}
+                <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '600', color: '#38bdf8', marginBottom: '6px', fontSize: '14px' }}>Step 1: Download Template</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '10px' }}>Download the template, fill in your data and upload it back.</div>
+                  <button onClick={downloadTemplate} className="btn-secondary">⬇️ Download Excel Template</button>
+                </div>
+
+                {/* Upload File */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
+                  <div style={{ fontWeight: '600', marginBottom: '6px', fontSize: '14px' }}>Step 2: Upload Filled File</div>
+                  <input type='file' accept='.xlsx,.xls,.csv' onChange={handleFileUpload}
+                    style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', marginBottom: '10px', display: 'block' }} />
+                </div>
+
+                {/* Preview */}
+                {uploadData.length > 0 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
+                      📋 Preview — {uploadData.length} rows found
+                      {uploadErrors.length > 0 && <span style={{ color: '#f87171', fontSize: '13px', marginLeft: '8px' }}>({uploadErrors.length} errors)</span>}
+                    </div>
+
+                    {/* Errors */}
+                    {uploadErrors.length > 0 && (
+                      <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+                        <div style={{ color: '#f87171', fontWeight: '600', marginBottom: '6px', fontSize: '13px' }}>❌ Please fix these errors:</div>
+                        {uploadErrors.map((err, i) => <div key={i} style={{ color: '#fca5a5', fontSize: '12px' }}>{err}</div>)}
+                      </div>
+                    )}
+
+                    {/* Duplicate warnings */}
+                    {uploadData.filter(row => enquiries.find(e => e.phone === row.phone)).length > 0 && (
+                      <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+                        <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '6px', fontSize: '13px' }}>⚠️ Duplicates will be skipped:</div>
+                        {uploadData.filter(row => enquiries.find(e => e.phone === row.phone)).map((row, i) => (
+                          <div key={i} style={{ color: '#fcd34d', fontSize: '12px' }}>{row.parent_name} ({row.phone})</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preview table */}
+                    <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                            {['Parent', 'Phone', 'Child', 'Program', 'Source'].map(h => (
+                              <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: '600', textTransform: 'uppercase' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {uploadData.slice(0, 5).map((row, i) => {
+                            const isDup = enquiries.find(e => e.phone === row.phone)
+                            return (
+                              <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', opacity: isDup ? 0.5 : 1 }}>
+                                <td style={{ padding: '8px 12px', fontSize: '12px' }}>{row.parent_name} {isDup && <span style={{ color: '#fbbf24', fontSize: '10px' }}>DUP</span>}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '12px' }}>{row.phone}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '12px' }}>{row.child_name}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '12px' }}>{row.program || '—'}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '12px' }}>{row.lead_source}</td>
+                              </tr>
+                            )
+                          })}
+                          {uploadData.length > 5 && (
+                            <tr><td colSpan={5} style={{ padding: '8px 12px', fontSize: '12px', color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>...and {uploadData.length - 5} more rows</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowUploadModal(false)} className="btn-secondary">Cancel</button>
+                  {uploadData.length > 0 && uploadErrors.length === 0 && (
+                    <button onClick={processUpload} disabled={uploading} className="btn-primary">
+                      {uploading ? '⏳ Importing...' : `📤 Import ${uploadData.filter(row => !enquiries.find(e => e.phone === row.phone)).length} Enquiries`}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* Upload Result */
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎉</div>
+                <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>Import Complete!</div>
+                <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginBottom: '20px' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ color: '#10b981', fontWeight: '700', fontSize: '28px' }}>{uploadResult.imported}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Imported</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ color: '#f59e0b', fontWeight: '700', fontSize: '28px' }}>{uploadResult.skipped}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Skipped (Duplicates)</div>
+                  </div>
+                </div>
+                {uploadResult.skippedList.length > 0 && (
+                  <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '16px', textAlign: 'left' }}>
+                    <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '6px', fontSize: '13px' }}>⚠️ Skipped duplicates:</div>
+                    {uploadResult.skippedList.map((s, i) => <div key={i} style={{ color: '#fcd34d', fontSize: '12px' }}>{s}</div>)}
+                  </div>
+                )}
+                <button onClick={() => setShowUploadModal(false)} className="btn-primary">✅ Done</button>
+              </div>
+            )}
           </div>
         </div>
       )}
