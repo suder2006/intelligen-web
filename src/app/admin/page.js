@@ -10,6 +10,7 @@ export default function AdminDashboard() {
   const [school, setSchool] = useState(null)
   const [birthdayTemplate, setBirthdayTemplate] = useState('')
   const [showBirthdaySettings, setShowBirthdaySettings] = useState(false)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [sendingWishes, setSendingWishes] = useState(null)
   const [wishSent, setWishSent] = useState({})
 
@@ -117,8 +118,10 @@ export default function AdminDashboard() {
     alert(`🎂 Birthday wish sent to ${student.full_name}'s parent!`)
   }
 
-  const saveBirthdayTemplate = async () => {
+const saveBirthdayTemplate = async () => {
+    setSavingTemplate(true)
     await supabase.from('schools').update({ birthday_message_template: birthdayTemplate }).eq('id', schoolId)
+    setSavingTemplate(false)
     setShowBirthdaySettings(false)
     alert('✅ Birthday message template saved!')
   }
@@ -360,8 +363,10 @@ export default function AdminDashboard() {
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowBirthdaySettings(false)}
                 style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 18px', color: 'rgba(255,255,255,0.7)', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
-              <button onClick={saveBirthdayTemplate}
-                style={{ background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>💾 Save Template</button>
+              <button onClick={saveBirthdayTemplate} disabled={savingTemplate}
+                style={{ background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {savingTemplate ? '⏳ Saving...' : '💾 Save Template'}
+              </button>
             </div>
           </div>
         </div>
