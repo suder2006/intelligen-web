@@ -50,6 +50,8 @@ export default function TeacherPortal() {
   const [selectedPayslip, setSelectedPayslip] = useState(null)
   const [activityCompletions, setActivityCompletions] = useState([])
   const [homeActivities, setHomeActivities] = useState([])
+  const [birthdayStudents, setBirthdayStudents] = useState([])
+  const [schoolForBirthday, setSchoolForBirthday] = useState(null)
 
 
   useEffect(() => { loadData() }, [])
@@ -138,6 +140,14 @@ const { data: sData } = await supabase.from('students')
         .select('*, students(full_name)').in('student_id', studentIds)
       setActivityCompletions(actCompData || [])
     }
+
+    // Load birthdays for teacher's programs
+    const [schRes, notifRes] = await Promise.all([
+      supabase.from('schools').select('*').eq('id', prof.school_id).single(),
+      supabase.from('birthday_notifications').select('student_id, notification_date').eq('school_id', prof.school_id)
+    ])
+    setSchoolForBirthday(schRes.data)
+    setBirthdayStudents(sData || [])
 
     setLoading(false)
   }
@@ -325,6 +335,19 @@ const fetchMoments = async (schoolId) => {
     fetchAttendance()
   }
 
+  const getTodayBirthdays = () => {
+    const today = new Date()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    return birthdayStudents.filter(s => s.date_of_birth && s.date_of_birth.slice(5) === `${mm}-${dd}`)
+  }
+
+  const getMonthBirthdays = () => {
+    const mm = String(new Date().getMonth() + 1).padStart(2, '0')
+    return birthdayStudents.filter(s => s.date_of_birth && s.date_of_birth.slice(5, 7) === mm)
+      .sort((a, b) => a.date_of_birth.slice(8) - b.date_of_birth.slice(8))
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
   const present = attendance.filter(a => a.status === 'present').length
@@ -345,6 +368,7 @@ const fetchMoments = async (schoolId) => {
     { id: 'payslip', label: 'Payslip', icon: '💰' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
+    { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
   ]
 
   return (
@@ -924,6 +948,58 @@ const fetchMoments = async (schoolId) => {
                 ))}
               </>
             )}
+
+            {activeTab === 'birthdays' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🎂 Student Birthdays</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Birthdays for students in your programs</div>
+                </div>
+
+                {/* Today's Birthdays */}
+                {getTodayBirthdays().length > 0 && (
+                  <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(251,191,36,0.05))', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: '700', color: '#fbbf24', marginBottom: '14px' }}>🎂 Today's Birthdays!</div>
+                    {getTodayBirthdays().map(s => (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(245,158,11,0.1)' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#000', fontSize: '16px' }}>
+                          {s.full_name?.[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '15px' }}>{s.full_name} 🎂</div>
+                          <div style={{ color: '#fbbf24', fontSize: '13px' }}>{s.program} · Birthday Today!</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* This Month */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px' }}>
+                  <div style={{ fontWeight: '600', color: 'rgba(255,255,255,0.7)', marginBottom: '14px', fontSize: '15px' }}>
+                    📋 This Month's Birthdays ({getMonthBirthdays().length})
+                  </div>
+                  {getMonthBirthdays().length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)' }}>No birthdays this month</div>
+                  ) : getMonthBirthdays().map(s => {
+                    const day = s.date_of_birth.slice(8)
+                    const isToday = getTodayBirthdays().find(t => t.id === s.id)
+                    return (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: isToday ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: isToday ? '#000' : '#fff', flexShrink: 0 }}>
+                          {day}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '14px', color: isToday ? '#fbbf24' : '#fff' }}>{s.full_name} {isToday ? '🎂' : ''}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.program}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
           </>
         )}
       </div>
