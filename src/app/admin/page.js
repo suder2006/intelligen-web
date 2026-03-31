@@ -15,6 +15,7 @@ export default function AdminDashboard() {
   const [wishSent, setWishSent] = useState({})
 
   const [schoolName, setSchoolName] = useState('My School')
+  const [schoolId, setSchoolId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const router = useRouter()
@@ -29,6 +30,7 @@ export default function AdminDashboard() {
       const { data: schoolData } = await supabase.from('schools').select('name').eq('id', prof?.school_id).single()
       setSchoolName(schoolData?.name || 'My School')
       const schoolId = prof?.school_id
+      setSchoolId(schoolId)
       const [s, st, f, ad, at] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
         supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']).eq('school_id', schoolId),
@@ -98,7 +100,7 @@ export default function AdminDashboard() {
     if (ps && ps.length > 0) {
       for (const { parent_id } of ps) {
         await supabase.from('chat_messages').insert({
-          sender_id: schoolId,
+          sender_id: school?.id,
           receiver_id: parent_id,
           sender_name: school?.name || 'School',
           content: message
@@ -107,7 +109,7 @@ export default function AdminDashboard() {
     }
     // Log notification
     await supabase.from('birthday_notifications').insert({
-      school_id: schoolId,
+      school_id: school?.id,
       student_id: student.id,
       notification_date: new Date().toISOString().split('T')[0],
       sent_by: user.id,
