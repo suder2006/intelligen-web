@@ -29,6 +29,9 @@ export default function CenterHeadPortal() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [birthdayStudents, setBirthdayStudents] = useState([])
+  const [schoolForBirthday, setSchoolForBirthday] = useState(null)
+
   const router = useRouter()
 
   const [followUpForm, setFollowUpForm] = useState({
@@ -41,6 +44,18 @@ export default function CenterHeadPortal() {
   })
 
   useEffect(() => { loadData() }, [])
+
+  const getTodayBirthdays = (students) => {
+    const mm = String(new Date().getMonth() + 1).padStart(2, '0')
+    const dd = String(new Date().getDate()).padStart(2, '0')
+    return students.filter(s => s.date_of_birth && s.date_of_birth.slice(5) === `${mm}-${dd}`)
+  }
+
+  const getMonthBirthdays = (students) => {
+    const mm = String(new Date().getMonth() + 1).padStart(2, '0')
+    return students.filter(s => s.date_of_birth && s.date_of_birth.slice(5, 7) === mm)
+      .sort((a, b) => a.date_of_birth.slice(8) - b.date_of_birth.slice(8))
+  }
 
   const loadData = async () => {
     setLoading(true)
@@ -57,6 +72,14 @@ export default function CenterHeadPortal() {
     setEnquiries(enqRes.data || [])
     setFollowUps(fuRes.data || [])
     setVisits(visRes.data || [])
+    // Load birthdays
+    const [schRes, stuRes] = await Promise.all([
+      supabase.from('schools').select('*').eq('id', prof.school_id).single(),
+      supabase.from('students').select('*').eq('school_id', prof.school_id).eq('status', 'active').order('full_name')
+    ])
+    setSchoolForBirthday(schRes.data)
+    setBirthdayStudents(stuRes.data || [])
+
     setLoading(false)
   }
 
@@ -145,6 +168,7 @@ export default function CenterHeadPortal() {
     { id: 'enquiries', label: 'All Enquiries', icon: '🎯' },
     { id: 'visits', label: 'Visits', icon: '🏫' },
     { id: 'missed', label: `Missed (${missedFollowUps.length})`, icon: '🚨' },
+    { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
   ]
 
   return (
@@ -449,6 +473,59 @@ export default function CenterHeadPortal() {
                 )}
               </>
             )}
+
+            {/* BIRTHDAYS */}
+            {activeTab === 'birthdays' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🎂 Student Birthdays</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>All student birthdays for this month</div>
+                </div>
+
+                {/* Today */}
+                {getTodayBirthdays(birthdayStudents).length > 0 && (
+                  <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(251,191,36,0.05))', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: '700', color: '#fbbf24', marginBottom: '14px' }}>🎂 Today's Birthdays!</div>
+                    {getTodayBirthdays(birthdayStudents).map(s => (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(245,158,11,0.1)' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#000', fontSize: '16px' }}>
+                          {s.full_name?.[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '15px' }}>{s.full_name} 🎂</div>
+                          <div style={{ color: '#fbbf24', fontSize: '13px' }}>{s.program} · Birthday Today!</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* This Month */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px' }}>
+                  <div style={{ fontWeight: '600', color: 'rgba(255,255,255,0.7)', marginBottom: '14px' }}>
+                    📋 This Month's Birthdays ({getMonthBirthdays(birthdayStudents).length})
+                  </div>
+                  {getMonthBirthdays(birthdayStudents).length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)' }}>No birthdays this month</div>
+                  ) : getMonthBirthdays(birthdayStudents).map(s => {
+                    const day = s.date_of_birth.slice(8)
+                    const isToday = getTodayBirthdays(birthdayStudents).find(t => t.id === s.id)
+                    return (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: isToday ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: isToday ? '#000' : '#fff', flexShrink: 0 }}>
+                          {day}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '14px', color: isToday ? '#fbbf24' : '#fff' }}>{s.full_name} {isToday ? '🎂' : ''}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.program}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )} 
+
           </>
         )}
       </div>
