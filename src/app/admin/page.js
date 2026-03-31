@@ -120,9 +120,15 @@ export default function AdminDashboard() {
 
   const saveBirthdayTemplate = async () => {
     setSavingTemplate(true)
-    await supabase.from('schools').update({ birthday_message_template: birthdayTemplate }).eq('id', schoolId)
-    setSavingTemplate(false)
-    setShowBirthdaySettings(false)
+    try {
+      const { error } = await supabase.from('schools').update({ birthday_message_template: birthdayTemplate }).eq('id', schoolId)
+      if (error) throw error
+    } catch (e) {
+      console.error('Save error:', e)
+    } finally {
+      setSavingTemplate(false)
+      setShowBirthdaySettings(false)
+    }
   }
 
   const sendAllTodayWishes = async () => {
