@@ -3,23 +3,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
+import AdminSidebar from '@/components/AdminSidebar'
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: '⊞' },
-  { href: '/admin/students', label: 'Students', icon: '👶' },
-  { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
-  { href: '/admin/staff-groups', label: 'Staff Groups', icon: '⏰' },
-  { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
-  { href: '/admin/fees', label: 'Fees', icon: '💳' },
-  { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
-  { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
-  { href: '/admin/checkin', label: 'Check-in/out', icon: '🚪' },
-  { href: '/admin/leave', label: 'Leave', icon: '🏖️' },
-  { href: '/admin/staff-report', label: 'Staff Report', icon: '📋' },
-  { href: '/admin/messages', label: 'Messages', icon: '💬' },
-  { href: '/admin/reports', label: 'Reports', icon: '📈' },
-  { href: '/admin/skills', label: 'Skills', icon: '🎯' },
-]
+
 
 export default function StaffAttendanceReport() {
   const [loading, setLoading] = useState(true)
@@ -142,11 +128,7 @@ export default function StaffAttendanceReport() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .sidebar { width: 240px; min-height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; position: fixed; top: 0; left: 0; overflow-y: auto; }
-        .logo { font-family: 'Playfair Display', serif; font-size: 24px; color: #fff; padding: 8px 12px; margin-bottom: 32px; }
-        .logo span { color: #38bdf8; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.2s; margin-bottom: 4px; }
-        .nav-item:hover, .nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8; }
+        
         .main { margin-left: 240px; flex: 1; padding: 32px; }
         .btn-primary { background: linear-gradient(135deg, #0ea5e9, #38bdf8); border: none; border-radius: 10px; padding: 10px 20px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
@@ -173,14 +155,7 @@ export default function StaffAttendanceReport() {
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
-      <div className="sidebar">
-        <div className="logo">Intelli<span>Gen</span></div>
-        {navItems.map(item => (
-          <Link key={item.href} href={item.href} className={`nav-item ${item.href === '/admin/staff-report' ? 'active' : ''}`}>
-            <span>{item.icon}</span> {item.label}
-          </Link>
-        ))}
-      </div>
+      <AdminSidebar />
 
       <div className="main">
         {/* Header */}

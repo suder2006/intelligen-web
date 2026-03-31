@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
+import AdminSidebar from '@/components/AdminSidebar'
 
 export default function AttendancePage() {
   const [students, setStudents] = useState([])
@@ -13,22 +14,7 @@ export default function AttendancePage() {
   
   const { schoolId } = useSchool()
 
-  const navItems = [
-    { href: '/admin', label: 'Dashboard', icon: '⊞' },
-    { href: '/admin/students', label: 'Students', icon: '👶' },
-    { href: '/admin/classes', label: 'Classes', icon: '📚' },
-    { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
-    { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
-    { href: '/admin/fees', label: 'Fees', icon: '💳' },
-    { href: '/admin/fee-structure', label: 'Fee Structure', icon: '📊' },
-    { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
-    { href: '/admin/messages', label: 'Messages', icon: '💬' },
-    { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
-    { href: '/admin/moments', label: 'Moments', icon: '📸' },
-    { href: '/admin/reports', label: 'Reports', icon: '📈' },
-    { href: '/admin/skills', label: 'Skills & Progress', icon: '🎯' },
-    { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
-  ]
+
 
   useEffect(() => { if (schoolId) fetchData() }, [date, schoolId])
 
@@ -76,11 +62,7 @@ export default function AttendancePage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         * { box-sizing: border-box; }
-        .sidebar { width: 240px; min-height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; }
-        .logo { font-family: 'Playfair Display', serif; font-size: 24px; color: #fff; padding: 8px 12px; margin-bottom: 32px; }
-        .logo span { color: #38bdf8; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.2s; margin-bottom: 4px; }
-        .nav-item:hover, .nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8; }
+        
         .main { margin-left: 240px; flex: 1; padding: 32px; }
         .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
         .page-title { font-size: 24px; font-weight: 700; }
@@ -110,14 +92,7 @@ export default function AttendancePage() {
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 20px; } }
       `}</style>
 
-      <div className="sidebar">
-        <div className="logo">Intelli<span>Gen</span></div>
-        {navItems.map(item => (
-          <Link key={item.href} href={item.href} className={`nav-item ${item.href === '/admin/attendance' ? 'active' : ''}`}>
-            <span>{item.icon}</span> {item.label}
-          </Link>
-        ))}
-      </div>
+       <AdminSidebar />     
 
       <div className="main">
         <div className="topbar">

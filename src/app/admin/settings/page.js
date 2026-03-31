@@ -3,15 +3,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
+import AdminSidebar from '@/components/AdminSidebar'
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: '⊞' },
-  { href: '/admin/students', label: 'Students', icon: '👶' },
-  { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
-  { href: '/admin/fees', label: 'Fees', icon: '💳' },
-  { href: '/admin/attendance', label: 'Attendance', icon: '✅' },
-  { href: '/admin/settings', label: 'School Settings', icon: '⚙️' },
-]
+
 
 export default function SchoolSettingsPage() {
   const { schoolId, schoolName } = useSchool()
@@ -73,11 +67,7 @@ export default function SchoolSettingsPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .sidebar { width: 240px; min-height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; position: fixed; top: 0; left: 0; overflow-y: auto; }
-        .logo { font-family: 'Playfair Display', serif; font-size: 24px; color: #fff; padding: 8px 12px; margin-bottom: 32px; }
-        .logo span { color: #38bdf8; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.2s; margin-bottom: 4px; }
-        .nav-item:hover, .nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8; }
+        
         .main { margin-left: 240px; flex: 1; padding: 32px; max-width: 1000px; }
         .btn-primary { background: linear-gradient(135deg, #0ea5e9, #38bdf8); border: none; border-radius: 10px; padding: 12px 28px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .section { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 24px; margin-bottom: 24px; }
@@ -87,14 +77,7 @@ export default function SchoolSettingsPage() {
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } .grid-2 { grid-template-columns: 1fr; } }
       `}</style>
 
-      <div className="sidebar">
-        <div className="logo">Intelli<span>Gen</span></div>
-        {navItems.map(item => (
-          <Link key={item.href} href={item.href} className={`nav-item ${item.href === '/admin/settings' ? 'active' : ''}`}>
-            <span>{item.icon}</span> {item.label}
-          </Link>
-        ))}
-      </div>
+      <AdminSidebar />
 
       <div className="main">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '12px' }}>
