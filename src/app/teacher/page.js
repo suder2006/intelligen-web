@@ -52,6 +52,9 @@ export default function TeacherPortal() {
   const [homeActivities, setHomeActivities] = useState([])
   const [birthdayStudents, setBirthdayStudents] = useState([])
   const [schoolForBirthday, setSchoolForBirthday] = useState(null)
+  const [bdayMonth, setBdayMonth] = useState(new Date().getMonth())
+  const [bdayYear, setBdayYear] = useState(new Date().getFullYear())
+  const [bdaySelectedDay, setBdaySelectedDay] = useState(null)
 
 
   useEffect(() => { loadData() }, [])
@@ -335,6 +338,8 @@ const fetchMoments = async (schoolId) => {
     fetchAttendance()
   }
 
+  const BDAY_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
   const getTodayBirthdays = () => {
     const today = new Date()
     const mm = String(today.getMonth() + 1).padStart(2, '0')
@@ -342,10 +347,16 @@ const fetchMoments = async (schoolId) => {
     return birthdayStudents.filter(s => s.date_of_birth && s.date_of_birth.slice(5) === `${mm}-${dd}`)
   }
 
+  const getBdayForDay = (day) => {
+    const mm = String(bdayMonth + 1).padStart(2, '0')
+    const dd = String(day).padStart(2, '0')
+    return birthdayStudents.filter(s => s.date_of_birth && s.date_of_birth.slice(5) === `${mm}-${dd}`)
+  }
+
   const getMonthBirthdays = () => {
-    const mm = String(new Date().getMonth() + 1).padStart(2, '0')
+    const mm = String(bdayMonth + 1).padStart(2, '0')
     return birthdayStudents.filter(s => s.date_of_birth && s.date_of_birth.slice(5, 7) === mm)
-      .sort((a, b) => a.date_of_birth.slice(8) - b.date_of_birth.slice(8))
+      .sort((a, b) => parseInt(a.date_of_birth.slice(8)) - parseInt(b.date_of_birth.slice(8)))
   }
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
@@ -952,51 +963,97 @@ const fetchMoments = async (schoolId) => {
             {activeTab === 'birthdays' && (
               <>
                 <div style={{ marginBottom: '20px' }}>
-                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🎂 Student Birthdays</div>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🎂 Birthday Calendar</div>
                   <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Birthdays for students in your programs</div>
                 </div>
 
-                {/* Today's Birthdays */}
-                {getTodayBirthdays().length > 0 && (
-                  <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(251,191,36,0.05))', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
-                    <div style={{ fontWeight: '700', color: '#fbbf24', marginBottom: '14px' }}>🎂 Today's Birthdays!</div>
-                    {getTodayBirthdays().map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(245,158,11,0.1)' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#000', fontSize: '16px' }}>
+                {/* Month Navigator */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button onClick={() => { if (bdayMonth === 0) { setBdayMonth(11); setBdayYear(y => y - 1) } else setBdayMonth(m => m - 1); setBdaySelectedDay(null) }}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 14px', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>← Prev</button>
+                    <div style={{ fontSize: '18px', fontWeight: '700', minWidth: '180px', textAlign: 'center' }}>{BDAY_MONTHS[bdayMonth]} {bdayYear}</div>
+                    <button onClick={() => { if (bdayMonth === 11) { setBdayMonth(0); setBdayYear(y => y + 1) } else setBdayMonth(m => m + 1); setBdaySelectedDay(null) }}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 14px', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Next →</button>
+                  </div>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>🎂 {getMonthBirthdays().length} birthdays this month</span>
+                </div>
+
+                {/* Calendar Grid */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '6px' }}>
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                      <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: d === 'Sun' ? '#f87171' : 'rgba(255,255,255,0.4)', padding: '6px 0' }}>{d}</div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                    {Array.from({ length: new Date(bdayYear, bdayMonth, 1).getDay() }).map((_, i) => <div key={`e-${i}`} />)}
+                    {Array.from({ length: new Date(bdayYear, bdayMonth + 1, 0).getDate() }).map((_, i) => {
+                      const day = i + 1
+                      const dayBdays = getBdayForDay(day)
+                      const isToday = new Date().getMonth() === bdayMonth && new Date().getFullYear() === bdayYear && new Date().getDate() === day
+                      const isSunday = new Date(bdayYear, bdayMonth, day).getDay() === 0
+                      const isSelected = bdaySelectedDay === day
+                      return (
+                        <div key={day} onClick={() => setBdaySelectedDay(isSelected ? null : day)}
+                          style={{ minHeight: '75px', background: isSelected ? 'rgba(167,139,250,0.08)' : dayBdays.length > 0 ? 'rgba(245,158,11,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isSelected ? '#a78bfa' : isToday ? '#38bdf8' : 'rgba(255,255,255,0.05)'}`, borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '600', color: isToday ? '#38bdf8' : isSunday ? '#f87171' : 'rgba(255,255,255,0.5)', marginBottom: '3px' }}>{day}</div>
+                          {dayBdays.slice(0, 2).map(s => (
+                            <div key={s.id} style={{ padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: '600', background: 'rgba(245,158,11,0.2)', color: '#fbbf24', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              🎂 {s.full_name.split(' ')[0]}
+                            </div>
+                          ))}
+                          {dayBdays.length > 2 && <div style={{ fontSize: '10px', color: '#a78bfa', fontWeight: '600' }}>+{dayBdays.length - 2} more</div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Selected day panel */}
+                {bdaySelectedDay && getBdayForDay(bdaySelectedDay).length > 0 && (
+                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
+                    <div style={{ fontWeight: '700', color: '#fbbf24', marginBottom: '12px' }}>🎂 {BDAY_MONTHS[bdayMonth]} {bdaySelectedDay}</div>
+                    {getBdayForDay(bdaySelectedDay).map(s => (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid rgba(245,158,11,0.1)' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#000' }}>
                           {s.full_name?.[0]?.toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontWeight: '700', fontSize: '15px' }}>{s.full_name} 🎂</div>
-                          <div style={{ color: '#fbbf24', fontSize: '13px' }}>{s.program} · Birthday Today!</div>
+                          <div style={{ fontWeight: '600' }}>{s.full_name}</div>
+                          <div style={{ color: '#fbbf24', fontSize: '12px' }}>{s.program}</div>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* This Month */}
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px' }}>
-                  <div style={{ fontWeight: '600', color: 'rgba(255,255,255,0.7)', marginBottom: '14px', fontSize: '15px' }}>
-                    📋 This Month's Birthdays ({getMonthBirthdays().length})
+                {/* Month list */}
+                {getMonthBirthdays().length > 0 ? (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '16px' }}>
+                    <div style={{ fontWeight: '600', color: 'rgba(255,255,255,0.7)', marginBottom: '14px' }}>📋 {BDAY_MONTHS[bdayMonth]} Birthday List ({getMonthBirthdays().length})</div>
+                    {getMonthBirthdays().map(s => {
+                      const day = parseInt(s.date_of_birth.slice(8))
+                      const isToday = new Date().getMonth() === bdayMonth && new Date().getDate() === day
+                      return (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isToday ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: isToday ? '#000' : '#fff', flexShrink: 0 }}>
+                            {day}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: isToday ? '#fbbf24' : '#fff' }}>{s.full_name} {isToday ? '🎂' : ''}</div>
+                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{s.program}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  {getMonthBirthdays().length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)' }}>No birthdays this month</div>
-                  ) : getMonthBirthdays().map(s => {
-                    const day = s.date_of_birth.slice(8)
-                    const isToday = getTodayBirthdays().find(t => t.id === s.id)
-                    return (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: isToday ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: isToday ? '#000' : '#fff', flexShrink: 0 }}>
-                          {day}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: '600', fontSize: '14px', color: isToday ? '#fbbf24' : '#fff' }}>{s.full_name} {isToday ? '🎂' : ''}</div>
-                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.program}</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>🎂</div>
+                    No birthdays in {BDAY_MONTHS[bdayMonth]}
+                  </div>
+                )}
               </>
             )}
 
