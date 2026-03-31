@@ -118,12 +118,11 @@ export default function AdminDashboard() {
     alert(`🎂 Birthday wish sent to ${student.full_name}'s parent!`)
   }
 
-const saveBirthdayTemplate = async () => {
+  const saveBirthdayTemplate = async () => {
     setSavingTemplate(true)
     await supabase.from('schools').update({ birthday_message_template: birthdayTemplate }).eq('id', schoolId)
     setSavingTemplate(false)
     setShowBirthdaySettings(false)
-    alert('✅ Birthday message template saved!')
   }
 
   const sendAllTodayWishes = async () => {
