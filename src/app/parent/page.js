@@ -51,6 +51,8 @@ export default function ParentPortal() {
   const [schoolId, setSchoolId] = useState(null)
   const [schoolName, setSchoolName] = useState('')
   const [schoolUpi, setSchoolUpi] = useState({ upi_id: '', upi_name: '', upi_description: '' })
+  const [studentTransportData, setStudentTransportData] = useState([])
+  const [transportLogs, setTransportLogs] = useState([])
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -187,6 +189,19 @@ export default function ParentPortal() {
       setPtmNotes(ntRes.data || [])
     }
 
+    // Load transport data
+    if (studentIds.length > 0) {
+      const [stRes, tlRes] = await Promise.all([
+        supabase.from('student_transport').select('*, transport_routes(*)').in('student_id', studentIds).eq('is_active', true),
+        supabase.from('transport_logs').select('*').in('student_id', studentIds)
+          .gte('event_time', `${new Date().toISOString().split('T')[0]}T00:00:00`)
+          .lte('event_time', `${new Date().toISOString().split('T')[0]}T23:59:59`)
+          .order('event_time', { ascending: false })
+      ])
+      setStudentTransportData(stRes.data || [])
+      setTransportLogs(tlRes.data || [])
+    }
+
     setLoading(false)
   }
 
@@ -309,6 +324,23 @@ export default function ParentPortal() {
     alert('✅ Slot booked successfully!')
   }
 
+  const loadTransportData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: linkedStudents } = await supabase.from('parent_students').select('student_id').eq('parent_id', user.id)
+    const studentIds = linkedStudents?.map(ls => ls.student_id) || []
+    if (studentIds.length === 0) return
+    const today = new Date().toISOString().split('T')[0]
+    const [stRes, tlRes] = await Promise.all([
+      supabase.from('student_transport').select('*, transport_routes(*)').in('student_id', studentIds).eq('is_active', true),
+      supabase.from('transport_logs').select('*').in('student_id', studentIds)
+        .gte('event_time', `${today}T00:00:00`)
+        .lte('event_time', `${today}T23:59:59`)
+        .order('event_time', { ascending: false })
+    ])
+    setStudentTransportData(stRes.data || [])
+    setTransportLogs(tlRes.data || [])
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
 const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
@@ -341,6 +373,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'holidays', label: 'Holidays', icon: '📅' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
+    { id: 'transport', label: 'Transport', icon: '🚌' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -1210,6 +1243,163 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                 ))}
               </>
             )}
+
+            {activeTab === 'transport' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🚌 Transport Tracker</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Today's transport status for your child</div>
+                </div>
+
+                {(() => {
+                  const EVENT_TYPES = [
+                    { id: 'morning_pickup', label: 'Morning Pickup', icon: '🌅', color: '#38bdf8', desc: 'Boarded van from home' },
+                    { id: 'school_drop', label: 'Arrived at School', icon: '🏫', color: '#34d399', desc: 'Reached school safely' },
+                    { id: 'school_pickup', label: 'Left School', icon: '🎒', color: '#fbbf24', desc: 'Boarded van to go home' },
+                    { id: 'home_drop', label: 'Dropped at Home', icon: '🏠', color: '#a78bfa', desc: 'Reached home safely' },
+                  ]
+
+                  if (studentTransportData.length === 0) return (
+                    <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                      <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚌</div>
+                      <div>Your child is not assigned to any transport route.</div>
+                      <div style={{ fontSize: '13px', marginTop: '8px' }}>Contact school if your child uses school transport.</div>
+                    </div>
+                  )
+
+                  return studentTransportData.map(ct => {
+                    const route = ct.transport_routes
+                    const studentLogs = transportLogs.filter(l => l.student_id === ct.student_id)
+                    const student = students.find(s => s.id === ct.student_id)
+
+                    return (
+                      <div key={ct.id} style={{ marginBottom: '24px' }}>
+                        {/* Student name if multiple children */}
+                        {students.length > 1 && student && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{student.full_name?.[0]}</div>
+                            <div style={{ fontWeight: '700' }}>{student.full_name}</div>
+                          </div>
+                        )}
+
+                        {/* Route Info Card */}
+                        <div style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.1), rgba(56,189,248,0.05))', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
+                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '12px', color: '#38bdf8' }}>🚌 {route?.name}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px' }}>
+                            {route?.vehicle_number && (
+                              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px' }}>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>VEHICLE</div>
+                                <div style={{ fontWeight: '700', color: '#fbbf24' }}>🚌 {route.vehicle_number}</div>
+                              </div>
+                            )}
+                            {route?.driver_name && (
+                              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px' }}>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>DRIVER</div>
+                                <div style={{ fontWeight: '600', fontSize: '13px' }}>{route.driver_name}</div>
+                                {route.driver_phone && (
+                                  <a href={`tel:${route.driver_phone}`} style={{ color: '#38bdf8', fontSize: '12px', textDecoration: 'none' }}>📞 {route.driver_phone}</a>
+                                )}
+                              </div>
+                            )}
+                            {route?.caretaker_name && (
+                              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px' }}>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>CARETAKER</div>
+                                <div style={{ fontWeight: '600', fontSize: '13px' }}>{route.caretaker_name}</div>
+                                {route.caretaker_phone && (
+                                  <a href={`tel:${route.caretaker_phone}`} style={{ color: '#38bdf8', fontSize: '12px', textDecoration: 'none' }}>📞 {route.caretaker_phone}</a>
+                                )}
+                              </div>
+                            )}
+                            {route?.morning_pickup_time && (
+                              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px' }}>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>PICKUP TIME</div>
+                                <div style={{ fontWeight: '700', color: '#38bdf8' }}>🌅 {route.morning_pickup_time}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Today's Journey Timeline */}
+                        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+                          <div style={{ fontWeight: '600', fontSize: '15px', marginBottom: '16px' }}>
+                            📍 Today's Journey
+                            <button onClick={loadTransportData} style={{ marginLeft: '10px', padding: '4px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>🔄 Refresh</button>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {EVENT_TYPES.map((evt, idx) => {
+                              const log = studentLogs.find(l => l.event_type === evt.id)
+                              const isDone = !!log
+                              return (
+                                <div key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: isDone ? `${evt.color}22` : 'rgba(255,255,255,0.05)', border: `2px solid ${isDone ? evt.color : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
+                                      {isDone ? '✅' : evt.icon}
+                                    </div>
+                                    {idx < EVENT_TYPES.length - 1 && (
+                                      <div style={{ width: '2px', height: '16px', background: isDone ? evt.color : 'rgba(255,255,255,0.08)', marginTop: '2px' }} />
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, padding: '10px 14px', background: isDone ? `${evt.color}0d` : 'rgba(255,255,255,0.02)', border: `1px solid ${isDone ? evt.color + '33' : 'rgba(255,255,255,0.05)'}`, borderRadius: '10px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <div>
+                                        <div style={{ fontWeight: '600', fontSize: '13px', color: isDone ? evt.color : 'rgba(255,255,255,0.4)' }}>{evt.label}</div>
+                                        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>{evt.desc}</div>
+                                      </div>
+                                      {isDone && log && (
+                                        <div style={{ textAlign: 'right' }}>
+                                          <div style={{ color: evt.color, fontWeight: '700', fontSize: '13px' }}>
+                                            {new Date(log.event_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                          </div>
+                                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>
+                                            {log.method === 'qr_scan' ? '📷 QR' : '✋ Manual'}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Parent Confirm Receipt */}
+                        {studentLogs.find(l => l.event_type === 'home_drop') && !studentLogs.find(l => l.event_type === 'parent_confirmed') && (
+                          <div style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '16px', padding: '20px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏠</div>
+                            <div style={{ fontWeight: '700', marginBottom: '4px' }}>Child has been dropped!</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '14px' }}>Please confirm you have received your child safely.</div>
+                            <button onClick={async () => {
+                              const { data: { user } } = await supabase.auth.getUser()
+                              await supabase.from('transport_logs').insert({
+                                school_id: ct.school_id || schoolId,
+                                student_id: ct.student_id,
+                                route_id: ct.route_id,
+                                event_type: 'parent_confirmed',
+                                event_time: new Date().toISOString(),
+                                marked_by: user.id,
+                                method: 'manual'
+                              })
+                              await loadTransportData()
+                            }}
+                              style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #a78bfa, #c4b5fd)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                              ✅ Yes, Child Received Safely!
+                            </button>
+                          </div>
+                        )}
+
+                        {studentLogs.find(l => l.event_type === 'parent_confirmed') && (
+                          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+                            <div style={{ color: '#34d399', fontWeight: '700' }}>✅ Receipt Confirmed — Child is safely home!</div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                })()}
+              </>
+            )}
+
             {activeTab === 'progress' && (
               <>
                 <div className="section-title">📊 Progress Reports</div>
