@@ -192,7 +192,7 @@ export default function ParentPortal() {
     // Load transport data
     if (studentIds.length > 0) {
       const [stRes, tlRes] = await Promise.all([
-        supabase.from('student_transport').select('*, transport_routes(*)').in('student_id', studentIds).eq('is_active', true),
+        supabase.from('student_transport').select('*, transport_routes(*)').in('student_id', studentIds),
         supabase.from('transport_logs').select('*').in('student_id', studentIds)
           .gte('event_time', `${new Date().toISOString().split('T')[0]}T00:00:00`)
           .lte('event_time', `${new Date().toISOString().split('T')[0]}T23:59:59`)
@@ -326,17 +326,22 @@ export default function ParentPortal() {
 
   const loadTransportData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: linkedStudents } = await supabase.from('parent_students').select('student_id').eq('parent_id', user.id)
+    const { data: linkedStudents } = await supabase
+      .from('parent_students').select('student_id').eq('parent_id', user.id)
     const studentIds = linkedStudents?.map(ls => ls.student_id) || []
     if (studentIds.length === 0) return
     const today = new Date().toISOString().split('T')[0]
     const [stRes, tlRes] = await Promise.all([
-      supabase.from('student_transport').select('*, transport_routes(*)').in('student_id', studentIds).eq('is_active', true),
-      supabase.from('transport_logs').select('*').in('student_id', studentIds)
+      supabase.from('student_transport')
+        .select('*, transport_routes(*)').in('student_id', studentIds),
+      supabase.from('transport_logs')
+        .select('*').in('student_id', studentIds)
         .gte('event_time', `${today}T00:00:00`)
         .lte('event_time', `${today}T23:59:59`)
         .order('event_time', { ascending: false })
     ])
+    console.log('Transport data:', stRes.data, stRes.error)
+    console.log('Transport logs:', tlRes.data, tlRes.error)
     setStudentTransportData(stRes.data || [])
     setTransportLogs(tlRes.data || [])
   }
