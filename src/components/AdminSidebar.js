@@ -24,6 +24,7 @@ const navItems = [
   { href: '/admin/home-activities', label: 'Home Activities', icon: '🏠' },
   { href: '/admin/ptm', label: 'PTM', icon: '🤝' },
   { href: '/admin/birthdays', label: 'Birthdays', icon: '🎂' },
+  { href: '/admin/transport', label: 'Transport', icon: '🚌' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
   { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
 ]
