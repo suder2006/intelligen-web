@@ -514,34 +514,6 @@ const fetchMoments = async (schoolId) => {
       is_class_note: diaryForm.is_class_note
     }).select().single()
 
-    // Notify parents via chat
-    const noteType = NOTE_TYPES.find(n => n.id === diaryForm.note_type)
-    const message = `${noteType?.icon} *Diary Note — ${diaryForm.date}*\n${diaryForm.title ? `*${diaryForm.title}*\n` : ''}${diaryForm.content}`
-
-    if (diaryForm.is_class_note) {
-      // Notify all parents of students in teacher's programs
-      for (const student of students) {
-        const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
-        for (const { parent_id } of (ps || [])) {
-          await supabase.from('chat_messages').insert({
-            sender_id: profile.school_id,
-            receiver_id: parent_id,
-            sender_name: profile.full_name || 'Teacher',
-            content: message
-          })
-        }
-      }
-    } else {
-      const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', diaryForm.student_id)
-      for (const { parent_id } of (ps || [])) {
-        await supabase.from('chat_messages').insert({
-          sender_id: profile.school_id,
-          receiver_id: parent_id,
-          sender_name: profile.full_name || 'Teacher',
-          content: message
-        })
-      }
-    }
 
     setShowDiaryForm(false)
     setDiaryForm({ note_type: 'general', title: '', content: '', date: new Date().toISOString().split('T')[0], is_class_note: false, student_id: '', program: '' })
