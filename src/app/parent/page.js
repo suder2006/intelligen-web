@@ -53,6 +53,9 @@ export default function ParentPortal() {
   const [schoolUpi, setSchoolUpi] = useState({ upi_id: '', upi_name: '', upi_description: '' })
   const [studentTransportData, setStudentTransportData] = useState([])
   const [transportLogs, setTransportLogs] = useState([])
+  const [diaryEntries, setDiaryEntries] = useState([])
+  const [diaryAcks, setDiaryAcks] = useState([])
+  const [diaryFilter, setDiaryFilter] = useState('all')
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -202,6 +205,20 @@ export default function ParentPortal() {
       setTransportLogs(tlRes.data || [])
     }
 
+    // Load diary entries
+    if (studentIds.length > 0) {
+      const childPrograms = s.data?.map(st => st.program).filter(Boolean) || []
+      const { data: diaryData } = await supabase.from('diary_entries')
+        .select('*, profiles(full_name), students(full_name)')
+        .eq('school_id', effectiveSid)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+      setDiaryEntries(diaryData || [])
+      const { data: ackData } = await supabase.from('diary_acknowledgements')
+        .select('*').eq('parent_id', user.id)
+      setDiaryAcks(ackData || [])
+    }
+
     setLoading(false)
   }
 
@@ -340,8 +357,7 @@ export default function ParentPortal() {
         .lte('event_time', `${today}T23:59:59`)
         .order('event_time', { ascending: false })
     ])
-    console.log('Transport data:', stRes.data, stRes.error)
-    console.log('Transport logs:', tlRes.data, tlRes.error)
+
     setStudentTransportData(stRes.data || [])
     setTransportLogs(tlRes.data || [])
   }
@@ -379,6 +395,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
+    { id: 'diary', label: 'Diary', icon: '📔' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -1401,6 +1418,116 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                       </div>
                     )
                   })
+                })()}
+              </>
+            )}
+
+            {activeTab === 'diary' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>📔 Diary</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Daily notes from your child's teacher</div>
+                </div>
+
+                {(() => {
+                  const NOTE_TYPES = [
+                    { id: 'general', label: 'General Note', icon: '📝', color: '#38bdf8' },
+                    { id: 'activity', label: 'Daily Activity', icon: '🎨', color: '#a78bfa' },
+                    { id: 'food', label: 'Food/Meal', icon: '🍱', color: '#10b981' },
+                    { id: 'behavior', label: 'Behavior', icon: '⭐', color: '#f59e0b' },
+                    { id: 'homework', label: 'Homework', icon: '📚', color: '#f87171' },
+                  ]
+
+                  const isAcknowledged = (entryId) => diaryAcks.some(a => a.diary_entry_id === entryId)
+
+                  const acknowledgeEntry = async (entry) => {
+                    const { data: { user } } = await supabase.auth.getUser()
+                    const student = students.find(s => entry.is_class_note ? s.program === entry.program : s.id === entry.student_id)
+                    await supabase.from('diary_acknowledgements').insert({
+                      diary_entry_id: entry.id,
+                      parent_id: user.id,
+                      student_id: student?.id || null
+                    })
+                    const { data: ackData } = await supabase.from('diary_acknowledgements').select('*').eq('parent_id', user.id)
+                    setDiaryAcks(ackData || [])
+                  }
+
+                  const filtered = diaryEntries.filter(e => {
+                    if (diaryFilter !== 'all' && e.note_type !== diaryFilter) return false
+                    // Show individual notes for parent's children or class notes for their program
+                    const childIds = students.map(s => s.id)
+                    const childPrograms = students.map(s => s.program)
+                    if (e.is_class_note) return childPrograms.includes(e.program)
+                    return childIds.includes(e.student_id)
+                  })
+
+                  const unacknowledged = filtered.filter(e => !isAcknowledged(e.id)).length
+
+                  return (
+                    <>
+                      {/* Unacknowledged alert */}
+                      {unacknowledged > 0 && (
+                        <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ color: '#fbbf24', fontWeight: '600', fontSize: '14px' }}>📬 {unacknowledged} unread note{unacknowledged > 1 ? 's' : ''} from teacher</div>
+                          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>Tap to acknowledge</span>
+                        </div>
+                      )}
+
+                      {/* Filter tabs */}
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        {[['all', '📔 All'], ...NOTE_TYPES.map(n => [n.id, `${n.icon} ${n.label}`])].map(([id, label]) => (
+                          <button key={id} onClick={() => setDiaryFilter(id)}
+                            style={{ padding: '6px 12px', borderRadius: '20px', border: `1px solid ${diaryFilter === id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: diaryFilter === id ? 'rgba(56,189,248,0.15)' : 'transparent', color: diaryFilter === id ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Diary entries */}
+                      {filtered.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                          <div style={{ fontSize: '40px', marginBottom: '12px' }}>📔</div>
+                          <div>No diary entries yet.</div>
+                        </div>
+                      ) : filtered.map(entry => {
+                        const noteType = NOTE_TYPES.find(n => n.id === entry.note_type)
+                        const acknowledged = isAcknowledged(entry.id)
+                        return (
+                          <div key={entry.id} style={{ background: acknowledged ? 'rgba(255,255,255,0.03)' : 'rgba(245,158,11,0.04)', border: `1px solid ${acknowledged ? 'rgba(255,255,255,0.07)' : 'rgba(245,158,11,0.2)'}`, borderRadius: '14px', padding: '16px', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: `${noteType?.color}22`, color: noteType?.color }}>
+                                {noteType?.icon} {noteType?.label}
+                              </span>
+                              {entry.is_class_note ? (
+                                <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>👥 Class Note</span>
+                              ) : (
+                                <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>👶 {entry.students?.full_name}</span>
+                              )}
+                              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>📅 {entry.date}</span>
+                              {!acknowledged && <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontWeight: '600' }}>🔔 New</span>}
+                            </div>
+
+                            {entry.title && <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '6px' }}>{entry.title}</div>}
+                            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap', marginBottom: '12px' }}>{entry.content}</div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: '8px' }}>
+                              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
+                                👩‍🏫 {entry.profiles?.full_name} · {new Date(entry.created_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                              </span>
+                              {acknowledged ? (
+                                <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>✅ Acknowledged</span>
+                              ) : (
+                                <button onClick={() => acknowledgeEntry(entry)}
+                                  style={{ padding: '6px 16px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                                  👍 Acknowledge
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </>
+                  )
                 })()}
               </>
             )}
