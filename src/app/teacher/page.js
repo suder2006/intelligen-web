@@ -50,11 +50,14 @@ export default function TeacherPortal() {
   const [selectedPayslip, setSelectedPayslip] = useState(null)
   const [activityCompletions, setActivityCompletions] = useState([])
   const [homeActivities, setHomeActivities] = useState([])
-  const [birthdayStudents, setBirthdayStudents] = useState([])
-  const [schoolForBirthday, setSchoolForBirthday] = useState(null)
-  const [bdayMonth, setBdayMonth] = useState(new Date().getMonth())
-  const [bdayYear, setBdayYear] = useState(new Date().getFullYear())
-  const [bdaySelectedDay, setBdaySelectedDay] = useState(null)
+  const [transportRoutes, setTransportRoutes] = useState([])
+  const [studentTransport, setStudentTransport] = useState([])
+  const [transportLogs, setTransportLogs] = useState([])
+  const [selectedTransportRoute, setSelectedTransportRoute] = useState('')
+  const [selectedTransportEvent, setSelectedTransportEvent] = useState('morning_pickup')
+  const [transportSearch, setTransportSearch] = useState('')
+  const [markingTransport, setMarkingTransport] = useState(null)
+  const [lastTransportMarked, setLastTransportMarked] = useState(null)
 
 
   useEffect(() => { loadData() }, [])
@@ -151,6 +154,22 @@ const { data: sData } = await supabase.from('students')
     ])
     setSchoolForBirthday(schRes.data)
     setBirthdayStudents(sData || [])
+
+    // Load transport data
+    const today = new Date().toISOString().split('T')[0]
+    const [trRes, stRes, tlRes] = await Promise.all([
+      supabase.from('transport_routes').select('*').eq('school_id', prof.school_id).eq('is_active', true).order('name'),
+      supabase.from('student_transport').select('*').eq('school_id', prof.school_id).eq('is_active', true),
+      supabase.from('transport_logs').select('*, students(full_name)')
+        .eq('school_id', prof.school_id)
+        .gte('event_time', `${today}T00:00:00`)
+        .lte('event_time', `${today}T23:59:59`)
+        .order('event_time', { ascending: false })
+    ])
+    setTransportRoutes(trRes.data || [])
+    setStudentTransport(stRes.data || [])
+    setTransportLogs(tlRes.data || [])
+    if (trRes.data?.length > 0) setSelectedTransportRoute(trRes.data[0].id)
 
     setLoading(false)
   }
@@ -359,6 +378,81 @@ const fetchMoments = async (schoolId) => {
       .sort((a, b) => parseInt(a.date_of_birth.slice(8)) - parseInt(b.date_of_birth.slice(8)))
   }
 
+  const TRANSPORT_EVENTS = [
+    { id: 'morning_pickup', label: 'Morning Pickup', icon: '🌅', color: '#38bdf8', desc: 'Boarded van from home' },
+    { id: 'school_drop', label: 'Dropped at School', icon: '🏫', color: '#34d399', desc: 'Arrived at school' },
+    { id: 'school_pickup', label: 'Left School', icon: '🎒', color: '#fbbf24', desc: 'Boarded van to go home' },
+    { id: 'home_drop', label: 'Dropped at Home', icon: '🏠', color: '#a78bfa', desc: 'Reached home safely' },
+  ]
+
+  const getTransportRouteStudents = () => {
+    if (!selectedTransportRoute) return []
+    const assignedIds = studentTransport.filter(st => st.route_id === selectedTransportRoute).map(st => st.student_id)
+    return students.filter(s => assignedIds.includes(s.id))
+      .filter(s => !transportSearch || s.full_name.toLowerCase().includes(transportSearch.toLowerCase()))
+  }
+
+  const isTransportMarked = (studentId, eventType) => {
+    return transportLogs.some(l => l.student_id === studentId && l.event_type === eventType)
+  }
+
+  const refreshTransportLogs = async () => {
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase.from('transport_logs')
+      .select('*, students(full_name)').eq('school_id', profile.school_id)
+      .gte('event_time', `${today}T00:00:00`)
+      .lte('event_time', `${today}T23:59:59`)
+      .order('event_time', { ascending: false })
+    setTransportLogs(data || [])
+  }
+
+  const markTransportEvent = async (student, method = 'manual') => {
+    if (!selectedTransportRoute || !selectedTransportEvent) return
+    if (isTransportMarked(student.id, selectedTransportEvent)) {
+      alert(`${student.full_name} already marked for this event today!`); return
+    }
+    setMarkingTransport(student.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    const route = transportRoutes.find(r => r.id === selectedTransportRoute)
+    const eventInfo = TRANSPORT_EVENTS.find(e => e.id === selectedTransportEvent)
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+
+    await supabase.from('transport_logs').insert({
+      school_id: profile.school_id,
+      student_id: student.id,
+      route_id: selectedTransportRoute,
+      event_type: selectedTransportEvent,
+      event_time: new Date().toISOString(),
+      marked_by: user.id,
+      method,
+      parent_notified: false
+    })
+
+    // Notify parent
+    const messages = {
+      morning_pickup: `🌅 ${student.full_name} has boarded the school van.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n👩 Caretaker: ${route?.caretaker_name || '—'}\n⏰ Time: ${time}`,
+      school_drop: `🏫 ${student.full_name} has arrived safely at school.\n⏰ Time: ${time}`,
+      school_pickup: `🎒 ${student.full_name} has boarded the van to come home.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n⏰ Time: ${time}`,
+      home_drop: `🏠 ${student.full_name} has been dropped safely at home.\n⏰ Time: ${time}\n✅ Please confirm receipt in the app.`
+    }
+
+    const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
+    if (ps && ps.length > 0) {
+      for (const { parent_id } of ps) {
+        await supabase.from('chat_messages').insert({
+          sender_id: profile.school_id,
+          receiver_id: parent_id,
+          sender_name: profile.school_name || 'School',
+          content: messages[selectedTransportEvent]
+        })
+      }
+    }
+
+    setLastTransportMarked({ student, event: eventInfo, time })
+    setMarkingTransport(null)
+    await refreshTransportLogs()
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
   const present = attendance.filter(a => a.status === 'present').length
@@ -380,6 +474,7 @@ const fetchMoments = async (schoolId) => {
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
+    { id: 'transport', label: 'Transport', icon: '🚌' },
   ]
 
   return (
@@ -957,6 +1052,117 @@ const fetchMoments = async (schoolId) => {
                     <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>{new Date(a.created_at).toLocaleString()}</div>
                   </div>
                 ))}
+              </>
+            )}
+
+            {activeTab === 'transport' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>🚌 Transport Marking</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Mark student boarding and dropping events</div>
+                </div>
+
+                {/* Last marked notification */}
+                {lastTransportMarked && (
+                  <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '14px', padding: '14px 18px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#34d399' }}>✅ {lastTransportMarked.student.full_name} marked!</div>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{lastTransportMarked.event.icon} {lastTransportMarked.event.label} · {lastTransportMarked.time} · Parent notified</div>
+                    </div>
+                    <button onClick={() => setLastTransportMarked(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '18px' }}>×</button>
+                  </div>
+                )}
+
+                {/* Step 1: Select Route */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#38bdf8' }}>Step 1: Select Route 🚌</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {transportRoutes.length === 0 ? (
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No routes configured. Ask admin to set up routes.</div>
+                    ) : transportRoutes.map(r => (
+                      <button key={r.id} onClick={() => setSelectedTransportRoute(r.id)}
+                        style={{ padding: '9px 16px', borderRadius: '10px', border: `2px solid ${selectedTransportRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedTransportRoute === r.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedTransportRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '13px' }}>
+                        🚌 {r.name}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedTransportRoute && (() => {
+                    const route = transportRoutes.find(r => r.id === selectedTransportRoute)
+                    return route ? (
+                      <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
+                        {route.vehicle_number && <span style={{ color: '#fbbf24' }}>🚌 {route.vehicle_number}</span>}
+                        {route.driver_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {route.driver_name} · 📞 {route.driver_phone}</span>}
+                        {route.caretaker_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👩 {route.caretaker_name}</span>}
+                      </div>
+                    ) : null
+                  })()}
+                </div>
+
+                {/* Step 2: Select Event */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#a78bfa' }}>Step 2: Select Event 📍</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    {TRANSPORT_EVENTS.map(evt => (
+                      <button key={evt.id} onClick={() => setSelectedTransportEvent(evt.id)}
+                        style={{ padding: '10px 12px', borderRadius: '10px', border: `2px solid ${selectedTransportEvent === evt.id ? evt.color : 'rgba(255,255,255,0.08)'}`, background: selectedTransportEvent === evt.id ? `${evt.color}18` : 'transparent', color: selectedTransportEvent === evt.id ? evt.color : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}>
+                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>{evt.icon}</div>
+                        <div style={{ fontWeight: '700', fontSize: '12px' }}>{evt.label}</div>
+                        <div style={{ fontSize: '10px', opacity: 0.7 }}>{evt.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Step 3: Mark Students */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '16px', marginBottom: '14px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#10b981' }}>Step 3: Mark Students ✅</div>
+                  <input placeholder='Search student...' value={transportSearch} onChange={e => setTransportSearch(e.target.value)}
+                    style={{ width: '100%', padding: '9px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', marginBottom: '12px', outline: 'none' }} />
+                  {getTransportRouteStudents().length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+                      {selectedTransportRoute ? 'No students on this route.' : 'Select a route first.'}
+                    </div>
+                  ) : getTransportRouteStudents().map(student => {
+                    const marked = isTransportMarked(student.id, selectedTransportEvent)
+                    const isMarkingThis = markingTransport === student.id
+                    const eventData = TRANSPORT_EVENTS.find(e => e.id === selectedTransportEvent)
+                    return (
+                      <div key={student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: marked ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)', border: `1px solid ${marked ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '10px', marginBottom: '8px', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: marked ? 'linear-gradient(135deg, #10b981, #34d399)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff', fontSize: '13px', flexShrink: 0 }}>
+                            {student.full_name?.[0]?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '13px' }}>{student.full_name}</div>
+                            <div style={{ color: '#a78bfa', fontSize: '11px' }}>{student.program}</div>
+                          </div>
+                        </div>
+                        <button onClick={() => markTransportEvent(student, 'manual')} disabled={marked || isMarkingThis}
+                          style={{ padding: '7px 14px', background: marked ? 'rgba(16,185,129,0.15)' : `${eventData?.color}22`, color: marked ? '#34d399' : eventData?.color, border: `1px solid ${marked ? 'rgba(16,185,129,0.3)' : eventData?.color + '44'}`, borderRadius: '8px', cursor: marked ? 'default' : 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                          {isMarkingThis ? '⏳...' : marked ? '✅ Done' : `${eventData?.icon} Mark`}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Today's log */}
+                {transportLogs.length > 0 && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px', padding: '14px' }}>
+                    <div style={{ fontWeight: '600', fontSize: '13px', marginBottom: '10px', color: 'rgba(255,255,255,0.6)' }}>📋 Today's Log ({transportLogs.length})</div>
+                    {transportLogs.slice(0, 8).map(log => (
+                      <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '14px' }}>{TRANSPORT_EVENTS.find(e => e.id === log.event_type)?.icon}</span>
+                          <span style={{ fontSize: '12px', fontWeight: '500' }}>{log.students?.full_name}</span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
+                          {new Date(log.event_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
