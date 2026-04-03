@@ -63,6 +63,16 @@ export default function TeacherPortal() {
   const [transportSearch, setTransportSearch] = useState('')
   const [markingTransport, setMarkingTransport] = useState(null)
   const [lastTransportMarked, setLastTransportMarked] = useState(null)
+  const [diaryEntries, setDiaryEntries] = useState([])
+  const [diaryAcks, setDiaryAcks] = useState([])
+  const [showDiaryForm, setShowDiaryForm] = useState(false)
+  const [diaryForm, setDiaryForm] = useState({
+    note_type: 'general', title: '', content: '',
+    date: new Date().toISOString().split('T')[0],
+    is_class_note: false, student_id: '', program: ''
+  })
+  const [savingDiary, setSavingDiary] = useState(false)
+  const [diaryFilter, setDiaryFilter] = useState('all')
 
 
   useEffect(() => { loadData() }, [])
@@ -175,6 +185,17 @@ const { data: sData } = await supabase.from('students')
     setStudentTransport(stRes.data || [])
     setTransportLogs(tlRes.data || [])
     if (trRes.data?.length > 0) setSelectedTransportRoute(trRes.data[0].id)
+    
+    // Load diary entries
+    const { data: diaryData } = await supabase.from('diary_entries')
+      .select('*, profiles(full_name), students(full_name)')
+      .eq('school_id', prof.school_id)
+      .eq('teacher_id', user.id)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+    setDiaryEntries(diaryData || [])
+    const { data: ackData } = await supabase.from('diary_acknowledgements').select('*')
+    setDiaryAcks(ackData || [])  
 
     setLoading(false)
   }
@@ -458,6 +479,93 @@ const fetchMoments = async (schoolId) => {
     await refreshTransportLogs()
   }
 
+  const NOTE_TYPES = [
+    { id: 'general', label: 'General Note', icon: '📝', color: '#38bdf8' },
+    { id: 'activity', label: 'Daily Activity', icon: '🎨', color: '#a78bfa' },
+    { id: 'food', label: 'Food/Meal', icon: '🍱', color: '#10b981' },
+    { id: 'behavior', label: 'Behavior', icon: '⭐', color: '#f59e0b' },
+    { id: 'homework', label: 'Homework', icon: '📚', color: '#f87171' },
+  ]
+
+  const saveDiaryEntry = async () => {
+    if (!diaryForm.content.trim()) { alert('Please write a note'); return }
+    if (!diaryForm.is_class_note && !diaryForm.student_id) { alert('Please select a student or make it a class note'); return }
+    setSavingDiary(true)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // Get program from selected student if individual note
+    let program = diaryForm.program
+    if (!diaryForm.is_class_note && diaryForm.student_id) {
+      const student = students.find(s => s.id === diaryForm.student_id)
+      program = student?.program || ''
+    } else if (diaryForm.is_class_note) {
+      program = programs[0] || ''
+    }
+
+    const { data: newEntry } = await supabase.from('diary_entries').insert({
+      school_id: profile.school_id,
+      teacher_id: user.id,
+      student_id: diaryForm.is_class_note ? null : diaryForm.student_id,
+      program,
+      note_type: diaryForm.note_type,
+      title: diaryForm.title,
+      content: diaryForm.content,
+      date: diaryForm.date,
+      is_class_note: diaryForm.is_class_note
+    }).select().single()
+
+    // Notify parents via chat
+    const noteType = NOTE_TYPES.find(n => n.id === diaryForm.note_type)
+    const message = `${noteType?.icon} *Diary Note — ${diaryForm.date}*\n${diaryForm.title ? `*${diaryForm.title}*\n` : ''}${diaryForm.content}`
+
+    if (diaryForm.is_class_note) {
+      // Notify all parents of students in teacher's programs
+      for (const student of students) {
+        const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
+        for (const { parent_id } of (ps || [])) {
+          await supabase.from('chat_messages').insert({
+            sender_id: profile.school_id,
+            receiver_id: parent_id,
+            sender_name: profile.full_name || 'Teacher',
+            content: message
+          })
+        }
+      }
+    } else {
+      const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', diaryForm.student_id)
+      for (const { parent_id } of (ps || [])) {
+        await supabase.from('chat_messages').insert({
+          sender_id: profile.school_id,
+          receiver_id: parent_id,
+          sender_name: profile.full_name || 'Teacher',
+          content: message
+        })
+      }
+    }
+
+    setShowDiaryForm(false)
+    setDiaryForm({ note_type: 'general', title: '', content: '', date: new Date().toISOString().split('T')[0], is_class_note: false, student_id: '', program: '' })
+    setSavingDiary(false)
+
+    // Refresh diary entries
+    const { data: diaryData } = await supabase.from('diary_entries')
+      .select('*, profiles(full_name), students(full_name)')
+      .eq('school_id', profile.school_id)
+      .eq('teacher_id', user.id)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+    setDiaryEntries(diaryData || [])
+  }
+
+  const deleteDiaryEntry = async (id) => {
+    if (!confirm('Delete this diary entry?')) return
+    await supabase.from('diary_acknowledgements').delete().eq('diary_entry_id', id)
+    await supabase.from('diary_entries').delete().eq('id', id)
+    setDiaryEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  const getAckCount = (entryId) => diaryAcks.filter(a => a.diary_entry_id === entryId).length
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
   const present = attendance.filter(a => a.status === 'present').length
@@ -480,6 +588,7 @@ const fetchMoments = async (schoolId) => {
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
+    { id: 'diary', label: 'Diary', icon: '📔' },
   ]
 
   return (
@@ -1168,6 +1277,155 @@ const fetchMoments = async (schoolId) => {
                     ))}
                   </div>
                 )}
+              </>
+            )}
+
+            {activeTab === 'diary' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>📔 Diary</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Daily notes to parents</div>
+                  </div>
+                  <button onClick={() => setShowDiaryForm(!showDiaryForm)}
+                    style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    + New Entry
+                  </button>
+                </div>
+
+                {/* New Entry Form */}
+                {showDiaryForm && (
+                  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                    <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px' }}>📝 New Diary Entry</div>
+
+                    {/* Note Type */}
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Note Type *</label>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {NOTE_TYPES.map(nt => (
+                          <button key={nt.id} onClick={() => setDiaryForm({ ...diaryForm, note_type: nt.id })}
+                            style={{ padding: '6px 14px', borderRadius: '20px', border: `1px solid ${diaryForm.note_type === nt.id ? nt.color : 'rgba(255,255,255,0.1)'}`, background: diaryForm.note_type === nt.id ? `${nt.color}22` : 'transparent', color: diaryForm.note_type === nt.id ? nt.color : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                            {nt.icon} {nt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Class or Individual */}
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Who is this for? *</label>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button onClick={() => setDiaryForm({ ...diaryForm, is_class_note: true, student_id: '' })}
+                          style={{ padding: '8px 16px', borderRadius: '10px', border: `1px solid ${diaryForm.is_class_note ? '#a78bfa' : 'rgba(255,255,255,0.1)'}`, background: diaryForm.is_class_note ? 'rgba(167,139,250,0.15)' : 'transparent', color: diaryForm.is_class_note ? '#a78bfa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                          👥 Entire Class
+                        </button>
+                        <button onClick={() => setDiaryForm({ ...diaryForm, is_class_note: false })}
+                          style={{ padding: '8px 16px', borderRadius: '10px', border: `1px solid ${!diaryForm.is_class_note ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: !diaryForm.is_class_note ? 'rgba(56,189,248,0.15)' : 'transparent', color: !diaryForm.is_class_note ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                          👶 Individual Child
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Student selector for individual */}
+                    {!diaryForm.is_class_note && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Select Child *</label>
+                        <select value={diaryForm.student_id} onChange={e => setDiaryForm({ ...diaryForm, student_id: e.target.value })}
+                          style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }}>
+                          <option value=''>-- Select Child --</option>
+                          {students.map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Date */}
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Date *</label>
+                      <input type='date' value={diaryForm.date} onChange={e => setDiaryForm({ ...diaryForm, date: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Title (optional)</label>
+                      <input value={diaryForm.title} onChange={e => setDiaryForm({ ...diaryForm, title: e.target.value })}
+                        placeholder='e.g. Great day at school!'
+                        style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Note *</label>
+                      <textarea value={diaryForm.content} onChange={e => setDiaryForm({ ...diaryForm, content: e.target.value })}
+                        placeholder={diaryForm.note_type === 'food' ? 'e.g. Had a good lunch today. Ate rice and dal. Drank water well.' : diaryForm.note_type === 'behavior' ? 'e.g. Was very cooperative today. Helped friends during activity time.' : diaryForm.note_type === 'homework' ? 'e.g. Please complete the worksheet on page 5. Due tomorrow.' : 'Write your note here...'}
+                        rows={4}
+                        style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', resize: 'vertical', fontFamily: "'DM Sans', sans-serif" }} />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={() => setShowDiaryForm(false)}
+                        style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                        Cancel
+                      </button>
+                      <button onClick={saveDiaryEntry} disabled={savingDiary}
+                        style={{ flex: 1, padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                        {savingDiary ? '⏳ Saving...' : '📤 Send to Parents'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  {[['all', 'All'], ...NOTE_TYPES.map(n => [n.id, `${n.icon} ${n.label}`])].map(([id, label]) => (
+                    <button key={id} onClick={() => setDiaryFilter(id)}
+                      style={{ padding: '6px 14px', borderRadius: '20px', border: `1px solid ${diaryFilter === id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: diaryFilter === id ? 'rgba(56,189,248,0.15)' : 'transparent', color: diaryFilter === id ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Diary Entries */}
+                {diaryEntries.filter(e => diaryFilter === 'all' || e.note_type === diaryFilter).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>📔</div>
+                    <div>No diary entries yet. Click "+ New Entry" to write one.</div>
+                  </div>
+                ) : diaryEntries.filter(e => diaryFilter === 'all' || e.note_type === diaryFilter).map(entry => {
+                  const noteType = NOTE_TYPES.find(n => n.id === entry.note_type)
+                  const ackCount = getAckCount(entry.id)
+                  return (
+                    <div key={entry.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '6px', alignItems: 'center' }}>
+                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: `${noteType?.color}22`, color: noteType?.color }}>
+                              {noteType?.icon} {noteType?.label}
+                            </span>
+                            {entry.is_class_note ? (
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>👥 Class Note</span>
+                            ) : (
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>👶 {entry.students?.full_name}</span>
+                            )}
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>📅 {entry.date}</span>
+                          </div>
+                          {entry.title && <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{entry.title}</div>}
+                          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{entry.content}</div>
+                        </div>
+                        <button onClick={() => deleteDiaryEntry(entry.id)}
+                          style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>🗑️</button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
+                          {new Date(entry.created_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: ackCount > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)', color: ackCount > 0 ? '#34d399' : 'rgba(255,255,255,0.3)' }}>
+                          {ackCount > 0 ? `✅ ${ackCount} acknowledged` : '⏳ Pending acknowledgement'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
               </>
             )}
 
