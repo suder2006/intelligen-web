@@ -105,6 +105,27 @@ export default function TransportMarkingPage() {
       await supabase.from('transport_logs').update({ parent_notified: true })
         .eq('student_id', student.id).eq('event_type', selectedEvent)
         .gte('event_time', `${new Date().toISOString().split('T')[0]}T00:00:00`)
+
+      // Send push notification to parents
+      try {
+        const parentIds = ps.map(p => p.parent_id)
+        const eventMessages = {
+          morning_pickup: `${student.full_name} has boarded the school van 🚌`,
+          school_drop: `${student.full_name} has arrived at school safely 🏫`,
+          school_pickup: `${student.full_name} has boarded the van to come home 🎒`,
+          home_drop: `${student.full_name} has been dropped safely at home 🏠`
+        }
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: parentIds,
+            title: `🚌 Transport Update`,
+            body: eventMessages[selectedEvent],
+            url: '/parent'
+          })
+        })
+      } catch (e) { console.log('Push error:', e) }
     }
 
     setLastMarked({ student, event: eventInfo, time: new Date().toLocaleTimeString() })

@@ -240,6 +240,29 @@ export default function ParentPortal() {
       content: newMessage,
       sender_name: profile?.full_name || 'Parent'
     })
+
+    await supabase.from('chat_messages').insert({
+      sender_id: user.id,
+      receiver_id: selectedTeacher,
+      content: newMessage,
+      sender_name: profile?.full_name || 'Parent'
+    })
+
+    // Send push notification to teacher
+    try {
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: [selectedTeacher],
+          title: '💬 New Message from Parent',
+          body: `${profile?.full_name}: ${newMessage.slice(0, 80)}`,
+          url: '/teacher'
+        })
+      })
+    } catch (e) { console.log('Push error:', e) }
+
+    //setNewMessage('')
     setNewMessage('')
     const { data: msgsData } = await supabase.from('chat_messages').select('*')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)

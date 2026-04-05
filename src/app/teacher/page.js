@@ -239,6 +239,20 @@ const fetchMoments = async (schoolId) => {
       content: replyText,
       sender_name: profile?.full_name || 'Teacher'
     })
+        // Send push notification to parent
+    try {
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: [replyingTo],
+          title: '💬 New Message from Teacher',
+          body: `${profile?.full_name}: ${replyText.slice(0, 80)}`,
+          url: '/parent'
+        })
+      })
+    } catch (e) { console.log('Push error:', e) }
+
     setReplyText('')
     await fetchMessages()
     setSendingReply(false)
@@ -522,6 +536,32 @@ const fetchMoments = async (schoolId) => {
       is_class_note: diaryForm.is_class_note
     }).select().single()
 
+       // Send push notification to parents
+    try {
+      let parentIds = []
+      if (diaryForm.is_class_note) {
+        for (const student of students) {
+          const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
+          parentIds.push(...(ps || []).map(p => p.parent_id))
+        }
+      } else {
+        const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', diaryForm.student_id)
+        parentIds = (ps || []).map(p => p.parent_id)
+      }
+      if (parentIds.length > 0) {
+        const noteType = NOTE_TYPES.find(n => n.id === diaryForm.note_type)
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: [...new Set(parentIds)],
+            title: `${noteType?.icon} New Diary Note`,
+            body: diaryForm.title || diaryForm.content.slice(0, 80),
+            url: '/parent'
+          })
+        })
+      }
+    } catch (e) { console.log('Push error:', e) }
 
     setShowDiaryForm(false)
     setDiaryForm({ note_type: 'general', title: '', content: '', date: new Date().toISOString().split('T')[0], is_class_note: false, student_id: '', program: '' })
