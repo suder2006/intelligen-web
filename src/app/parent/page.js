@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { APP_URL } from '@/lib/config'
+import { registerPushNotifications } from '@/lib/pushNotifications'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
@@ -53,9 +54,12 @@ export default function ParentPortal() {
   const [schoolUpi, setSchoolUpi] = useState({ upi_id: '', upi_name: '', upi_description: '' })
   const [studentTransportData, setStudentTransportData] = useState([])
   const [transportLogs, setTransportLogs] = useState([])
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
   const [diaryEntries, setDiaryEntries] = useState([])
   const [diaryAcks, setDiaryAcks] = useState([])
   const [diaryFilter, setDiaryFilter] = useState('all')
+
   const router = useRouter()
 
   useEffect(() => { loadData() }, [])
@@ -219,6 +223,11 @@ export default function ParentPortal() {
       setDiaryAcks(ackData || [])
     }
 
+    // Check if push notifications already enabled
+    if ('Notification' in window) {
+      setPushEnabled(Notification.permission === 'granted')
+    }
+
     setLoading(false)
   }
 
@@ -362,6 +371,15 @@ export default function ParentPortal() {
     setTransportLogs(tlRes.data || [])
   }
 
+  const enablePushNotifications = async () => {
+    setPushLoading(true)
+    const success = await registerPushNotifications(supabase, user.id, schoolId)
+    setPushEnabled(success)
+    setPushLoading(false)
+    if (success) alert('✅ Push notifications enabled!')
+    else alert('❌ Could not enable notifications. Please allow notifications in browser settings.')
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
 const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
@@ -439,7 +457,18 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
           <div className="logo">Intelli<span>Gen</span></div>
           <div className="role-badge">👪 Parent Portal</div>
         </div>
-        <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {!pushEnabled && (
+            <button onClick={enablePushNotifications} disabled={pushLoading}
+              style={{ background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', color: '#38bdf8', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+              {pushLoading ? '⏳...' : '🔔 Enable Notifications'}
+            </button>
+          )}
+          {pushEnabled && (
+            <span style={{ color: '#34d399', fontSize: '13px' }}>🔔 Notifications On</span>
+          )}
+          <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
+        </div>
       </div>
 
       <div className="tabs">

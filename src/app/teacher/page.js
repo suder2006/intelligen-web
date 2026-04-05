@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { registerPushNotifications } from '@/lib/pushNotifications'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
@@ -63,6 +64,8 @@ export default function TeacherPortal() {
   const [transportSearch, setTransportSearch] = useState('')
   const [markingTransport, setMarkingTransport] = useState(null)
   const [lastTransportMarked, setLastTransportMarked] = useState(null)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
   const [diaryEntries, setDiaryEntries] = useState([])
   const [diaryAcks, setDiaryAcks] = useState([])
   const [showDiaryForm, setShowDiaryForm] = useState(false)
@@ -196,6 +199,11 @@ const { data: sData } = await supabase.from('students')
     setDiaryEntries(diaryData || [])
     const { data: ackData } = await supabase.from('diary_acknowledgements').select('*')
     setDiaryAcks(ackData || [])  
+
+
+    if ('Notification' in window) {
+      setPushEnabled(Notification.permission === 'granted')
+    }
 
     setLoading(false)
   }
@@ -538,6 +546,14 @@ const fetchMoments = async (schoolId) => {
 
   const getAckCount = (entryId) => diaryAcks.filter(a => a.diary_entry_id === entryId).length
 
+  const enablePushNotifications = async () => {
+    setPushLoading(true)
+    const success = await registerPushNotifications(supabase, user.id, prof.school_id)
+    setPushEnabled(success)
+    setPushLoading(false)
+    if (success) alert('✅ Push notifications enabled!')
+  }
+  
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 
   const present = attendance.filter(a => a.status === 'present').length
@@ -610,7 +626,18 @@ const fetchMoments = async (schoolId) => {
           <div className="logo">Intelli<span>Gen</span></div>
           <div className="role-badge">👩‍🏫 Teacher Portal</div>
         </div>
-        <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {!pushEnabled && (
+            <button onClick={enablePushNotifications} disabled={pushLoading}
+              style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#34d399', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+              {pushLoading ? '⏳...' : '🔔 Enable Notifications'}
+            </button>
+          )}
+          {pushEnabled && (
+            <span style={{ color: '#34d399', fontSize: '13px' }}>🔔 On</span>
+          )}
+          <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
+        </div>
       </div>
 
       <div className="tabs">
