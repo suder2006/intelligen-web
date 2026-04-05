@@ -95,9 +95,9 @@ export default function TransportMarkingPage() {
     if (ps && ps.length > 0) {
       for (const { parent_id } of ps) {
         await supabase.from('chat_messages').insert({
-          sender_id: profile.school_id,
+          sender_id: user.id,
           receiver_id: parent_id,
-          sender_name: profile.school_name || 'School',
+          sender_name: profile.full_name || 'School',
           content: message
         })
       }

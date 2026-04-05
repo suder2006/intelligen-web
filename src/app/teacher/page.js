@@ -233,12 +233,12 @@ const fetchMoments = async (schoolId) => {
     if (!replyText.trim() || !replyingTo) return
     setSendingReply(true)
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('chat_messages').insert({
-      sender_id: user.id,
-      receiver_id: replyingTo,
-      content: replyText,
-      sender_name: profile?.full_name || 'Teacher'
-    })
+await supabase.from('chat_messages').insert({
+          sender_id: user.id,
+          receiver_id: parent_id,
+          sender_name: profile.full_name || 'School',
+          content: messages[selectedTransportEvent]
+        })
         // Send push notification to parent
     try {
       await fetch('/api/push/send', {
