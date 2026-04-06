@@ -233,13 +233,13 @@ const fetchMoments = async (schoolId) => {
     if (!replyText.trim() || !replyingTo) return
     setSendingReply(true)
     const { data: { user } } = await supabase.auth.getUser()
-await supabase.from('chat_messages').insert({
-          sender_id: user.id,
-          receiver_id: parent_id,
-          sender_name: profile.full_name || 'School',
-          content: messages[selectedTransportEvent]
-        })
-        // Send push notification to parent
+    await supabase.from('chat_messages').insert({
+      sender_id: user.id,
+      receiver_id: replyingTo,
+      content: replyText,
+      sender_name: profile?.full_name || 'Teacher'
+    })
+    // Send push notification to parent
     try {
       await fetch('/api/push/send', {
         method: 'POST',
@@ -252,7 +252,6 @@ await supabase.from('chat_messages').insert({
         })
       })
     } catch (e) { console.log('Push error:', e) }
-
     setReplyText('')
     await fetchMessages()
     setSendingReply(false)
@@ -476,24 +475,29 @@ await supabase.from('chat_messages').insert({
       parent_notified: false
     })
 
-    // Notify parent
-    const messages = {
-      morning_pickup: `🌅 ${student.full_name} has boarded the school van.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n👩 Caretaker: ${route?.caretaker_name || '—'}\n⏰ Time: ${time}`,
-      school_drop: `🏫 ${student.full_name} has arrived safely at school.\n⏰ Time: ${time}`,
-      school_pickup: `🎒 ${student.full_name} has boarded the van to come home.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n⏰ Time: ${time}`,
-      home_drop: `🏠 ${student.full_name} has been dropped safely at home.\n⏰ Time: ${time}\n✅ Please confirm receipt in the app.`
-    }
+
 
     const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
     if (ps && ps.length > 0) {
-      for (const { parent_id } of ps) {
-        await supabase.from('chat_messages').insert({
-          sender_id: profile.school_id,
-          receiver_id: parent_id,
-          sender_name: profile.school_name || 'School',
-          content: messages[selectedTransportEvent]
+      try {
+        const parentIds = ps.map(p => p.parent_id)
+        const eventMessages = {
+          morning_pickup: `${student.full_name} has boarded the school van 🚌`,
+          school_drop: `${student.full_name} has arrived at school safely 🏫`,
+          school_pickup: `${student.full_name} has boarded the van to come home 🎒`,
+          home_drop: `${student.full_name} has been dropped safely at home 🏠`
+        }
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: parentIds,
+            title: `🚌 Transport Update`,
+            body: eventMessages[selectedTransportEvent],
+            url: '/parent'
+          })
         })
-      }
+      } catch (e) { console.log('Push error:', e) }
     }
 
     setLastTransportMarked({ student, event: eventInfo, time })
