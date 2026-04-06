@@ -230,12 +230,16 @@ const fetchMoments = async (schoolId) => {
     setMoments(data || [])
   }
 
-  const fetchMessages = async () => {
+const fetchMessages = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     const { data } = await supabase.from('chat_messages').select('*')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: true })
-    setMessages(data || [])
+    // Deduplicate by message ID
+    const unique = (data || []).filter((m, index, self) =>
+      index === self.findIndex(t => t.id === m.id)
+    )
+    setMessages(unique)
   }
 
   const sendReply = async () => {
