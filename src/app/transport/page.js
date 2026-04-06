@@ -86,27 +86,15 @@ export default function TransportMarkingPage() {
       parent_notified: false
     })
 
-    // Notify parent via chat
-    const route = routes.find(r => r.id === selectedRoute)
     const eventInfo = EVENT_TYPES.find(e => e.id === selectedEvent)
-    const message = buildNotificationMessage(student, route, eventInfo)
-
     const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
     if (ps && ps.length > 0) {
-      for (const { parent_id } of ps) {
-        await supabase.from('chat_messages').insert({
-          sender_id: user.id,
-          receiver_id: parent_id,
-          sender_name: profile.full_name || 'School',
-          content: message
-        })
-      }
       // Mark parent notified
       await supabase.from('transport_logs').update({ parent_notified: true })
         .eq('student_id', student.id).eq('event_type', selectedEvent)
         .gte('event_time', `${new Date().toISOString().split('T')[0]}T00:00:00`)
 
-      // Send push notification to parents
+      // Send push notification only
       try {
         const parentIds = ps.map(p => p.parent_id)
         const eventMessages = {
@@ -140,16 +128,7 @@ export default function TransportMarkingPage() {
     setTodayLogs(logsRes || [])
   }
 
-  const buildNotificationMessage = (student, route, eventInfo) => {
-    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-    const messages = {
-      morning_pickup: `🌅 ${student.full_name} has boarded the school van.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n👩 Caretaker: ${route?.caretaker_name || '—'}\n⏰ Time: ${time}`,
-      school_drop: `🏫 ${student.full_name} has arrived safely at school.\n⏰ Time: ${time}`,
-      school_pickup: `🎒 ${student.full_name} has boarded the van to come home.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n👩 Caretaker: ${route?.caretaker_name || '—'}\n⏰ Time: ${time}`,
-      home_drop: `🏠 ${student.full_name} has been dropped safely at home.\n⏰ Time: ${time}\n✅ Please confirm receipt in the app.`
-    }
-    return messages[eventInfo?.id] || `Transport update for ${student.full_name}: ${eventInfo?.label} at ${time}`
-  }
+
 
   const handleQRScan = async (decodedText) => {
     setShowScanner(false)
