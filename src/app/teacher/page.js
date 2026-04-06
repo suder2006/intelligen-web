@@ -111,6 +111,10 @@ const { data: sData } = await supabase.from('students')
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', prof.school_id).order('value')
     setPrograms(progs?.map(p => p.value) || [])
     await fetchMessages()
+
+    // Define studentIds FIRST
+    const studentIds = (sData || []).map(s => s.id)
+
     // Get parents from parent_students linked to teacher's students
     const { data: psData } = await supabase.from('parent_students')
       .select('parent_id').in('student_id', studentIds.length > 0 ? studentIds : ['__none__'])
@@ -129,7 +133,6 @@ const { data: sData } = await supabase.from('students')
       .eq('staff_id', user.id).eq('academic_year', currentAY).single()
     setLeaveBalance(balData || null)
     // Load student absences for teacher's students
-    const studentIds = (sData || []).map(s => s.id)
     const { data: absData } = await supabase.from('student_absences')
       .select('*, students(full_name, program)')
       .in('student_id', studentIds.length > 0 ? studentIds : ['__none__'])
