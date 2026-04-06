@@ -245,6 +245,9 @@ const fetchMessages = async () => {
   const sendReply = async () => {
     if (!replyText.trim() || !replyingTo) return
     setSendingReply(true)
+
+    console.log('Sending reply to:', replyingTo) // ADD THIS debug
+    console.log('Parents list:', parents)          // ADD THIS debug
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('chat_messages').insert({
       sender_id: user.id,
