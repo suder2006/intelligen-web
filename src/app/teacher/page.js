@@ -901,7 +901,11 @@ const fetchMoments = async (schoolId) => {
                 {parents.filter(p => messages.some(m => m.sender_id === p.id || m.receiver_id === p.id)).length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No messages yet from parents.</div>
                 ) : parents.filter(p => messages.some(m => m.sender_id === p.id || m.receiver_id === p.id)).map(parent => {
-                  const convo = messages.filter(m => m.sender_id === parent.id || m.receiver_id === parent.id)
+                  const convo = messages.filter(m => 
+                    (m.sender_id === parent.id || m.receiver_id === parent.id)
+                    ).filter((m, index, self) => 
+                      index === self.findIndex(t => t.id === m.id)
+                    )
                   return (
                     <div key={parent.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
