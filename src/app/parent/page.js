@@ -132,7 +132,19 @@ export default function ParentPortal() {
     setMessages(msgsData || [])
 
     // Load teachers
-    const { data: teachersData } = await supabase.from('profiles').select('*').eq('role', 'teacher').eq('school_id', effectiveSid)
+// Get only teachers assigned to parent's children programs
+    const childPrograms = s.data?.map(st => st.program).filter(Boolean) || []
+    let teachersData = []
+    if (childPrograms.length > 0) {
+      const { data: spData } = await supabase.from('staff_programs')
+        .select('staff_id').in('program', childPrograms)
+      const teacherIds = [...new Set((spData || []).map(p => p.staff_id))]
+      if (teacherIds.length > 0) {
+        const { data: tData } = await supabase.from('profiles')
+          .select('*').in('id', teacherIds).eq('role', 'teacher')
+        teachersData = tData || []
+      }
+    }
     setTeachers(teachersData || [])
 
       const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`

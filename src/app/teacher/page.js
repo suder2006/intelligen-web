@@ -111,7 +111,13 @@ const { data: sData } = await supabase.from('students')
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', prof.school_id).order('value')
     setPrograms(progs?.map(p => p.value) || [])
     await fetchMessages()
-    const { data: parentsData } = await supabase.from('profiles').select('*').eq('role', 'parent').eq('school_id', prof.school_id)
+    // Get parents from parent_students linked to teacher's students
+    const { data: psData } = await supabase.from('parent_students')
+      .select('parent_id').in('student_id', studentIds.length > 0 ? studentIds : ['__none__'])
+    const parentIdList = [...new Set((psData || []).map(p => p.parent_id))]
+    const { data: parentsData } = parentIdList.length > 0
+      ? await supabase.from('profiles').select('*').in('id', parentIdList)
+      : { data: [] }
     setParents(parentsData || [])
 
     // Load leave data
