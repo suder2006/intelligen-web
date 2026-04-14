@@ -1,19 +1,26 @@
 'use client'
 import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export default function LandingPage() {
   const [form, setForm] = useState({ name: '', school: '', phone: '', email: '', city: '' })
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = async () => {
-    if (!form.name || !form.school || !form.phone) { alert('Please fill in required fields'); return }
-    setSubmitting(true)
-    // Store in Supabase or send email — for now just show success
-    await new Promise(r => setTimeout(r, 1000))
-    setSubmitted(true)
-    setSubmitting(false)
-  }
+const handleSubmit = async () => {
+  if (!form.name || !form.school || !form.phone) { alert('Please fill in required fields'); return }
+  setSubmitting(true)
+  const { error } = await supabase.from('demo_requests').insert({
+    name: form.name,
+    school: form.school,
+    phone: form.phone,
+    email: form.email,
+    city: form.city
+  })
+  if (error) { alert('Something went wrong. Please try again.'); setSubmitting(false); return }
+  setSubmitted(true)
+  setSubmitting(false)
+}
 
   const features = [
     { icon: '✅', title: 'Attendance', desc: 'Mark student and staff attendance digitally. Real-time reports at your fingertips.' },
