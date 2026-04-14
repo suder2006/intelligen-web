@@ -54,7 +54,7 @@ export default function SuperAdminDashboard() {
     loadData()
   }
 
-  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
+  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   const statCards = [
     { label: 'Total Schools', value: stats.schools, icon: '🏫', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)' },

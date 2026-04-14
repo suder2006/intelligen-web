@@ -139,7 +139,7 @@ export default function AdminDashboard() {
     if (!confirm(`Send birthday wishes to ${todays.length} student(s)?`)) return
     for (const s of todays) { await sendBirthdayWish(s) }
   }
-  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
+  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },

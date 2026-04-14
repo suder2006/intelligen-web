@@ -211,7 +211,7 @@ export default function CenterHeadPortal() {
           <div className="logo">Intelli<span>Gen</span></div>
           <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px' }}>🎯 Center Head</span>
         </div>
-        <button onClick={async () => { await supabase.auth.signOut(); router.push('/') }}
+        <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
           style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
           🚪 Sign Out
         </button>

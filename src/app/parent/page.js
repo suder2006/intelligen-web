@@ -406,7 +406,7 @@ export default function ParentPortal() {
     else alert('❌ Could not enable notifications. Please allow notifications in browser settings.')
   }
 
-  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
+  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
 const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
   const totalPaid = fees.reduce((sum, f) => sum + Number(f.paid_amount || 0), 0)

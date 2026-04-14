@@ -614,7 +614,7 @@ const fetchMessages = async () => {
     if (success) alert('✅ Push notifications enabled!')
   }
   
-  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
+  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   const present = attendance.filter(a => a.status === 'present').length
   const absent = attendance.filter(a => a.status === 'absent').length
