@@ -3,11 +3,12 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function LandingPage() {
-  const [form, setForm] = useState({ name: '', school: '', phone: '', email: '', city: '' })
+  const [form, setForm] = useState({ name: '', school: '', phone: '', email: '', city: '', honeypot: '' })
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
 const handleSubmit = async () => {
+  if (form.honeypot) return // Bot detected — silently ignore
   if (!form.name || !form.school || !form.phone) { alert('Please fill in required fields'); return }
   setSubmitting(true)
   const { error } = await supabase.from('demo_requests').insert({
@@ -275,6 +276,16 @@ const handleSubmit = async () => {
                 <input className="form-input" placeholder="Email Address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
               </div>
               <input className="form-input" placeholder="City" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} style={{ marginBottom: '0' }} />
+              {/* Honeypot - hidden from humans, bots fill this */}
+              <input
+              type="text"
+              value={form.honeypot}
+              onChange={e => setForm({ ...form, honeypot: e.target.value })}
+              style={{ display: 'none' }}
+              tabIndex="-1"
+              autoComplete="off"
+              />
+
               <button className="form-submit" onClick={handleSubmit} disabled={submitting}>
                 {submitting ? '⏳ Submitting...' : '🚀 Request Free Demo'}
               </button>
