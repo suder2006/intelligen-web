@@ -316,6 +316,7 @@ const handleSubmit = async () => {
         <div style={{ marginBottom: '16px' }}>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/terms">Terms of Service</a>
+          <a href="/refund-policy">Refund Policy</a>
           <a href="mailto:hello@intelligenapp.in">Contact Us</a>
         </div>
         <div>© 2026 intelliGen. All rights reserved.</div>
