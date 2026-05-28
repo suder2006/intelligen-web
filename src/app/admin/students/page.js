@@ -29,6 +29,8 @@ export default function StudentsPage() {
     medical_alert_note: '', child_aadhar: '', father_aadhar: '', mother_aadhar: ''
   })
 
+
+
 //const [schoolId, setSchoolId] = useState(null)
 
 useEffect(() => {
@@ -38,12 +40,17 @@ useEffect(() => {
       .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
   }, [schoolId])
 
-  async function fetchStudents(sid) {
-    setLoading(true)
-    const { data } = await supabase.from('students').select('*').eq('school_id', sid || schoolId).order('full_name')
-    setStudents(data || [])
-    setLoading(false)
-  }
+const [showArchived, setShowArchived] = useState(false)
+
+async function fetchStudents(sid) {
+  setLoading(true)
+  let query = supabase.from('students').select('*').eq('school_id', sid || schoolId).order('full_name')
+  if (!showArchived) query = query.eq('status', 'active')
+  else query = query.eq('status', 'archived')
+  const { data } = await query
+  setStudents(data || [])
+  setLoading(false)
+}
 
   async function save() {
     if (!form.full_name) { alert('Please enter student name'); return }
@@ -90,11 +97,38 @@ useEffect(() => {
     setSaving(false)
   }
 
-  async function deleteStudent(id) {
-    if (!confirm('Delete this student?')) return
-    await supabase.from('students').delete().eq('id', id)
-    fetchStudents()
-  }
+const [archiveModal, setArchiveModal] = useState(null)
+const [archiveForm, setArchiveForm] = useState({ reason: '', notes: '' })
+const [archiving, setArchiving] = useState(false)
+
+const ARCHIVE_REASONS = [
+  'Withdrawn from school',
+  'Relocated to another city',
+  'Completed program',
+  'Transferred to another school',
+  'Duplicate entry',
+  'Family reasons',
+  'Other'
+]
+
+async function archiveStudent() {
+  if (!archiveForm.reason) { alert('Please select a reason'); return }
+  setArchiving(true)
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('students').update({
+    status: 'archived',
+    archive_reason: archiveForm.reason,
+    archive_notes: archiveForm.notes,
+    archived_at: new Date().toISOString(),
+    archived_by: user.id
+  }).eq('id', archiveModal.id)
+  if (error) { alert('Error: ' + error.message); setArchiving(false); return }
+  setArchiveModal(null)
+  setArchiveForm({ reason: '', notes: '' })
+  setArchiving(false)
+  await fetchStudents()
+  alert(`✅ ${archiveModal.full_name} has been archived successfully!`)
+}
 
   function startEdit(s) {
     setEditing(s.id)
@@ -137,6 +171,10 @@ useEffect(() => {
           <button onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' }) }}
             style={{ padding: '10px 24px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
             ➕ Add Student
+          </button>
+          <button onClick={() => { setShowArchived(!showArchived); fetchStudents() }}
+            style={{ padding: '10px 20px', backgroundColor: showArchived ? '#f59e0b' : '#334155', color: showArchived ? '#000' : '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+            {showArchived ? '👶 Active Students' : '🗃️ Archived Students'}
           </button>
           </div>
         </div>
@@ -325,7 +363,9 @@ useEffect(() => {
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => startEdit(s)} style={{ padding: '5px 10px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
-                      <button onClick={() => deleteStudent(s.id)} style={{ padding: '5px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+                      <button onClick={() => { setArchiveModal(s); setArchiveForm({ reason: '', notes: '' }) }} 
+                        style={{ padding: '5px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>  🗃️
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -377,7 +417,50 @@ useEffect(() => {
             </div>
           </div>
         </div>
-      )}    
+      )}
+
+      {archiveModal && (
+  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
+    <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '460px' }}
+      onClick={e => e.stopPropagation()}>
+      <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '12px' }}>🗃️</div>
+      <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px', textAlign: 'center' }}>Archive Student</div>
+      <div style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '24px', textAlign: 'center' }}>{archiveModal.full_name}</div>
+      
+      <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px' }}>
+        <div style={{ color: '#fbbf24', fontSize: '13px' }}>⚠️ This student will be archived, not permanently deleted. You can restore them later if needed.</div>
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Reason for Archiving *</label>
+        <select value={archiveForm.reason} onChange={e => setArchiveForm({ ...archiveForm, reason: e.target.value })}
+          style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }}>
+          <option value=''>-- Select Reason --</option>
+          {ARCHIVE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Additional Notes (optional)</label>
+        <textarea value={archiveForm.notes} onChange={e => setArchiveForm({ ...archiveForm, notes: e.target.value })}
+          placeholder='Any additional information...'
+          rows={3}
+          style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', resize: 'vertical', fontFamily: 'inherit' }} />
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={() => { setArchiveModal(null); setArchiveForm({ reason: '', notes: '' }) }}
+          style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px' }}>
+          Cancel
+        </button>
+        <button onClick={archiveStudent} disabled={archiving}
+          style={{ flex: 1, padding: '11px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>
+          {archiving ? '⏳ Archiving...' : '🗃️ Archive Student'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}    
 
     </div>
   )
