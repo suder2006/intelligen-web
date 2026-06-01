@@ -34,11 +34,11 @@ export default function StudentsPage() {
 //const [schoolId, setSchoolId] = useState(null)
 
 useEffect(() => {
-    if (!schoolId) return
-    fetchStudents(schoolId)
-    supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
-      .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
-  }, [schoolId])
+  if (!schoolId) return
+  fetchStudents(schoolId)
+  supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
+    .then(({ data }) => setPrograms(data?.map(d => d.value) || []))
+}, [schoolId, showArchived])
 
 const [showArchived, setShowArchived] = useState(false)
 
@@ -128,6 +128,20 @@ async function archiveStudent() {
   setArchiving(false)
   await fetchStudents()
   alert(`✅ ${archiveModal.full_name} has been archived successfully!`)
+}
+
+async function restoreStudent(student) {
+  if (!confirm(`Restore ${student.full_name} back to active?`)) return
+  const { error } = await supabase.from('students').update({
+    status: 'active',
+    archive_reason: null,
+    archive_notes: null,
+    archived_at: null,
+    archived_by: null
+  }).eq('id', student.id)
+  if (error) { alert('Error: ' + error.message); return }
+  alert(`✅ ${student.full_name} has been restored successfully!`)
+  await fetchStudents()
 }
 
   function startEdit(s) {
@@ -361,11 +375,21 @@ async function archiveStudent() {
                     <span style={{ backgroundColor: s.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: s.status === 'active' ? '#34d399' : '#f87171', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{s.status}</span>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button onClick={() => startEdit(s)} style={{ padding: '5px 10px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
-                      <button onClick={() => { setArchiveModal(s); setArchiveForm({ reason: '', notes: '' }) }} 
-                        style={{ padding: '5px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>  🗃️
-                      </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {!showArchived && (
+                    <button onClick={() => startEdit(s)} style={{ padding: '5px 10px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                    )}
+                    {showArchived ? (
+                    <button onClick={() => restoreStudent(s)} 
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#34d399', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    ♻️ Restore
+                    </button>
+                     ) : (
+                    <button onClick={() => { setArchiveModal(s); setArchiveForm({ reason: '', notes: '' }) }} 
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                    🗃️
+                    </button>
+                    )}
                     </div>
                   </td>
                 </tr>
