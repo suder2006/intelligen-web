@@ -67,11 +67,25 @@ export default function AdminSidebar({ active }) {
 
       // Check if this user is the main admin (school_admin role)
       // Main admin has no restrictions
+      // Only the MAIN admin (no restrictions record) gets full access
+      // school_admin with restrictions = sub-admin
+      // center_head = always check restrictions
       if (profile.role === 'school_admin') {
-        setIsMainAdmin(true)
-        setRestrictions([]) // no restrictions for main admin
-        return
-      }
+      // Check if this school_admin has restrictions
+      const { data: restrictionCheck } = await supabase
+      .from('sub_admin_restrictions')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .single()
+  
+    if (!restrictionCheck) {
+    // No restrictions found = main admin
+    setIsMainAdmin(true)
+    setRestrictions([])
+    return
+    }
+    }
 
       // Load restrictions for this user
       const { data: restrictionData } = await supabase
