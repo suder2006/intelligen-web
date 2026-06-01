@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import AdminSidebar from '@/components/AdminSidebar'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ students: 0, staff: 0, classes: 0, fees: 0, admissions: 0, attendance: 0 })
@@ -28,11 +27,6 @@ export default function AdminDashboard() {
       setUser(user)
     // Get school_id from profile
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      // Allow school_admin and center_head only
-      if (!['school_admin', 'center_head'].includes(prof?.role)) {
-      router.push('/login')
-      return
-      }
       const { data: schoolData } = await supabase.from('schools').select('name').eq('id', prof?.school_id).single()
       setSchoolName(schoolData?.name || 'My School')
       const schoolId = prof?.school_id
@@ -147,7 +141,7 @@ export default function AdminDashboard() {
   }
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
-  /* const navItems = [
+  const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
     { href: '/admin/students', label: 'Students', icon: '👶' },
     { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
@@ -173,7 +167,7 @@ export default function AdminDashboard() {
     { href: '/admin/diary', label: 'Diary', icon: '📔' },
     { href: '/admin/reports', label: 'Reports', icon: '📈' },
     { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
-  ] */
+  ]
 
   const statCards = [
     { label: 'Total Students', value: stats.students, icon: '👶', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)' },
@@ -187,31 +181,46 @@ export default function AdminDashboard() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
-  * { box-sizing: border-box; }
-  .main { margin-left: 240px; flex: 1; padding: 32px; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
-  .page-title { font-size: 24px; font-weight: 700; }
-  .page-sub { color: rgba(255,255,255,0.4); font-size: 14px; margin-top: 4px; }
-  .logout-btn { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.2); color: #f87171; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; }
-  .logout-btn:hover { background: rgba(239,68,68,0.25); }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }
-  .stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 24px; transition: all 0.2s; cursor: default; }
-  .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.12); }
-  .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 16px; }
-  .stat-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
-  .stat-label { color: rgba(255,255,255,0.4); font-size: 13px; }
-  .quick-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-  .quick-link { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 20px; text-decoration: none; color: #fff; text-align: center; transition: all 0.2s; }
-  .quick-link:hover { background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.2); transform: translateY(-2px); }
-  .quick-link-icon { font-size: 28px; margin-bottom: 8px; }
-  .quick-link-label { font-size: 13px; color: rgba(255,255,255,0.6); font-weight: 500; }
-  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: rgba(255,255,255,0.8); }
-  @media (max-width: 768px) { .main { margin-left: 0; padding: 20px; } }
-`}</style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+        * { box-sizing: border-box; }
+        .sidebar { width: 240px; min-height: 100vh; height: 100vh; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; overflow-y: auto; }
+        .logo { font-family: 'Playfair Display', serif; font-size: 24px; color: #fff; padding: 8px 12px; margin-bottom: 32px; }
+        .logo span { color: #38bdf8; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.2s; margin-bottom: 4px; }
+        .nav-item:hover { background: rgba(56,189,248,0.1); color: #38bdf8; }
+        .nav-item.active { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .main { margin-left: 240px; flex: 1; padding: 32px; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+        .page-title { font-size: 24px; font-weight: 700; }
+        .page-sub { color: rgba(255,255,255,0.4); font-size: 14px; margin-top: 4px; }
+        .logout-btn { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.2); color: #f87171; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+        .logout-btn:hover { background: rgba(239,68,68,0.25); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 24px; transition: all 0.2s; cursor: default; }
+        .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.12); }
+        .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 16px; }
+        .stat-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .stat-label { color: rgba(255,255,255,0.4); font-size: 13px; }
+        .quick-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+        .quick-link { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 20px; text-decoration: none; color: #fff; text-align: center; transition: all 0.2s; }
+        .quick-link:hover { background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.2); transform: translateY(-2px); }
+        .quick-link-icon { font-size: 28px; margin-bottom: 8px; }
+        .quick-link-label { font-size: 13px; color: rgba(255,255,255,0.6); font-weight: 500; }
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: rgba(255,255,255,0.8); }
+        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 20px; } }
+      `}</style>
 
       {/* Sidebar */}
-      <AdminSidebar active="/admin" />
+      <div className="sidebar">
+        <div className="logo">Intelli<span>Gen</span></div>
+        {navItems.map(item => (
+          <Link key={item.href} href={item.href} className={`nav-item ${item.href === '/admin' ? 'active' : ''}`}>
+            <span>{item.icon}</span> {item.label}
+          </Link>
+        ))}
+        <div style={{ flex: 1 }} />
+        <button className="logout-btn" onClick={handleLogout}>🚪 Sign Out</button>
+      </div>
 
       {/* Main Content */}
       <div className="main">
