@@ -24,10 +24,15 @@ export default function StaffPage() {
 
     useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
-    const fetchAll = async () => {
-    setLoading(true)
-    const [{ data: staffData }, { data: progsData }, { data: spData }] = await Promise.all([
-      supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'center_head']).eq('school_id', schoolId).order('created_at', { ascending: false }),
+      const fetchAll = async () => {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      const [{ data: staffData }, { data: progsData }, { data: spData }] = await Promise.all([
+    supabase.from('profiles').select('*')
+      .in('role', ['teacher', 'staff', 'center_head', 'school_admin'])
+      .eq('school_id', schoolId)
+      .neq('id', user.id)
+      .order('created_at', { ascending: false }),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
       supabase.from('staff_programs').select('*')
     ])  
