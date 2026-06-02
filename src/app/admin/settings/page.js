@@ -77,8 +77,9 @@ export default function SchoolSettingsPage() {
     setSaving(false)
   }
 
-  const fetchSubAdmins = async () => {
-  const { data } = await supabase
+const fetchSubAdmins = async () => {
+  if (!schoolId) return
+  const { data, error } = await supabase
     .from('sub_admin_restrictions')
     .select('*, profiles(full_name, email)')
     .eq('school_id', schoolId)
@@ -110,6 +111,8 @@ const saveSubAdmin = async () => {
       .eq('email', subAdminForm.email)
       .eq('school_id', schoolId)
       .single()
+      // TEMPORARY DEBUG
+    alert(`Profile found: ${JSON.stringify(profileData)}, Error: ${JSON.stringify(profileError)}`)  
     if (!profileData && !editingSubAdmin) {
       alert('No staff member found with this email. Please add them as staff first.')
       setSavingSubAdmin(false)
