@@ -146,7 +146,13 @@ if (!profileData && !editingSubAdmin) {
     setSubAdminForm({ email: '', restricted_modules: [] })
     setEditingSubAdmin(null)
     setShowSubAdminForm(false)
-    await fetchSubAdmins()
+    // Reload with explicit schoolId
+    const { data } = await supabase
+    .from('sub_admin_restrictions')
+    .select('*, profiles(full_name, email)')
+    .eq('school_id', schoolId)
+    .order('created_at', { ascending: false })
+    setSubAdmins(data || [])
     alert('✅ Sub-admin restrictions saved!')
   } catch (e) {
     alert('Error: ' + e.message)
