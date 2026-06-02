@@ -79,12 +79,24 @@ export default function SchoolSettingsPage() {
 
 const fetchSubAdmins = async () => {
   if (!schoolId) return
-  const { data, error } = await supabase
+  const { data: sarData } = await supabase
     .from('sub_admin_restrictions')
-    .select('*, profiles(full_name, email)')
+    .select('*')
     .eq('school_id', schoolId)
     .order('created_at', { ascending: false })
-  setSubAdmins(data || [])
+  if (sarData && sarData.length > 0) {
+    const enriched = await Promise.all(sarData.map(async (sar) => {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', sar.user_id)
+        .single()
+      return { ...sar, profiles: prof }
+    }))
+    setSubAdmins(enriched)
+  } else {
+    setSubAdmins([])
+  }
 }
 
 const saveModulePassword = async () => {
@@ -147,12 +159,7 @@ if (!profileData && !editingSubAdmin) {
     setEditingSubAdmin(null)
     setShowSubAdminForm(false)
     // Reload with explicit schoolId
-    const { data } = await supabase
-    .from('sub_admin_restrictions')
-    .select('*, profiles(full_name, email)')
-    .eq('school_id', schoolId)
-    .order('created_at', { ascending: false })
-    setSubAdmins(data || [])
+    await fetchSubAdmins()
     alert('✅ Sub-admin restrictions saved!')
   } catch (e) {
     alert('Error: ' + e.message)
