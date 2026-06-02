@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
+import ModuleGuard from '@/components/ModuleGuard'
 
 const FEE_TYPES = ['Registration Fee', 'Admission Fee', 'Annual Fee', 'Tuition Fee', 'Books & Materials', 'Uniform', 'Event Fee', 'Daycare Fee', 'Transport Fee']
 const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Online']
@@ -197,6 +198,7 @@ export default function FeesPage() {
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', marginBottom: '14px', fontFamily: "'DM Sans', sans-serif" }
 
   return (
+    <ModuleGuard moduleId="fees">
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
@@ -215,6 +217,7 @@ export default function FeesPage() {
         .filter-btn.active { background: rgba(56,189,248,0.15); border-color: #38bdf8; color: #38bdf8; }
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } }
       `}</style>
+      
 
       <AdminSidebar />     
 
@@ -586,5 +589,6 @@ export default function FeesPage() {
         </div>
       )}
     </div>
+    </ModuleGuard>
   )
 }
