@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
+import ModuleGuard from '@/components/ModuleGuard'
 
 
 const LOCKABLE_MODULES = [
@@ -201,6 +202,7 @@ const startEditSubAdmin = (sa) => {
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '14px' }
 
   return (
+    <ModuleGuard moduleId="settings">
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
@@ -579,5 +581,6 @@ const startEditSubAdmin = (sa) => {
         )}
       </div>
     </div>
+    </ModuleGuard>
   )
 }
