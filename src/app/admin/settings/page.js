@@ -106,18 +106,16 @@ const saveSubAdmin = async () => {
   setSavingSubAdmin(true)
   try {
     const { data: profileData } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .eq('email', subAdminForm.email)
-      .eq('school_id', schoolId)
-      .single()
-      // TEMPORARY DEBUG
-    alert(`Profile found: ${JSON.stringify(profileData)}, Error: ${JSON.stringify(profileError)}`)  
-    if (!profileData && !editingSubAdmin) {
-      alert('No staff member found with this email. Please add them as staff first.')
-      setSavingSubAdmin(false)
-      return
-    }
+  .from('profiles')
+  .select('id, full_name')
+  .eq('email', subAdminForm.email)
+  .eq('school_id', schoolId)
+  .maybeSingle()
+if (!profileData && !editingSubAdmin) {
+  alert('No staff member found with this email. Please add them as staff first.')
+  setSavingSubAdmin(false)
+  return
+}
     if (editingSubAdmin) {
       await supabase.from('sub_admin_restrictions').update({
         restricted_modules: subAdminForm.restricted_modules
