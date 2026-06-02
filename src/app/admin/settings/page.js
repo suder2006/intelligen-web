@@ -6,7 +6,12 @@ import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
 
 
-
+const LOCKABLE_MODULES = [
+  { id: 'fees', label: 'Fees', icon: '💳' },
+  { id: 'fee_structure', label: 'Fee Structure', icon: '📋' },
+  { id: 'payroll', label: 'Payroll', icon: '💰' },
+  { id: 'settings', label: 'Settings', icon: '⚙️' },
+]
 export default function SchoolSettingsPage() {
   const { schoolId, schoolName } = useSchool()
   const [loading, setLoading] = useState(true)
@@ -21,14 +26,28 @@ export default function SchoolSettingsPage() {
     razorpay_key_id: '', razorpay_key_secret: '',
     payu_merchant_key: '', payu_merchant_salt: ''
   })
+  // Sub-admin management
+  const [subAdmins, setSubAdmins] = useState([])
+  const [showSubAdminForm, setShowSubAdminForm] = useState(false)
+  const [subAdminForm, setSubAdminForm] = useState({ email: '', restricted_modules: [] })
+  const [savingSubAdmin, setSavingSubAdmin] = useState(false)
+  const [editingSubAdmin, setEditingSubAdmin] = useState(null)
+  const [modulePassword, setModulePassword] = useState('')
+  const [newModulePassword, setNewModulePassword] = useState('')
+  const [confirmModulePassword, setConfirmModulePassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
 
-  useEffect(() => { if (schoolId) fetchSchool() }, [schoolId])
+
+  useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins() } }, [schoolId])
+
 
   const fetchSchool = async () => {
     setLoading(true)
     const { data } = await supabase.from('schools').select('*').eq('id', schoolId).single()
     setSchool(data)
     if (data) {
+      setModulePassword(data.module_access_password || '')
     setForm({
         name: data.name || '',
         address: data.address || '',
@@ -58,6 +77,111 @@ export default function SchoolSettingsPage() {
     setSaving(false)
   }
 
+  const fetchSubAdmins = async () => {
+  const { data } = await supabase
+    .from('sub_admin_restrictions')
+    .select('*, profiles(full_name, email)')
+    .eq('school_id', schoolId)
+    .order('created_at', { ascending: false })
+  setSubAdmins(data || [])
+}
+
+const saveModulePassword = async () => {
+  if (!newModulePassword) { alert('Please enter a password'); return }
+  if (newModulePassword !== confirmModulePassword) { alert('Passwords do not match!'); return }
+  if (newModulePassword.length < 6) { alert('Password must be at least 6 characters'); return }
+  setSavingPassword(true)
+  await supabase.from('schools').update({ module_access_password: newModulePassword }).eq('id', schoolId)
+  setModulePassword(newModulePassword)
+  setNewModulePassword('')
+  setConfirmModulePassword('')
+  setShowPasswordForm(false)
+  setSavingPassword(false)
+  alert('✅ Module access password saved!')
+}
+
+const saveSubAdmin = async () => {
+  if (!subAdminForm.email && !editingSubAdmin) { alert('Please enter email'); return }
+  setSavingSubAdmin(true)
+  try {
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('email', subAdminForm.email)
+      .eq('school_id', schoolId)
+      .single()
+    if (!profileData && !editingSubAdmin) {
+      alert('No staff member found with this email. Please add them as staff first.')
+      setSavingSubAdmin(false)
+      return
+    }
+    if (editingSubAdmin) {
+      await supabase.from('sub_admin_restrictions').update({
+        restricted_modules: subAdminForm.restricted_modules
+      }).eq('id', editingSubAdmin)
+    } else {
+      const { data: existing } = await supabase
+        .from('sub_admin_restrictions')
+        .select('id')
+        .eq('user_id', profileData.id)
+        .eq('school_id', schoolId)
+        .single()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (existing) {
+        await supabase.from('sub_admin_restrictions').update({
+          restricted_modules: subAdminForm.restricted_modules,
+          is_active: true
+        }).eq('id', existing.id)
+      } else {
+        await supabase.from('sub_admin_restrictions').insert({
+          school_id: schoolId,
+          user_id: profileData.id,
+          restricted_modules: subAdminForm.restricted_modules,
+          is_active: true,
+          created_by: user.id
+        })
+      }
+    }
+    setSubAdminForm({ email: '', restricted_modules: [] })
+    setEditingSubAdmin(null)
+    setShowSubAdminForm(false)
+    await fetchSubAdmins()
+    alert('✅ Sub-admin restrictions saved!')
+  } catch (e) {
+    alert('Error: ' + e.message)
+  }
+  setSavingSubAdmin(false)
+}
+
+const toggleModule = (moduleId) => {
+  const current = subAdminForm.restricted_modules
+  if (current.includes(moduleId)) {
+    setSubAdminForm({ ...subAdminForm, restricted_modules: current.filter(m => m !== moduleId) })
+  } else {
+    setSubAdminForm({ ...subAdminForm, restricted_modules: [...current, moduleId] })
+  }
+}
+
+const toggleSubAdminStatus = async (id, currentStatus) => {
+  await supabase.from('sub_admin_restrictions').update({ is_active: !currentStatus }).eq('id', id)
+  await fetchSubAdmins()
+}
+
+const deleteSubAdminRestriction = async (id, name) => {
+  if (!confirm(`Remove all restrictions for ${name}? They will have full access.`)) return
+  await supabase.from('sub_admin_restrictions').delete().eq('id', id)
+  await fetchSubAdmins()
+}
+
+const startEditSubAdmin = (sa) => {
+  setEditingSubAdmin(sa.id)
+  setSubAdminForm({
+    name: sa.profiles?.full_name || '',
+    email: sa.profiles?.email || '',
+    restricted_modules: sa.restricted_modules || []
+  })
+  setShowSubAdminForm(true)
+}  
   const upiQrUrl = form.upi_id ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${form.upi_id}&pn=${encodeURIComponent(form.upi_name)}`)}`  : null
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '14px' }
@@ -287,6 +411,148 @@ export default function SchoolSettingsPage() {
                 </div>
               )}
             </div>
+            
+            {/* ===== SUB-ADMIN MANAGEMENT ===== */}
+<div className="section">
+  <div className="section-title">👥 Sub-Admin Management</div>
+
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
+    ℹ️ Add staff members here and select which modules they cannot access freely. When they try to open a restricted module, they will be asked for the module access password.
+  </div>
+
+  {/* Module Access Password */}
+  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+      <div style={{ fontWeight: '600', color: '#fbbf24' }}>🔑 Module Access Password</div>
+      <button onClick={() => setShowPasswordForm(!showPasswordForm)}
+        style={{ padding: '6px 14px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+        {showPasswordForm ? 'Cancel' : modulePassword ? '🔄 Change Password' : '+ Set Password'}
+      </button>
+    </div>
+    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '8px' }}>
+      {modulePassword ? '✅ Password is set. Sub-admins will need this to access restricted modules.' : '⚠️ No password set yet. Set a password before restricting modules.'}
+    </div>
+    {showPasswordForm && (
+      <div style={{ marginTop: '14px', padding: '16px', background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.15)', borderRadius: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div>
+            <label>New Password *</label>
+            <input type='password' value={newModulePassword} onChange={e => setNewModulePassword(e.target.value)}
+              placeholder='Min 6 characters' style={inputStyle} />
+          </div>
+          <div>
+            <label>Confirm Password *</label>
+            <input type='password' value={confirmModulePassword} onChange={e => setConfirmModulePassword(e.target.value)}
+              placeholder='Repeat password' style={inputStyle} />
+          </div>
+        </div>
+        <button onClick={saveModulePassword} disabled={savingPassword}
+          style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: 'none', borderRadius: '8px', color: '#000', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+          {savingPassword ? '⏳ Saving...' : '🔑 Save Password'}
+        </button>
+      </div>
+    )}
+  </div>
+
+  {/* Add Sub-Admin Button */}
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{subAdmins.length} sub-admin(s) configured</div>
+    <button onClick={() => { setShowSubAdminForm(!showSubAdminForm); setEditingSubAdmin(null); setSubAdminForm({ email: '', restricted_modules: [] }) }}
+      style={{ padding: '9px 18px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+      + Add Sub-Admin
+    </button>
+  </div>
+
+  {/* Sub-Admin Form */}
+  {showSubAdminForm && (
+    <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+      <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px' }}>
+        {editingSubAdmin ? '✏️ Edit Restrictions' : '➕ Add Sub-Admin Restrictions'}
+      </div>
+      {!editingSubAdmin && (
+        <div style={{ marginBottom: '16px' }}>
+          <label>Staff Email * (must already have an account)</label>
+          <input value={subAdminForm.email} onChange={e => setSubAdminForm({ ...subAdminForm, email: e.target.value })}
+            placeholder='e.g. adminstaff@timekidsannanagar.com' style={inputStyle} />
+          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '-10px', marginBottom: '8px' }}>
+            This person must already exist as a staff member in your school
+          </div>
+        </div>
+      )}
+      {editingSubAdmin && (
+        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
+          <div style={{ fontWeight: '600' }}>{subAdminForm.name}</div>
+          <div style={{ color: '#38bdf8', fontSize: '13px' }}>{subAdminForm.email}</div>
+        </div>
+      )}
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ marginBottom: '10px', display: 'block' }}>🔒 Select modules to restrict:</label>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {LOCKABLE_MODULES.map(mod => {
+            const isSelected = subAdminForm.restricted_modules.includes(mod.id)
+            return (
+              <button key={mod.id} onClick={() => toggleModule(mod.id)} type='button'
+                style={{ padding: '10px 18px', borderRadius: '10px', border: `2px solid ${isSelected ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, background: isSelected ? 'rgba(239,68,68,0.12)' : 'transparent', color: isSelected ? '#f87171' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                {isSelected ? '🔒' : '🔓'} {mod.icon} {mod.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={() => { setShowSubAdminForm(false); setEditingSubAdmin(null) }}
+          style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+          Cancel
+        </button>
+        <button onClick={saveSubAdmin} disabled={savingSubAdmin}
+          style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+          {savingSubAdmin ? '⏳ Saving...' : '💾 Save Restrictions'}
+        </button>
+      </div>
+    </div>
+  )}
+
+  {/* Sub-Admins List */}
+  {subAdmins.length === 0 ? (
+    <div style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+      No sub-admin restrictions configured yet.
+    </div>
+  ) : subAdmins.map(sa => (
+    <div key={sa.id} style={{ background: sa.is_active ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)', border: `1px solid ${sa.is_active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)'}`, borderRadius: '12px', padding: '16px', marginBottom: '10px', opacity: sa.is_active ? 1 : 0.6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+        <div>
+          <div style={{ fontWeight: '700', marginBottom: '2px' }}>{sa.profiles?.full_name}</div>
+          <div style={{ color: '#38bdf8', fontSize: '13px', marginBottom: '8px' }}>{sa.profiles?.email}</div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {sa.restricted_modules?.length === 0 ? (
+              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>✅ Full Access</span>
+            ) : sa.restricted_modules?.map(mod => {
+              const modInfo = LOCKABLE_MODULES.find(m => m.id === mod)
+              return (
+                <span key={mod} style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  🔒 {modInfo?.icon} {modInfo?.label || mod}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: sa.is_active ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)', color: sa.is_active ? '#34d399' : '#64748b' }}>
+            {sa.is_active ? 'Active' : 'Inactive'}
+          </span>
+          <button onClick={() => startEditSubAdmin(sa)}
+            style={{ padding: '5px 10px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>✏️</button>
+          <button onClick={() => toggleSubAdminStatus(sa.id, sa.is_active)}
+            style={{ padding: '5px 10px', background: sa.is_active ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${sa.is_active ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: '6px', color: sa.is_active ? '#fbbf24' : '#34d399', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>
+            {sa.is_active ? '🔒 Disable' : '🔓 Enable'}
+          </button>
+          <button onClick={() => deleteSubAdminRestriction(sa.id, sa.profiles?.full_name)}
+            style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>🗑️</button>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>  
 
             {/* Save Button */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -294,6 +560,7 @@ export default function SchoolSettingsPage() {
                 {saving ? '⏳ Saving...' : saved ? '✅ All Settings Saved!' : '💾 Save All Settings'}
               </button>
             </div>
+
           </>
         )}
       </div>
