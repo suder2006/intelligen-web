@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-/*const TIME_SLOTS = ['Morning Circle', 'Pre-Lunch', 'Post-Lunch', 'Evening'] */
 
 export default function PlannerPage() {
   const router = useRouter()
@@ -15,9 +14,10 @@ export default function PlannerPage() {
   const [curriculum, setCurriculum] = useState([])
   const [selectedBlock, setSelectedBlock] = useState('')
   const [form, setForm] = useState({
-    program: '', day: '', time_slot: '', planned_activity: '',
-    activity_category: '', activity_type: '', materials_needed: '',
-    teacher_notes: '', special_event: false, assigned_date: ''
+    program: '', assigned_date: '', day: '',
+    concept_focus: '', assembly_time: '', circle_time: '',
+    planned_activity: '', activity_category: '',
+    play_type: '', home_task: '', teacher_notes: ''
   })
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -32,26 +32,56 @@ export default function PlannerPage() {
   useEffect(() => { if (selectedBlock) fetchCurriculum() }, [selectedBlock])
 
   async function fetchCurriculum() {
-    const { data } = await supabase.from('curriculum').select('*').eq('block_id', selectedBlock).order('assigned_date').order('time_slot')
+    const { data } = await supabase.from('curriculum').select('*').eq('block_id', selectedBlock).order('assigned_date').order('program')
     setCurriculum(data || [])
   }
 
   function getMasters(type) { return masters.filter(m => m.type === type).map(m => m.value) }
 
+  function handleDateChange(date) {
+    if (!date) { setForm({ ...form, assigned_date: '', day: '' }); return }
+    const d = new Date(date + 'T00:00:00')
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' })
+    setForm({ ...form, assigned_date: date, day: dayName })
+  }
+
   async function save() {
-    if (!form.program || !form.day || !form.time_slot) { alert('Please fill Program, Day and Time Slot'); return }
+    if (!form.program || !form.assigned_date) { alert('Please fill Program and Date'); return }
     setSaving(true)
-    const payload = { ...form, block_id: selectedBlock, school_id: schoolId }
+    const payload = {
+      program: form.program,
+      assigned_date: form.assigned_date,
+      day: form.day,
+      concept_focus: form.concept_focus,
+      assembly_time: form.assembly_time,
+      circle_time: form.circle_time,
+      planned_activity: form.planned_activity,
+      activity_category: form.activity_category,
+      play_type: form.play_type,
+      home_task: form.home_task,
+      teacher_notes: form.teacher_notes,
+      block_id: selectedBlock,
+      school_id: schoolId
+    }
     if (editing) {
       await supabase.from('curriculum').update(payload).eq('id', editing)
     } else {
       await supabase.from('curriculum').insert(payload)
     }
-    setForm({ program: '', day: '', time_slot: '', planned_activity: '', activity_category: '', activity_type: '', materials_needed: '', teacher_notes: '', special_event: false, assigned_date: '' })
+    resetForm()
     setEditing(null)
     setShowForm(false)
     await fetchCurriculum()
     setSaving(false)
+  }
+
+  function resetForm() {
+    setForm({
+      program: '', assigned_date: '', day: '',
+      concept_focus: '', assembly_time: '', circle_time: '',
+      planned_activity: '', activity_category: '',
+      play_type: '', home_task: '', teacher_notes: ''
+    })
   }
 
   async function deleteRow(id) {
@@ -62,23 +92,36 @@ export default function PlannerPage() {
 
   function startEdit(row) {
     setEditing(row.id)
-    setForm({ program: row.program, day: row.day, time_slot: row.time_slot, planned_activity: row.planned_activity, activity_category: row.activity_category, activity_type: row.activity_type, materials_needed: row.materials_needed, teacher_notes: row.teacher_notes, special_event: row.special_event, assigned_date: row.assigned_date })
+    setForm({
+      program: row.program || '',
+      assigned_date: row.assigned_date || '',
+      day: row.day || '',
+      concept_focus: row.concept_focus || '',
+      assembly_time: row.assembly_time || '',
+      circle_time: row.circle_time || '',
+      planned_activity: row.planned_activity || '',
+      activity_category: row.activity_category || '',
+      play_type: row.play_type || '',
+      home_task: row.home_task || '',
+      teacher_notes: row.teacher_notes || ''
+    })
     setShowForm(true)
     window.scrollTo(0, 0)
   }
 
   const grouped = curriculum.reduce((acc, row) => {
-    const key = row.day
+    const key = row.day || 'Unknown'
     if (!acc[key]) acc[key] = []
     acc[key].push(row)
     return acc
   }, {})
 
   const inputStyle = { width: '100%', marginTop: '6px', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }
+  const textareaStyle = { ...inputStyle, height: '72px', resize: 'vertical', fontFamily: 'inherit' }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', padding: '24px', color: '#fff' }}>
-      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
           <button onClick={() => router.back()} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>← Back</button>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>📝 Curriculum Planner</h1>
@@ -94,7 +137,7 @@ export default function PlannerPage() {
             </select>
           </div>
           {selectedBlock && (
-            <button onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ program: '', day: '', time_slot: '', planned_activity: '', activity_category: '', activity_type: '', materials_needed: '', teacher_notes: '', special_event: false, assigned_date: '' }) }}
+            <button onClick={() => { setShowForm(!showForm); setEditing(null); resetForm() }}
               style={{ padding: '10px 20px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               ➕ Add Entry
             </button>
@@ -105,6 +148,8 @@ export default function PlannerPage() {
         {showForm && (
           <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '24px', border: '1px solid #38bdf8', marginBottom: '24px' }}>
             <h3 style={{ color: '#38bdf8', marginBottom: '20px' }}>{editing ? '✏️ Edit Entry' : '➕ New Curriculum Entry'}</h3>
+
+            {/* Row 1: Program, Date, Day */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div>
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Program *</label>
@@ -114,64 +159,84 @@ export default function PlannerPage() {
                 </select>
               </div>
               <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Day *</label>
-                <select value={form.day} onChange={e => setForm({ ...form, day: e.target.value })} style={inputStyle}>
-                  <option value=''>-- Select --</option>
-                  {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Date *</label>
+                <input type='date' value={form.assigned_date}
+                  onChange={e => handleDateChange(e.target.value)}
+                  style={inputStyle} />
               </div>
               <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Time Slot *</label>
-                <select value={form.time_slot} onChange={e => setForm({ ...form, time_slot: e.target.value })} style={inputStyle}>
-                  <option value=''>-- Select --</option>
-                  {getMasters('time_slot').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Day (auto-filled)</label>
+                <input
+                  value={form.day}
+                  readOnly
+                  placeholder='Auto-filled from date'
+                  style={{ ...inputStyle, backgroundColor: '#0f172a', color: form.day ? '#38bdf8' : '#475569', cursor: 'not-allowed', opacity: 0.8 }}
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Concept Focus, Assembly Time, Circle Time */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Concept Focus</label>
+                <input placeholder='e.g. Colors, Numbers, Shapes' value={form.concept_focus}
+                  onChange={e => setForm({ ...form, concept_focus: e.target.value })} style={inputStyle} />
               </div>
               <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Planned Activity</label>
-                <select value={form.planned_activity} onChange={e => setForm({ ...form, planned_activity: e.target.value })} style={inputStyle}>
-                  <option value=''>-- Select --</option>
-                  {getMasters('activity').map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Assembly Time</label>
+                <input placeholder='e.g. Morning Prayer, National Anthem' value={form.assembly_time}
+                  onChange={e => setForm({ ...form, assembly_time: e.target.value })} style={inputStyle} />
               </div>
               <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Activity Category</label>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Circle Time</label>
+                <input placeholder='e.g. Show and Tell, Story Time' value={form.circle_time}
+                  onChange={e => setForm({ ...form, circle_time: e.target.value })} style={inputStyle} />
+              </div>
+            </div>
+
+            {/* Row 3: Curriculum, Categories, Indoor/Outdoor Play */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Curriculum</label>
+                <input placeholder='e.g. Finger Painting, Number Writing' value={form.planned_activity}
+                  onChange={e => setForm({ ...form, planned_activity: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Categories</label>
                 <select value={form.activity_category} onChange={e => setForm({ ...form, activity_category: e.target.value })} style={inputStyle}>
                   <option value=''>-- Select --</option>
                   {getMasters('activity_category').map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Activity Type</label>
-                <select value={form.activity_type} onChange={e => setForm({ ...form, activity_type: e.target.value })} style={inputStyle}>
-                  <option value=''>-- Select --</option>
-                  {getMasters('activity_type').map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Assigned Date</label>
-                <input type='date' value={form.assigned_date} onChange={e => setForm({ ...form, assigned_date: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Materials Needed</label>
-                <input placeholder='e.g. Crayons, Paper' value={form.materials_needed} onChange={e => setForm({ ...form, materials_needed: e.target.value })} style={inputStyle} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '24px' }}>
-                <input type='checkbox' checked={form.special_event} onChange={e => setForm({ ...form, special_event: e.target.checked })} style={{ width: '18px', height: '18px' }} />
-                <label style={{ color: '#f59e0b', fontSize: '14px' }}>⭐ Special Event</label>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Indoor/Outdoor Play</label>
+                <input placeholder='e.g. Indoor block building, Outdoor running' value={form.play_type}
+                  onChange={e => setForm({ ...form, play_type: e.target.value })} style={inputStyle} />
               </div>
             </div>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ color: '#94a3b8', fontSize: '13px' }}>Teacher Notes</label>
-              <textarea placeholder='Instructions or notes for teacher...' value={form.teacher_notes} onChange={e => setForm({ ...form, teacher_notes: e.target.value })}
-                style={{ ...inputStyle, height: '80px', resize: 'vertical' }} />
+
+            {/* Row 4: Home Task, Teacher Notes */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Home Task</label>
+                <textarea placeholder='e.g. Draw a flower, Count 10 objects at home'
+                  value={form.home_task} onChange={e => setForm({ ...form, home_task: e.target.value })}
+                  style={textareaStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px' }}>Teacher Notes</label>
+                <textarea placeholder='Instructions or notes for teacher...'
+                  value={form.teacher_notes} onChange={e => setForm({ ...form, teacher_notes: e.target.value })}
+                  style={textareaStyle} />
+              </div>
             </div>
+
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={save} disabled={saving}
                 style={{ padding: '10px 24px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
                 {saving ? 'Saving...' : editing ? '✏️ Update' : '💾 Save Entry'}
               </button>
-              <button onClick={() => { setShowForm(false); setEditing(null) }}
+              <button onClick={() => { setShowForm(false); setEditing(null); resetForm() }}
                 style={{ padding: '10px 24px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
@@ -193,22 +258,33 @@ export default function PlannerPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
                       <tr style={{ color: '#64748b', borderBottom: '1px solid #334155' }}>
-                        {['Program', 'Time Slot', 'Activity', 'Category', 'Type', 'Date', 'Special', ''].map(h => (
-                          <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '600' }}>{h}</th>
+                        {['Program', 'Date', 'Concept Focus', 'Assembly', 'Circle Time', 'Curriculum', 'Category', 'Play', 'Home Task', 'Notes', ''].map(h => (
+                          <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '600', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {grouped[day].map(row => (
-                        <tr key={row.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                          <td style={{ padding: '10px 12px', color: '#a78bfa' }}>{row.program}</td>
-                          <td style={{ padding: '10px 12px', color: '#38bdf8' }}>{row.time_slot}</td>
-                          <td style={{ padding: '10px 12px', color: '#e2e8f0' }}>{row.planned_activity}</td>
-                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{row.activity_category}</td>
-                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{row.activity_type}</td>
-                          <td style={{ padding: '10px 12px', color: '#64748b' }}>{row.assigned_date}</td>
-                          <td style={{ padding: '10px 12px' }}>{row.special_event ? '⭐' : ''}</td>
+                        <tr key={row.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '10px 12px', color: '#a78bfa', whiteSpace: 'nowrap' }}>{row.program}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{row.assigned_date}</td>
+                          <td style={{ padding: '10px 12px', color: '#38bdf8' }}>{row.concept_focus || '—'}</td>
+                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{row.assembly_time || '—'}</td>
+                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{row.circle_time || '—'}</td>
+                          <td style={{ padding: '10px 12px', color: '#e2e8f0' }}>{row.planned_activity || '—'}</td>
                           <td style={{ padding: '10px 12px' }}>
+                            {row.activity_category ? (
+                              <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>{row.activity_category}</span>
+                            ) : '—'}
+                          </td>
+                          <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{row.play_type || '—'}</td>
+                          <td style={{ padding: '10px 12px', color: '#fbbf24', maxWidth: '150px' }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.home_task || '—'}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px', color: '#64748b', maxWidth: '150px' }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.teacher_notes || '—'}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', gap: '6px' }}>
                               <button onClick={() => startEdit(row)} style={{ padding: '4px 8px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
                               <button onClick={() => deleteRow(row.id)} style={{ padding: '4px 8px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
