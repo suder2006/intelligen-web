@@ -9,6 +9,7 @@ const TYPES = [
   { key: 'activity', label: '🎯 Activities' },
   { key: 'activity_category', label: '📂 Categories' },
   { key: 'activity_type', label: '🔖 Activity Types' },
+  { key: 'time_slot', label: '⏰ Time Slots' },
 ]
 
 export default function MastersPage() {

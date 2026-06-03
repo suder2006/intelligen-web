@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-const TIME_SLOTS = ['Morning Circle', 'Pre-Lunch', 'Post-Lunch', 'Evening']
+/*const TIME_SLOTS = ['Morning Circle', 'Pre-Lunch', 'Post-Lunch', 'Evening'] */
 
 export default function PlannerPage() {
   const router = useRouter()
@@ -124,7 +124,7 @@ export default function PlannerPage() {
                 <label style={{ color: '#94a3b8', fontSize: '13px' }}>Time Slot *</label>
                 <select value={form.time_slot} onChange={e => setForm({ ...form, time_slot: e.target.value })} style={inputStyle}>
                   <option value=''>-- Select --</option>
-                  {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  {getMasters('time_slot').map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
