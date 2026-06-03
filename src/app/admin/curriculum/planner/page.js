@@ -90,14 +90,15 @@ export default function PlannerPage() {
   }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n')
+  // First fix line breaks inside quoted fields
+  const normalized = normalizeCSV(text)
+  const lines = normalized.split('\n')
   const headers = parseCSVLine(lines[0])
   return lines.slice(1).filter(l => l.trim()).map((line, idx) => {
     const values = parseCSVLine(line)
     const row = {}
     headers.forEach((h, i) => { row[h.trim()] = (values[i] || '').trim() })
     if (row.date) {
-      // Handle both YYYY-MM-DD and DD-MM-YYYY formats
       let dateStr = row.date
       if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
         const [dd, mm, yyyy] = dateStr.split('-')
@@ -107,13 +108,33 @@ function parseCSV(text) {
       try {
         const d = new Date(dateStr + 'T00:00:00')
         row.day = d.toLocaleDateString('en-US', { weekday: 'long' })
-      } catch (e) {
-        row.day = ''
-      }
+      } catch (e) { row.day = '' }
     }
     row._line = idx + 2
     return row
   })
+}
+
+function normalizeCSV(text) {
+  // Replace line breaks inside quoted fields with a space
+  let result = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    const next = text[i + 1]
+    if (char === '"') {
+      inQuotes = !inQuotes
+      result += char
+    } else if ((char === '\n' || char === '\r') && inQuotes) {
+      // Replace line break inside quotes with space
+      result += ' '
+      // Skip \r\n combination
+      if (char === '\r' && next === '\n') i++
+    } else {
+      result += char
+    }
+  }
+  return result
 }
 
 function parseCSVLine(line) {
