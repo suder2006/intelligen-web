@@ -22,6 +22,11 @@ export default function PlannerPage() {
   const [editing, setEditing] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadPreview, setUploadPreview] = useState([])
+  const [uploadErrors, setUploadErrors] = useState([])
+  const [showUploadModal, setShowUploadModal] = useState(false)
+
 
   useEffect(() => {
     if (!schoolId) return
@@ -84,6 +89,76 @@ export default function PlannerPage() {
     })
   }
 
+  function parseCSV(text) {
+  const lines = text.trim().split('\n')
+  const headers = lines[0].split(',').map(h => h.trim())
+  return lines.slice(1).map((line, idx) => {
+    const values = line.split(',').map(v => v.trim())
+    const row = {}
+    headers.forEach((h, i) => { row[h] = values[i] || '' })
+    // Auto calculate day from date
+    if (row.date) {
+      const d = new Date(row.date + 'T00:00:00')
+      row.day = d.toLocaleDateString('en-US', { weekday: 'long' })
+    }
+    row._line = idx + 2 // for error reporting
+    return row
+  })
+}
+
+function validateCSV(rows) {
+  const errors = []
+  const programs = getMasters('program')
+  const categories = getMasters('activity_category')
+  rows.forEach(row => {
+    if (!row.program) errors.push(`Row ${row._line}: Program is required`)
+    else if (programs.length > 0 && !programs.includes(row.program)) errors.push(`Row ${row._line}: Program "${row.program}" not found in Masters`)
+    if (!row.date) errors.push(`Row ${row._line}: Date is required`)
+    if (row.category && categories.length > 0 && !categories.includes(row.category)) errors.push(`Row ${row._line}: Category "${row.category}" not found in Masters`)
+  })
+  return errors
+}
+
+async function handleCSVUpload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const text = await file.text()
+  const rows = parseCSV(text)
+  const errors = validateCSV(rows)
+  setUploadErrors(errors)
+  setUploadPreview(rows)
+  setShowUploadModal(true)
+  e.target.value = ''
+}
+
+async function confirmUpload() {
+  if (uploadErrors.length > 0) { alert('Please fix errors before uploading'); return }
+  setUploading(true)
+  const inserts = uploadPreview.map(row => ({
+    program: row.program,
+    assigned_date: row.date,
+    day: row.day,
+    concept_focus: row.concept_focus || '',
+    assembly_time: row.assembly_time || '',
+    circle_time: row.circle_time || '',
+    planned_activity: row.curriculum || '',
+    activity_category: row.category || '',
+    play_type: row.play_type || '',
+    home_task: row.home_task || '',
+    teacher_notes: row.teacher_notes || '',
+    block_id: selectedBlock,
+    school_id: schoolId
+  }))
+  const { error } = await supabase.from('curriculum').insert(inserts)
+  if (error) { alert('Upload error: ' + error.message); setUploading(false); return }
+  setShowUploadModal(false)
+  setUploadPreview([])
+  setUploadErrors([])
+  await fetchCurriculum()
+  setUploading(false)
+  alert(`✅ ${inserts.length} entries uploaded successfully!`)
+}
+
   async function deleteRow(id) {
     if (!confirm('Delete this entry?')) return
     await supabase.from('curriculum').delete().eq('id', id)
@@ -137,11 +212,17 @@ export default function PlannerPage() {
             </select>
           </div>
           {selectedBlock && (
+          <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => { setShowForm(!showForm); setEditing(null); resetForm() }}
               style={{ padding: '10px 20px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               ➕ Add Entry
             </button>
-          )}
+            <label style={{ padding: '10px 20px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '14px' }}>
+              📤 Upload CSV
+              <input type='file' accept='.csv' onChange={handleCSVUpload} style={{ display: 'none' }} />
+            </label>
+          </div>
+        )}
         </div>
 
         {/* Add/Edit Form */}
@@ -299,6 +380,74 @@ export default function PlannerPage() {
             ))}
           </div>
         )}
+    {/* CSV Upload Modal */}
+    {showUploadModal && (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
+    <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '800px', maxHeight: '90vh', overflow: 'auto' }}>
+      <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>📤 CSV Upload Preview</h3>
+      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '20px' }}>{uploadPreview.length} rows found</p>
+
+      {uploadErrors.length > 0 && (
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
+          <div style={{ color: '#f87171', fontWeight: '600', marginBottom: '8px' }}>❌ {uploadErrors.length} Error(s) found — fix before uploading:</div>
+          {uploadErrors.map((e, i) => <div key={i} style={{ color: '#fca5a5', fontSize: '13px', marginBottom: '4px' }}>• {e}</div>)}
+        </div>
+      )}
+
+      {uploadErrors.length === 0 && (
+        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '16px' }}>
+          <div style={{ color: '#34d399', fontWeight: '600' }}>✅ All rows validated successfully!</div>
+        </div>
+      )}
+
+      {/* Preview Table */}
+      <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <thead>
+            <tr style={{ color: '#64748b', borderBottom: '1px solid #334155' }}>
+              {['#', 'Program', 'Date', 'Day', 'Concept', 'Assembly', 'Circle', 'Curriculum', 'Category', 'Play', 'Home Task'].map(h => (
+                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: '600', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {uploadPreview.slice(0, 10).map((row, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <td style={{ padding: '6px 10px', color: '#475569' }}>{i + 1}</td>
+                <td style={{ padding: '6px 10px', color: '#a78bfa' }}>{row.program}</td>
+                <td style={{ padding: '6px 10px', color: '#64748b' }}>{row.date}</td>
+                <td style={{ padding: '6px 10px', color: '#38bdf8' }}>{row.day}</td>
+                <td style={{ padding: '6px 10px', color: '#e2e8f0' }}>{row.concept_focus}</td>
+                <td style={{ padding: '6px 10px', color: '#94a3b8' }}>{row.assembly_time}</td>
+                <td style={{ padding: '6px 10px', color: '#94a3b8' }}>{row.circle_time}</td>
+                <td style={{ padding: '6px 10px', color: '#e2e8f0' }}>{row.curriculum}</td>
+                <td style={{ padding: '6px 10px', color: '#a78bfa' }}>{row.category}</td>
+                <td style={{ padding: '6px 10px', color: '#94a3b8' }}>{row.play_type}</td>
+                <td style={{ padding: '6px 10px', color: '#fbbf24' }}>{row.home_task}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {uploadPreview.length > 10 && (
+          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', padding: '8px 10px' }}>
+            ... and {uploadPreview.length - 10} more rows
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button onClick={() => { setShowUploadModal(false); setUploadPreview([]); setUploadErrors([]) }}
+          style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+          Cancel
+        </button>
+        <button onClick={confirmUpload} disabled={uploading || uploadErrors.length > 0}
+          style={{ flex: 1, padding: '12px', background: uploadErrors.length > 0 ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg, #10b981, #34d399)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: uploadErrors.length > 0 ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+          {uploading ? '⏳ Uploading...' : `✅ Upload ${uploadPreview.length} Rows`}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </div>
   )
