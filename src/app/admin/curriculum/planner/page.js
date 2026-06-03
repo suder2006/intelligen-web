@@ -89,32 +89,58 @@ export default function PlannerPage() {
     })
   }
 
-  function parseCSV(text) {
+function parseCSV(text) {
   const lines = text.trim().split('\n')
-  const headers = lines[0].split(',').map(h => h.trim())
-  return lines.slice(1).map((line, idx) => {
-    const values = line.split(',').map(v => v.trim())
+  const headers = parseCSVLine(lines[0])
+  return lines.slice(1).filter(l => l.trim()).map((line, idx) => {
+    const values = parseCSVLine(line)
     const row = {}
-    headers.forEach((h, i) => { row[h] = values[i] || '' })
-    // Auto calculate day from date
+    headers.forEach((h, i) => { row[h.trim()] = (values[i] || '').trim() })
     if (row.date) {
-      const d = new Date(row.date + 'T00:00:00')
-      row.day = d.toLocaleDateString('en-US', { weekday: 'long' })
+      // Handle both YYYY-MM-DD and DD-MM-YYYY formats
+      let dateStr = row.date
+      if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
+        const [dd, mm, yyyy] = dateStr.split('-')
+        dateStr = `${yyyy}-${mm}-${dd}`
+        row.date = dateStr
+      }
+      try {
+        const d = new Date(dateStr + 'T00:00:00')
+        row.day = d.toLocaleDateString('en-US', { weekday: 'long' })
+      } catch (e) {
+        row.day = ''
+      }
     }
-    row._line = idx + 2 // for error reporting
+    row._line = idx + 2
     return row
   })
+}
+
+function parseCSVLine(line) {
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === ',' && !inQuotes) {
+      result.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  result.push(current)
+  return result
 }
 
 function validateCSV(rows) {
   const errors = []
   const programs = getMasters('program')
-  const categories = getMasters('activity_category')
   rows.forEach(row => {
     if (!row.program) errors.push(`Row ${row._line}: Program is required`)
-    else if (programs.length > 0 && !programs.includes(row.program)) errors.push(`Row ${row._line}: Program "${row.program}" not found in Masters`)
     if (!row.date) errors.push(`Row ${row._line}: Date is required`)
-    if (row.category && categories.length > 0 && !categories.includes(row.category)) errors.push(`Row ${row._line}: Category "${row.category}" not found in Masters`)
   })
   return errors
 }
