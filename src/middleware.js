@@ -90,8 +90,9 @@ export async function middleware(request) {
 
       const txnId = decryptedData.getepayTxnId || ''
       const txnAmount = decryptedData.txnAmount || decryptedData.totalAmount || ''
-      const merchantName = decryptedData.txnNote || ''
-      const customerName = decryptedData.udf3 || ''
+      /*const merchantName = decryptedData.txnNote || ''*/
+      const feeDescription = decryptedData.txnNote || ''
+      const customerName = decryptedData.udf3 || decryptedData.udf2 || ''
       const paymentMode = decryptedData.paymentMode || ''
       const custRefNo = decryptedData.custRefNo || ''
       const txnDate = decryptedData.txnDate || ''
@@ -136,9 +137,9 @@ export async function middleware(request) {
     <div class="subtitle">Your fee payment has been recorded.</div>
     <div class="receipt">
       <div class="receipt-title">📋 Payment Receipt</div>
-      ${merchantName ? `<div class="row"><span class="label">Merchant Name</span><span class="value">${merchantName}</span></div>` : ''}
+      ${feeDescription ? `<div class="row"><span class="label">Fee Description</span><span class="value">${feeDescription}</span></div>` : ''}
       ${txnId ? `<div class="row"><span class="label">Transaction ID</span><span class="value">${txnId}</span></div>` : ''}
-      ${txnAmount ? `<div class="row"><span class="label">Amount Paid</span><span class="value amount">₹${txnAmount}</span></div>` : ''}
+      ${txnAmount ? `<div class="row"><span class="label">Amount Paid</span><span class="value amount">₹${parseFloat(txnAmount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span></div>` : ''}
       ${customerName ? `<div class="row"><span class="label">Customer Name</span><span class="value">${customerName}</span></div>` : ''}
       ${paymentMode ? `<div class="row"><span class="label">Payment Mode</span><span class="value">${paymentMode}</span></div>` : ''}
       ${custRefNo ? `<div class="row"><span class="label">Ref No</span><span class="value">${custRefNo}</span></div>` : ''}
