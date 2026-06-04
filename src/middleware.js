@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 
 export async function middleware(request) {
-  // Only handle POST to /payment/success
-  // Skip if it's already a GET (has query params from our redirect)
   if (request.nextUrl.pathname === '/payment/success' && 
       request.method === 'POST') {
     try {
@@ -11,9 +9,6 @@ export async function middleware(request) {
       for (const [key, value] of formData.entries()) {
         params.append(key, value)
       }
-      const url = new URL(request.url)
-      url.search = params.toString()
-      // Force GET redirect
       return new NextResponse(null, {
         status: 303,
         headers: {
