@@ -19,6 +19,7 @@ export async function middleware(request) {
       let decryptedData = {}
       if (encryptedResponse && status === 'SUCCESS') {
         try {
+          console.log('Calling process API with response length:', encryptedResponse.length)
           const decryptRes = await fetch(
             `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/process`,
             {
@@ -27,7 +28,14 @@ export async function middleware(request) {
               body: JSON.stringify({ response: encryptedResponse })
             }
           )
-          const result = await decryptRes.json()
+          const resultText = await decryptRes.text()
+          console.log('Process API response:', resultText)
+          let result = {}
+          try {
+            result = JSON.parse(resultText)
+          } catch(e) {
+            console.error('Failed to parse process API response:', e)
+          }
           if (result.data) {
             decryptedData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data
           }
