@@ -59,6 +59,8 @@ export default function ParentPortal() {
   const [diaryEntries, setDiaryEntries] = useState([])
   const [diaryAcks, setDiaryAcks] = useState([])
   const [diaryFilter, setDiaryFilter] = useState('all')
+  const [getepayLoading, setGetepayLoading] = useState(false)
+  const [schoolGetepay, setSchoolGetepay] = useState(null)
 
   const router = useRouter()
 
@@ -96,9 +98,10 @@ export default function ParentPortal() {
     const effectiveSid = sid || s.data?.[0]?.school_id
     setSchoolId(effectiveSid)
     if (effectiveSid) {
-      const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description').eq('id', effectiveSid).single()
-      setSchoolName(schoolData?.name || '')
-      setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
+    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description, getepay_mid, getepay_terminal_id, getepay_key, getepay_iv, getepay_url').eq('id', effectiveSid).single()
+    setSchoolName(schoolData?.name || '')
+    setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
+    setSchoolGetepay(schoolData)
     }
 
     // Load curriculum
@@ -295,6 +298,38 @@ export default function ParentPortal() {
     setSubmittingAbsence(false)
     alert('Absence notified to school! ✅')
   }
+
+  const handleGetepayPayment = async (invoice) => {
+  if (!schoolGetepay?.getepay_mid) {
+    alert('Online payment not configured for this school. Please use UPI payment.')
+    return
+  }
+  setGetepayLoading(true)
+  try {
+    const student = students.find(s => s.id === invoice.student_id)
+    const pendingAmount = Number(invoice.total_amount) - Number(invoice.paid_amount || 0)
+    const response = await fetch('/api/getepay/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        invoice_id: invoice.id,
+        school_id: schoolId,
+        student_name: student?.full_name || 'Student',
+        amount: pendingAmount.toFixed(2)
+      })
+    })
+    const data = await response.json()
+    if (data.error) {
+      alert('Payment error: ' + data.error)
+      return
+    }
+    // Redirect to GetePay payment page
+    window.location.href = data.paymentUrl
+  } catch (e) {
+    alert('Payment failed: ' + e.message)
+  }
+  setGetepayLoading(false)
+}
 
   const toggleActivityComplete = async (activityId, studentId) => {
     const existing = activityCompletions.find(c => c.activity_id === activityId && c.student_id === studentId)
@@ -777,12 +812,19 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
 
                             {/* Pay button */}
                             {inv.status !== 'paid' && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
                               <button
                                 onClick={() => setPaymentModal(inv)}
-                                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
-                                💳 Pay Now — ₹{Number(inv.total_amount - (inv.paid_amount||0)).toLocaleString()} pending
+                                style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                                📱 Pay via UPI
                               </button>
-                            )}    
+                              <button
+                                onClick={() => handleGetepayPayment(inv)}
+                                style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                                💳 Pay Online
+                              </button>
+                            </div>
+                          )}  
                           </div>
                         )
                       })}
