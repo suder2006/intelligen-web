@@ -28,26 +28,33 @@ export async function POST(request) {
     console.log('Decrypted data:', data)
 
     // Extract invoice_id directly from udf1
-    const invoiceId = data.udf1 || ''
-    if (invoiceId) {
-      const { data: invoice } = await supabase
-        .from('fee_invoices')
-        .select('total_amount')
-        .eq('id', invoiceId)
-        .single()
+const invoiceId = data.udf1 || ''
+console.log('Invoice ID from udf1:', invoiceId)
+if (invoiceId) {
+  const { data: invoice, error: fetchError } = await supabase
+    .from('fee_invoices')
+    .select('total_amount')
+    .eq('id', invoiceId)
+    .single()
 
-      if (invoice) {
-        await supabase.from('fee_invoices').update({
-          status: 'paid',
-          paid_amount: invoice.total_amount,
-          payment_mode: 'GetePay',
-          payment_date: new Date().toISOString().split('T')[0],
-          payment_status: 'success',
-          getepay_transaction_id: data.getepayTxnId || ''
-        }).eq('id', invoiceId)
-        console.log('Fee marked as paid for invoice:', invoiceId)
-      }
-    }
+  console.log('Invoice fetch result:', invoice, 'Error:', fetchError)
+
+  if (invoice) {
+    const { data: updateResult, error: updateError } = await supabase
+      .from('fee_invoices')
+      .update({
+        status: 'paid',
+        paid_amount: invoice.total_amount,
+        payment_mode: 'GetePay',
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_status: 'success',
+        getepay_transaction_id: data.getepayTxnId || ''
+      })
+      .eq('id', invoiceId)
+
+    console.log('Update result:', updateResult, 'Update error:', updateError)
+  }
+}
 
     return NextResponse.json({ data: typeof data === 'string' ? JSON.parse(data) : data })
   } catch (e) {
