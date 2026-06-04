@@ -48,7 +48,7 @@ export async function middleware(request) {
           const timer = setInterval(() => {
             t--;
             document.getElementById('timer').textContent = t;
-            if (t <= 0) { clearInterval(timer); window.location.href = '/parent'; }
+            if (t <= 0) { clearInterval(timer); window.location.href = '/parent?payment=success'; }
           }, 1000);
         </script>
       </body>
@@ -151,7 +151,7 @@ export async function middleware(request) {
       <div class="countdown-text">Redirecting to portal in <strong id="timer">30</strong> seconds...</div>
       <div class="bar"><div class="fill"></div></div>
     </div>
-    <a href="/parent" class="btn">Go to Portal Now →</a>
+    <a href="/parent?payment=success" class="btn">Go to Portal Now →</a>
   </div>
   <script>
     let t = 30;

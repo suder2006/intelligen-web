@@ -64,7 +64,14 @@ export default function ParentPortal() {
 
   const router = useRouter()
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { 
+  loadData() 
+  // Check if coming back from payment
+  const urlParams = new URLSearchParams(window.location.search)
+  if (urlParams.get('payment') === 'success') {
+    setActiveTab('fees')
+  }
+  }, [])
 
   const loadData = async () => {
     setLoading(true)
