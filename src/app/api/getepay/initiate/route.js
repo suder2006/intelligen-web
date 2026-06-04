@@ -2,13 +2,16 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+}
 
 export async function POST(request) {
   try {
+    const supabase = getSupabase()
     const { invoice_id, school_id, student_name, amount } = await request.json()
 
     // Get school GetePay credentials
@@ -59,8 +62,8 @@ export async function POST(request) {
     }
 
     // Encrypt and call GetePay
-    const { encryptEas } = await import('@/lib/getepay/encryptEas')
-    const { decryptEas } = await import('@/lib/getepay/decryptEas')
+    const encryptEas = (await import('@/lib/getepay/encryptEas')).default
+    const decryptEas = (await import('@/lib/getepay/decryptEas')).default
 
     const JsonData = JSON.stringify(data)
     const ciphertext = encryptEas(JsonData, config.GetepayKey, config.GetepayIV)
