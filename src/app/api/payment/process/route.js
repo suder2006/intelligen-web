@@ -24,36 +24,32 @@ export async function POST(request) {
     const decryptEas = (await import('@/lib/getepay/decryptEas')).default
     const decrypted = decryptEas(response, schools[0].getepay_key, schools[0].getepay_iv)
     console.log('Decrypted raw:', decrypted)
-    const data = JSON.parse(decrypted)
+    const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted
     console.log('Decrypted data:', data)
 
-    // Extract invoice_id and mark fee as paid
-    const txnId = data.merchantTransactionId || ''
-    if (txnId.startsWith('INV-')) {
-      const parts = txnId.split('-')
-      const invoiceId = parts.slice(1, parts.length - 1).join('-')
-      if (invoiceId) {
-        const { data: invoice } = await supabase
-          .from('fee_invoices')
-          .select('total_amount')
-          .eq('id', invoiceId)
-          .single()
+    // Extract invoice_id directly from udf1
+    const invoiceId = data.udf1 || ''
+    if (invoiceId) {
+      const { data: invoice } = await supabase
+        .from('fee_invoices')
+        .select('total_amount')
+        .eq('id', invoiceId)
+        .single()
 
-        if (invoice) {
-          await supabase.from('fee_invoices').update({
-            status: 'paid',
-            paid_amount: invoice.total_amount,
-            payment_mode: 'GetePay',
-            payment_date: new Date().toISOString().split('T')[0],
-            payment_status: 'success',
-            getepay_transaction_id: data.transactionId || txnId
-          }).eq('id', invoiceId)
-          console.log('Fee marked as paid for invoice:', invoiceId)
-        }
+      if (invoice) {
+        await supabase.from('fee_invoices').update({
+          status: 'paid',
+          paid_amount: invoice.total_amount,
+          payment_mode: 'GetePay',
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_status: 'success',
+          getepay_transaction_id: data.getepayTxnId || ''
+        }).eq('id', invoiceId)
+        console.log('Fee marked as paid for invoice:', invoiceId)
       }
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json({ data: typeof data === 'string' ? JSON.parse(data) : data })
   } catch (e) {
     console.error('Process error:', e)
     return NextResponse.json({ error: e.message })

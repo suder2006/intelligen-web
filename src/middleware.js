@@ -28,18 +28,21 @@ export async function middleware(request) {
             }
           )
           const result = await decryptRes.json()
-          if (result.data) decryptedData = result.data
+          if (result.data) {
+            decryptedData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data
+          }
         } catch (e) {
           console.error('Decrypt API error:', e)
         }
       }
 
-      const txnId = decryptedData.transactionId || decryptedData.txnId || ''
-      const txnAmount = decryptedData.txnAmount || decryptedData.amount || ''
-      const merchantName = decryptedData.merchantName || ''
-      const customerName = decryptedData.customerName || decryptedData.udf2 || ''
+      const txnId = decryptedData.getepayTxnId || ''
+      const txnAmount = decryptedData.txnAmount || decryptedData.totalAmount || ''
+      const merchantName = decryptedData.txnNote || ''
+      const customerName = decryptedData.udf3 || ''
       const paymentMode = decryptedData.paymentMode || ''
-      const custRefNo = decryptedData.custRefNo || decryptedData.bankRefNo || ''
+      const custRefNo = decryptedData.custRefNo || ''
+      const txnDate = decryptedData.txnDate || ''
 
       const html = `<!DOCTYPE html>
 <html>
@@ -87,6 +90,7 @@ export async function middleware(request) {
       ${customerName ? `<div class="row"><span class="label">Customer Name</span><span class="value">${customerName}</span></div>` : ''}
       ${paymentMode ? `<div class="row"><span class="label">Payment Mode</span><span class="value">${paymentMode}</span></div>` : ''}
       ${custRefNo ? `<div class="row"><span class="label">Ref No</span><span class="value">${custRefNo}</span></div>` : ''}
+      ${txnDate ? `<div class="row"><span class="label">Transaction Date</span><span class="value">${txnDate}</span></div>` : ''}
       <div class="row"><span class="label">Status</span><span class="status-badge">✅ SUCCESS</span></div>
     </div>
     <div class="screenshot">📸 Take a screenshot of this receipt for your records</div>
