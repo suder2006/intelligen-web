@@ -28,8 +28,8 @@ export async function POST(request) {
     console.log('Decrypted data:', data)
 
     // Extract invoice_id directly from udf1
-const invoiceId = data.udf1 || ''
-console.log('Invoice ID from udf1:', invoiceId)
+const invoiceId = (data.udf1 || '').trim()
+console.log('Invoice ID from udf1:', JSON.stringify(invoiceId))
 if (invoiceId) {
   const { data: invoice, error: fetchError } = await supabase
     .from('fee_invoices')
@@ -51,8 +51,11 @@ if (invoiceId) {
         getepay_transaction_id: data.getepayTxnId || ''
       })
       .eq('id', invoiceId)
+      .select()
 
-    console.log('Update result:', updateResult, 'Update error:', updateError)
+    console.log('Update result:', JSON.stringify(updateResult), 'Update error:', JSON.stringify(updateError))
+  } else {
+    console.log('Invoice not found for id:', JSON.stringify(invoiceId), 'fetchError:', JSON.stringify(fetchError))
   }
 }
 
