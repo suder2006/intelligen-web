@@ -8,7 +8,6 @@ export async function POST(request) {
     for (const [key, value] of formData.entries()) {
       params.append(key, value)
     }
-    // Redirect to success page with params
     return NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?${params.toString()}`
     )

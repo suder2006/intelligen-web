@@ -44,7 +44,7 @@ export async function POST(request) {
       udf8: '',
       udf9: '',
       udf10: '',
-      ru: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success`,
+      ru: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/callback`,
       callbackUrl: '',
       currency: 'INR',
       paymentMode: 'ALL',
