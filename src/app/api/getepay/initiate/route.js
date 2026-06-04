@@ -78,9 +78,16 @@ export async function POST(request) {
         req: newCipher,
       }),
     })
-
     const result = await response.text()
-    const resultobj = JSON.parse(result)
+    console.log('GetePay raw response:', result)
+    let resultobj
+    try {
+      resultobj = JSON.parse(result)
+    } catch (e) {
+      return NextResponse.json({ 
+        error: `GetePay returned invalid response: ${result.substring(0, 200)}` 
+      }, { status: 500 })
+    }
     const responseurl = resultobj.response
     const dataitem = JSON.parse(decryptEas(responseurl, config.GetepayKey, config.GetepayIV))
 
