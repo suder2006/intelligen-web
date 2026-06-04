@@ -25,7 +25,11 @@ export default function SchoolSettingsPage() {
     upi_id: '', upi_name: '', upi_description: '',
     payment_method: 'upi',
     razorpay_key_id: '', razorpay_key_secret: '',
-    payu_merchant_key: '', payu_merchant_salt: ''
+    payu_merchant_key: '', payu_merchant_salt: '',
+    getepay_mid: '', getepay_terminal_id: '',
+    getepay_key: '', getepay_key: '',
+    getepay_url: ''
+
   })
   // Sub-admin management
   const [subAdmins, setSubAdmins] = useState([])
@@ -63,7 +67,13 @@ export default function SchoolSettingsPage() {
         razorpay_key_id: data.razorpay_key_id || '',
         razorpay_key_secret: data.razorpay_key_secret || '',
         payu_merchant_key: data.payu_merchant_key || '',
-        payu_merchant_salt: data.payu_merchant_salt || ''
+        payu_merchant_salt: data.payu_merchant_salt || '',
+        getepay_mid: data.getepay_mid || '',
+        getepay_terminal_id: data.getepay_terminal_id || '',
+        getepay_key: data.getepay_key || '',
+        getepay_iv: data.getepay_iv || '',
+        getepay_url: data.getepay_url || ''
+
       })
     }
     setLoading(false)
@@ -569,6 +579,41 @@ const startEditSubAdmin = (sa) => {
     </div>
   ))}
 </div>  
+
+{/* GetePay Settings */}
+<div className="section">
+  <div className="section-title">💳 GetePay Payment Gateway</div>
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+    ℹ️ Configure GetePay to accept online payments from parents. Get credentials from GetePay dashboard.
+  </div>
+  <div className="grid-2">
+    <div>
+      <label>Merchant ID (MID)</label>
+      <input value={form.getepay_mid} onChange={e => setForm({ ...form, getepay_mid: e.target.value })}
+        placeholder='e.g. 108' style={inputStyle} />
+    </div>
+    <div>
+      <label>Terminal ID</label>
+      <input value={form.getepay_terminal_id} onChange={e => setForm({ ...form, getepay_terminal_id: e.target.value })}
+        placeholder='e.g. Getepay.merchant@icici' style={inputStyle} />
+    </div>
+    <div>
+      <label>GetePay Key</label>
+      <input type='password' value={form.getepay_key} onChange={e => setForm({ ...form, getepay_key: e.target.value })}
+        placeholder='Your encryption key' style={inputStyle} />
+    </div>
+    <div>
+      <label>GetePay IV</label>
+      <input type='password' value={form.getepay_iv} onChange={e => setForm({ ...form, getepay_iv: e.target.value })}
+        placeholder='Your IV key' style={inputStyle} />
+    </div>
+    <div style={{ gridColumn: '1 / -1' }}>
+      <label>GetePay URL</label>
+      <input value={form.getepay_url} onChange={e => setForm({ ...form, getepay_url: e.target.value })}
+        placeholder='https://pay1.getepay.in:8443/getepayPortal/pg/generateInvoice' style={inputStyle} />
+    </div>
+  </div>
+</div>
 
             {/* Save Button */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
