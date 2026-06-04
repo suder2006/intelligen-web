@@ -1,9 +1,10 @@
 'use client'
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function PaymentSuccess() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams()
   const [status, setStatus] = useState('verifying')
   const [message, setMessage] = useState('')
@@ -14,14 +15,12 @@ export default function PaymentSuccess() {
 
   const verifyPayment = async () => {
     try {
-      // GetePay sends response params in URL
       const txnId = searchParams.get('merchantTransactionId') || searchParams.get('txnId')
       const txnStatus = searchParams.get('txnStatus') || searchParams.get('status')
       const amount = searchParams.get('amount')
-      const udf1 = searchParams.get('udf1') // invoice_id
+      const udf1 = searchParams.get('udf1')
 
       if (txnStatus === 'SUCCESS' || txnStatus === 'success') {
-        // Update invoice as paid
         if (udf1) {
           const { data: invoice } = await supabase
             .from('fee_invoices')
@@ -82,5 +81,17 @@ export default function PaymentSuccess() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function PaymentSuccess() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Sans, sans-serif' }}>Loading...</div>
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
   )
 }
