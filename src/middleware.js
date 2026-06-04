@@ -15,6 +15,50 @@ export async function middleware(request) {
       const mid = params.mid || ''
       const terminalId = params.terminalId || ''
 
+            // If payment not successful show cancellation page
+            if (status !== 'SUCCESS') {
+              const failHtml = `<!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Payment Cancelled</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { background: #0f172a; color: #fff; font-family: 'DM Sans', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+          .card { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 32px; max-width: 420px; width: 100%; text-align: center; }
+          .btn { display: block; margin-top: 16px; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 15px; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div style="font-size: 56px; margin-bottom: 12px;">❌</div>
+          <div style="color: #f87171; font-size: 22px; font-weight: 700; margin-bottom: 8px;">Payment Cancelled</div>
+          <div style="color: rgba(255,255,255,0.5); font-size: 14px; margin-bottom: 24px;">Your payment was not completed. No amount has been deducted.</div>
+          <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+            <div style="color: rgba(255,255,255,0.4); font-size: 13px;">Status</div>
+            <div style="color: #f87171; font-weight: 700; font-size: 16px; margin-top: 4px;">${status || 'CANCELLED'}</div>
+          </div>
+          <div style="color: rgba(255,255,255,0.4); font-size: 13px; margin-bottom: 16px;">
+            Redirecting to portal in <strong id="timer">10</strong> seconds...
+          </div>
+          <a href="/parent" class="btn" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #f87171;">Back to Portal</a>
+        </div>
+        <script>
+          let t = 10;
+          const timer = setInterval(() => {
+            t--;
+            document.getElementById('timer').textContent = t;
+            if (t <= 0) { clearInterval(timer); window.location.href = '/parent'; }
+          }, 1000);
+        </script>
+      </body>
+      </html>`
+              return new NextResponse(failHtml, {
+                status: 200,
+                headers: { 'Content-Type': 'text/html' }
+              })
+            }
+
       // Call our API to decrypt and process
       let decryptedData = {}
       if (encryptedResponse && status === 'SUCCESS') {
