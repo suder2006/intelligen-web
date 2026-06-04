@@ -323,7 +323,6 @@ export default function ParentPortal() {
       alert('Payment error: ' + data.error)
       return
     }
-    // Redirect to GetePay payment page
     window.location.href = data.paymentUrl
   } catch (e) {
     alert('Payment failed: ' + e.message)
