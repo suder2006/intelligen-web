@@ -24,7 +24,14 @@ export async function POST(request) {
     const decryptEas = (await import('@/lib/getepay/decryptEas')).default
     const decrypted = decryptEas(response, schools[0].getepay_key, schools[0].getepay_iv)
     console.log('Decrypted raw:', decrypted)
-    const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted
+    let data = decrypted
+      if (typeof data === 'string') {
+        data = JSON.parse(data)
+      }
+      if (typeof data === 'string') {
+        data = JSON.parse(data)  // double parse if needed
+      }
+      console.log('data.udf1 =', data.udf1)
     console.log('Decrypted data:', data)
 
     // Extract invoice_id directly from udf1
