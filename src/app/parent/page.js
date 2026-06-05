@@ -61,6 +61,8 @@ export default function ParentPortal() {
   const [diaryFilter, setDiaryFilter] = useState('all')
   const [getepayLoading, setGetepayLoading] = useState(false)
   const [schoolGetepay, setSchoolGetepay] = useState(null)
+  const [schoolPolicies, setSchoolPolicies] = useState({ policy_privacy: '', policy_terms: '', policy_refund: '' })
+  const [activePolicy, setActivePolicy] = useState('policy_privacy')
 
   const router = useRouter()
 
@@ -110,7 +112,12 @@ export default function ParentPortal() {
     const effectiveSid = sid || s.data?.[0]?.school_id
     setSchoolId(effectiveSid)
     if (effectiveSid) {
-    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description, getepay_mid, getepay_terminal_id, getepay_key, getepay_iv, getepay_url').eq('id', effectiveSid).single()
+    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description, getepay_mid, getepay_terminal_id, getepay_key, getepay_iv, getepay_url, policy_privacy, policy_terms, policy_refund').eq('id', effectiveSid).single()
+    setSchoolPolicies({
+      policy_privacy: schoolData?.policy_privacy || '',
+      policy_terms: schoolData?.policy_terms || '',
+      policy_refund: schoolData?.policy_refund || ''
+    })
     setSchoolName(schoolData?.name || '')
     setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
     setSchoolGetepay(schoolData)
@@ -486,6 +493,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
     { id: 'diary', label: 'Diary', icon: '📔' },
+    { id: 'policies', label: 'Policies', icon: '📋' },
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -1647,6 +1655,7 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
               </>
             )}
 
+
             {activeTab === 'progress' && (
               <>
                 <div className="section-title">📊 Progress Reports</div>
@@ -1744,6 +1753,55 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
               </>
             )}
 
+            {activeTab === 'policies' && (
+  <>
+    <div style={{ marginBottom: '20px' }}>
+      <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>📋 School Policies</div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>{schoolName}</div>
+    </div>
+
+    {/* Policy Tabs */}
+    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+      {[
+        { id: 'policy_privacy', label: '🔒 Privacy Policy' },
+        { id: 'policy_terms', label: '📄 Terms & Conditions' },
+        { id: 'policy_refund', label: '💰 Refund Policy' },
+      ].map(tab => (
+        <button key={tab.id} onClick={() => setActivePolicy(tab.id)}
+          style={{ padding: '8px 18px', borderRadius: '8px', border: `1px solid ${activePolicy === tab.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: activePolicy === tab.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: activePolicy === tab.id ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+
+    {/* Policy Content */}
+    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '24px' }}>
+      {schoolPolicies[activePolicy] ? (
+        <>
+          <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '16px', color: '#38bdf8' }}>
+            {activePolicy === 'policy_privacy' ? '🔒 Privacy Policy' : activePolicy === 'policy_terms' ? '📄 Terms & Conditions' : '💰 Refund & Cancellation Policy'}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: '1.9', whiteSpace: 'pre-line' }}>
+            {schoolPolicies[activePolicy]}
+          </div>
+        </>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
+          <div>This policy has not been added yet. Please contact the school.</div>
+        </div>
+      )}
+    </div>
+
+    {/* IntelliGen policies link */}
+    <div style={{ marginTop: '20px', padding: '14px 18px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', fontSize: '13px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
+      Powered by IntelliGen ·
+      <a href='/privacy-policy' style={{ color: '#38bdf8', marginLeft: '6px' }}>Platform Privacy</a> ·
+      <a href='/terms' style={{ color: '#38bdf8', marginLeft: '6px' }}>Platform Terms</a>
+    </div>
+  </>
+)}
+          
           </>
         )}
       </div>

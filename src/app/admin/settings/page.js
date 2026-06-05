@@ -43,8 +43,15 @@ export default function SchoolSettingsPage() {
   const [savingPassword, setSavingPassword] = useState(false)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
 
-
-  useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins() } }, [schoolId])
+  const [policies, setPolicies] = useState({
+  policy_privacy: '',
+  policy_terms: '',
+  policy_refund: ''
+    })
+    const [activePolicy, setActivePolicy] = useState('policy_privacy')
+    const [savingPolicy, setSavingPolicy] = useState(false)
+    const [policySaved, setPolicySaved] = useState(false)
+      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins() } }, [schoolId])
 
 
   const fetchSchool = async () => {
@@ -75,6 +82,11 @@ export default function SchoolSettingsPage() {
         getepay_url: data.getepay_url || ''
 
       })
+      setPolicies({
+        policy_privacy: data.policy_privacy || '',
+        policy_terms: data.policy_terms || '',
+        policy_refund: data.policy_refund || ''
+      }) 
     }
     setLoading(false)
   }
@@ -86,6 +98,18 @@ export default function SchoolSettingsPage() {
     setTimeout(() => setSaved(false), 3000)
     await fetchSchool()
     setSaving(false)
+  }
+
+  const savePolicy = async () => {
+  setSavingPolicy(true)
+  await supabase.from('schools').update({
+    policy_privacy: policies.policy_privacy,
+    policy_terms: policies.policy_terms,
+    policy_refund: policies.policy_refund
+  }).eq('id', schoolId)
+  setPolicySaved(true)
+  setTimeout(() => setPolicySaved(false), 3000)
+  setSavingPolicy(false)
   }
 
 const fetchSubAdmins = async () => {
@@ -613,6 +637,55 @@ const startEditSubAdmin = (sa) => {
         placeholder='https://pay1.getepay.in:8443/getepayPortal/pg/generateInvoice' style={inputStyle} />
     </div>
   </div>
+</div>
+
+{/* ===== POLICIES ===== */}
+<div className="section">
+  <div className="section-title">📋 School Policies</div>
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
+    ℹ️ Write your school's policies here. Parents can read them in their portal under the Policies tab.
+  </div>
+
+  {/* Policy Tabs */}
+  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+    {[
+      { id: 'policy_privacy', label: '🔒 Privacy Policy' },
+      { id: 'policy_terms', label: '📄 Terms & Conditions' },
+      { id: 'policy_refund', label: '💰 Refund Policy' },
+    ].map(tab => (
+      <button key={tab.id} onClick={() => setActivePolicy(tab.id)}
+        style={{ padding: '8px 18px', borderRadius: '8px', border: `1px solid ${activePolicy === tab.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: activePolicy === tab.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: activePolicy === tab.id ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+        {tab.label}
+      </button>
+    ))}
+  </div>
+
+  {/* Policy Editor */}
+  <div style={{ marginBottom: '12px' }}>
+    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>
+      {activePolicy === 'policy_privacy' ? '🔒 Privacy Policy' : activePolicy === 'policy_terms' ? '📄 Terms & Conditions' : '💰 Refund & Cancellation Policy'}
+    </label>
+    <textarea
+      value={policies[activePolicy]}
+      onChange={e => setPolicies({ ...policies, [activePolicy]: e.target.value })}
+      placeholder={
+        activePolicy === 'policy_privacy' 
+          ? 'Write your school\'s privacy policy here...\n\nExample:\n1. What information we collect\n2. How we use it\n3. How we protect it...'
+          : activePolicy === 'policy_terms'
+          ? 'Write your school\'s terms and conditions here...\n\nExample:\n1. Enrollment terms\n2. Fee payment terms\n3. Attendance policy...'
+          : 'Write your school\'s refund policy here...\n\nExample:\nAdmission fees are non-refundable.\nTuition fees paid for a term are non-refundable...'
+      }
+      style={{ width: '100%', minHeight: '320px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", resize: 'vertical', lineHeight: '1.7' }}
+    />
+    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '6px' }}>
+      {policies[activePolicy].length} characters
+    </div>
+  </div>
+
+  <button onClick={savePolicy} disabled={savingPolicy}
+    style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+    {savingPolicy ? '⏳ Saving...' : policySaved ? '✅ Policies Saved!' : '💾 Save Policies'}
+  </button>
 </div>
 
             {/* Save Button */}
