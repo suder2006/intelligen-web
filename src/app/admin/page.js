@@ -213,6 +213,7 @@ export default function AdminDashboard() {
       {/* Sidebar */}
       <div className="sidebar">
         <div className="logo">Intelli<span>Gen</span></div>
+        {schoolName && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', padding: '0 12px', marginTop: '-24px', marginBottom: '16px', lineHeight: '1.3' }}>🏫 {schoolName}</div>}
         {navItems.map(item => (
           <Link key={item.href} href={item.href} className={`nav-item ${item.href === '/admin' ? 'active' : ''}`}>
             <span>{item.icon}</span> {item.label}

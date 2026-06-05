@@ -682,9 +682,16 @@ const fetchMessages = async () => {
       `}</style>
 
       <div className="header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div className="logo">Intelli<span>Gen</span></div>
-          <div className="role-badge">👩‍🏫 Teacher Portal</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="logo">Intelli<span>Gen</span></div>
+            <div className="role-badge">👩‍🏫 Teacher Portal</div>
+          </div>
+          {profile?.school_name && (
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', paddingLeft: '2px' }}>
+              🏫 {profile.school_name}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {!pushEnabled && (

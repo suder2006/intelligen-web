@@ -73,6 +73,8 @@ export default function CenterHeadPortal() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    const { data: chSchool } = await supabase.from('schools').select('name').eq('id', prof.school_id).single()
+    prof.school_name = chSchool?.name || ''
     setProfile(prof)
 
     const [enqRes, fuRes, visRes] = await Promise.all([
@@ -207,9 +209,16 @@ export default function CenterHeadPortal() {
       `}</style>
 
       <div className="header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div className="logo">Intelli<span>Gen</span></div>
-          <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px' }}>🎯 Center Head</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="logo">Intelli<span>Gen</span></div>
+            <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px' }}>🎯 Center Head</span>
+          </div>
+          {profile?.school_name && (
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', paddingLeft: '2px' }}>
+              🏫 {profile.school_name}
+            </div>
+          )}
         </div>
         <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
           style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
