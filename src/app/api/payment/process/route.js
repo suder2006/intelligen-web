@@ -23,7 +23,7 @@ export async function POST(request) {
 
     const decryptEas = (await import('@/lib/getepay/decryptEas')).default
     const decrypted = decryptEas(response, schools[0].getepay_key, schools[0].getepay_iv)
-    console.log('Decrypted raw:', decrypted)
+    
     let data = decrypted
       if (typeof data === 'string') {
         data = JSON.parse(data)
@@ -31,12 +31,12 @@ export async function POST(request) {
       if (typeof data === 'string') {
         data = JSON.parse(data)  // double parse if needed
       }
-      console.log('data.udf1 =', data.udf1)
-    console.log('Decrypted data:', data)
+      
+    
 
     // Extract invoice_id directly from udf1
 const invoiceId = (data.udf1 || '').trim()
-console.log('Invoice ID from udf1:', JSON.stringify(invoiceId))
+
 if (invoiceId) {
   const { data: invoice, error: fetchError } = await supabase
     .from('fee_invoices')
@@ -44,7 +44,7 @@ if (invoiceId) {
     .eq('id', invoiceId)
     .single()
 
-  console.log('Invoice fetch result:', invoice, 'Error:', fetchError)
+  
 
   if (invoice) {
     const { data: updateResult, error: updateError } = await supabase
@@ -60,15 +60,15 @@ if (invoiceId) {
       .eq('id', invoiceId)
       .select()
 
-    console.log('Update result:', JSON.stringify(updateResult), 'Update error:', JSON.stringify(updateError))
+    
   } else {
-    console.log('Invoice not found for id:', JSON.stringify(invoiceId), 'fetchError:', JSON.stringify(fetchError))
+    
   }
 }
 
     return NextResponse.json({ data: typeof data === 'string' ? JSON.parse(data) : data })
   } catch (e) {
-    console.error('Process error:', e)
+    
     return NextResponse.json({ error: e.message })
   }
 }

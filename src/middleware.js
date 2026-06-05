@@ -48,7 +48,7 @@ export async function middleware(request) {
           const timer = setInterval(() => {
             t--;
             document.getElementById('timer').textContent = t;
-            if (t <= 0) { clearInterval(timer); window.location.href = '/parent?payment=success'; }
+            if (t <= 0) { clearInterval(timer); window.location.href = '/parent'; }
           }, 1000);
         </script>
       </body>
@@ -63,7 +63,7 @@ export async function middleware(request) {
       let decryptedData = {}
       if (encryptedResponse && status === 'SUCCESS') {
         try {
-          console.log('Calling process API with response length:', encryptedResponse.length)
+          
           const decryptRes = await fetch(
             `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/process`,
             {
@@ -73,24 +73,24 @@ export async function middleware(request) {
             }
           )
           const resultText = await decryptRes.text()
-          console.log('Process API response:', resultText)
+          
           let result = {}
           try {
             result = JSON.parse(resultText)
           } catch(e) {
-            console.error('Failed to parse process API response:', e)
+            
           }
           if (result.data) {
             decryptedData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data
           }
         } catch (e) {
-          console.error('Decrypt API error:', e)
+          
         }
       }
 
       const txnId = decryptedData.getepayTxnId || ''
       const txnAmount = decryptedData.txnAmount || decryptedData.totalAmount || ''
-      /*const merchantName = decryptedData.txnNote || ''*/
+      
       const feeDescription = decryptedData.txnNote || ''
       const customerName = decryptedData.udf3 || decryptedData.udf2 || ''
       const paymentMode = decryptedData.paymentMode || ''
@@ -158,7 +158,7 @@ export async function middleware(request) {
     const timer = setInterval(() => {
       t--;
       document.getElementById('timer').textContent = t;
-      if (t <= 0) { clearInterval(timer); window.location.href = '/parent'; }
+      if (t <= 0) { clearInterval(timer); window.location.href = '/parent?payment=success'; }
     }, 1000);
   </script>
 </body>
@@ -169,7 +169,7 @@ export async function middleware(request) {
         headers: { 'Content-Type': 'text/html' }
       })
     } catch (e) {
-      console.error('Middleware error:', e)
+      
       return new NextResponse(null, {
         status: 303,
         headers: { Location: '/parent' }
