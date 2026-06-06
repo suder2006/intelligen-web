@@ -261,6 +261,76 @@ const handleSubmit = async () => {
           </div>
         </div>
       </section>
+      {/* SCHOOLS SECTION */}
+      <section style={{ padding: '100px 40px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div className="section-tag">Our Schools</div>
+          <h2 className="section-title">Trusted by <strong>preschools</strong></h2>
+          <p className="section-sub">Schools using intelliGen to manage their operations and delight parents every day.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px', marginTop: '56px' }}>
+
+            {/* Time Kids Preschool Anna Nagar */}
+            <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: '20px', padding: '32px', transition: 'all 0.3s', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.1)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.04)' }}>
+
+              {/* School Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>
+                  🏫
+                </div>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '17px', color: '#1a1a1a', lineHeight: '1.3' }}>Time Kids Preschool</div>
+                  <div style={{ fontFamily: 'DM Sans', fontSize: '13px', color: '#888', marginTop: '2px' }}>Anna Nagar, Chennai</div>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div style={{ fontFamily: 'DM Sans', fontSize: '13px', color: '#666', lineHeight: '1.6', marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                📍 2731, 7th Cross Street, 12th Main Rd, Y Block, Anna Nagar, Chennai, Tamil Nadu 600040
+              </div>
+
+              {/* Contact */}
+              <div style={{ fontFamily: 'DM Sans', fontSize: '13px', color: '#666', marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                ✉️ <a href="mailto:annanagartimekids@gmail.com" style={{ color: '#1e3a8a', textDecoration: 'none' }}>annanagartimekids@gmail.com</a>
+              </div>
+
+              {/* Policy Links */}
+              <div>
+                <div style={{ fontFamily: 'DM Sans', fontSize: '12px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>
+                  School Policies
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '🔒 Privacy Policy', href: '/school/timekids-annanagar/privacy' },
+                    { label: '📄 Terms & Conditions', href: '/school/timekids-annanagar/terms' },
+                    { label: '💰 Refund Policy', href: '/school/timekids-annanagar/refund' },
+                  ].map(link => (
+                    <a key={link.href} href={link.href}
+                      style={{ padding: '6px 12px', background: '#f0f4ff', border: '1px solid #dbeafe', borderRadius: '6px', color: '#1e3a8a', fontSize: '12px', fontFamily: 'DM Sans', fontWeight: '500', textDecoration: 'none', transition: 'all 0.2s', display: 'inline-block' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#1e3a8a'; e.currentTarget.style.color = '#fff' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.color = '#1e3a8a' }}>
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Note for other schools */}
+          <div style={{ marginTop: '32px', padding: '20px 24px', background: '#f8f8f6', border: '1px solid rgba(0,0,0,0.06)', borderRadius: '12px', fontFamily: 'DM Sans', fontSize: '14px', color: '#888', textAlign: 'center' }}>
+            🏫 Is your school using intelliGen?{' '}
+            <button onClick={() => document.getElementById('demo-form').scrollIntoView({ behavior: 'smooth' })}
+              style={{ background: 'none', border: 'none', color: '#1e3a8a', fontWeight: '600', cursor: 'pointer', fontFamily: 'DM Sans', fontSize: '14px', textDecoration: 'underline' }}>
+              Request a demo
+            </button>
+            {' '}to get listed here.
+          </div>
+        </div>
+      </section>
 
       {/* DEMO FORM */}
       <section className="form-section" id="demo-form">
@@ -317,7 +387,7 @@ const handleSubmit = async () => {
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/terms">Terms of Service</a>
           <a href="/refund-policy">Refund Policy</a>
-          <a href="mailto:hello@intelligenapp.in">Contact Us</a>
+          <a href="mailto:getintelligen@gmail.com">Contact Us</a>
         </div>
         <div>© 2026 intelliGen. All rights reserved.</div>
       </footer>
