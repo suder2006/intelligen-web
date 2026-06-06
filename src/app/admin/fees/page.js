@@ -59,6 +59,9 @@ export default function FeesPage() {
     program: '', fee_type: 'Tuition Fee', amount: '', academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1)
   })
 
+  const [showRefundModal, setShowRefundModal] = useState(null)
+  const [refundForm, setRefundForm] = useState({ refund_amount: '', refund_reason: '', refund_date: new Date().toISOString().split('T')[0] })
+  const [savingRefund, setSavingRefund] = useState(false)
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   const fetchAll = async () => {
@@ -144,6 +147,25 @@ export default function FeesPage() {
     await fetchAll()
   }
 
+  const markRefunded = async () => {
+  if (!refundForm.refund_amount || !refundForm.refund_reason) {
+    alert('Please enter refund amount and reason'); return
+  }
+  setSavingRefund(true)
+  const { data: { user } } = await supabase.auth.getUser()
+  await supabase.from('fee_invoices').update({
+    status: 'refunded',
+    refund_amount: parseFloat(refundForm.refund_amount),
+    refund_reason: refundForm.refund_reason,
+    refund_date: refundForm.refund_date,
+    refunded_by: user.id
+  }).eq('id', showRefundModal.id)
+  setShowRefundModal(null)
+  setRefundForm({ refund_amount: '', refund_reason: '', refund_date: new Date().toISOString().split('T')[0] })
+  setSavingRefund(false)
+  await fetchAll()
+}
+
   const deleteInvoice = async (id) => {
     if (!confirm('Delete this invoice and all its installments?')) return
     await supabase.from('fee_installments').delete().eq('invoice_id', id)
@@ -179,10 +201,12 @@ export default function FeesPage() {
     alert('Reminder sent to parent(s)! ✅')
   }
 
-  const totalInvoiced = invoices.reduce((s, i) => s + Number(i.total_amount), 0)
-  const totalCollected = invoices.reduce((s, i) => s + Number(i.paid_amount), 0)
+  const activeInvoices = invoices.filter(i => i.status !== 'refunded')
+  const totalInvoiced = activeInvoices.reduce((s, i) => s + Number(i.total_amount), 0)
+  const totalCollected = activeInvoices.reduce((s, i) => s + Number(i.paid_amount), 0)
   const totalPending = totalInvoiced - totalCollected
-  const overdueCount = invoices.filter(i => i.status === 'unpaid' && i.due_date && new Date(i.due_date) < new Date()).length
+  const totalRefunded = invoices.filter(i => i.status === 'refunded').reduce((s, i) => s + Number(i.refund_amount || 0), 0)
+  const overdueCount = activeInvoices.filter(i => i.status === 'unpaid' && i.due_date && new Date(i.due_date) < new Date()).length
 
   const filteredInvoices = invoices.filter(inv => {
     const matchStatus = filterStatus === 'all' ? true : inv.status === filterStatus
@@ -193,8 +217,8 @@ export default function FeesPage() {
   const studentInvoices = selectedStudent ? invoices.filter(i => i.student_id === selectedStudent.id) : []
   const studentInstallments = selectedStudent ? installments.filter(i => i.student_id === selectedStudent.id) : []
 
-  const statusColor = { unpaid: '#f59e0b', paid: '#10b981', overdue: '#ef4444', partial: '#38bdf8' }
-  const statusBg = { unpaid: 'rgba(245,158,11,0.15)', paid: 'rgba(16,185,129,0.15)', overdue: 'rgba(239,68,68,0.15)', partial: 'rgba(56,189,248,0.15)' }
+  const statusColor = { unpaid: '#f59e0b', paid: '#10b981', overdue: '#ef4444', partial: '#38bdf8', refunded: '#a78bfa' }
+  const statusBg = { unpaid: 'rgba(245,158,11,0.15)', paid: 'rgba(16,185,129,0.15)', overdue: 'rgba(239,68,68,0.15)', partial: 'rgba(56,189,248,0.15)', refunded: 'rgba(167,139,250,0.15)' }
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', marginBottom: '14px', fontFamily: "'DM Sans', sans-serif" }
 
   return (
@@ -250,6 +274,7 @@ export default function FeesPage() {
                     { label: 'Pending', value: `₹${totalPending.toLocaleString()}`, color: '#f59e0b' },
                     { label: 'Overdue', value: overdueCount, color: '#ef4444' },
                     { label: 'Total Invoices', value: invoices.length, color: '#a78bfa' },
+                    { label: 'Refunded', value: `₹${totalRefunded.toLocaleString()}`, color: '#a78bfa' },
                   ].map(item => (
                     <div key={item.label} className="card" style={{ padding: '18px' }}>
                       <div style={{ fontSize: '22px', fontWeight: '700', color: item.color, marginBottom: '4px' }}>{item.value}</div>
@@ -308,7 +333,7 @@ export default function FeesPage() {
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
                   <input placeholder='Search student...' value={searchStudent} onChange={e => setSearchStudent(e.target.value)}
                     style={{ flex: 1, minWidth: '200px', padding: '9px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
-                  {['all', 'unpaid', 'partial', 'paid'].map(s => (
+                  {['all', 'unpaid', 'partial', 'paid', 'refunded'].map(s => (
                     <button key={s} className={`filter-btn ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
                       {s.charAt(0).toUpperCase() + s.slice(1)} ({s === 'all' ? invoices.length : invoices.filter(i => i.status === s).length})
                     </button>
@@ -336,7 +361,7 @@ export default function FeesPage() {
                             <span className="badge" style={{ background: statusBg[inv.status]||statusBg.unpaid, color: statusColor[inv.status]||statusColor.unpaid }}>{inv.status}</span>
                           </div>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {inv.status !== 'paid' && <>
+                            {inv.status !== 'paid' && inv.status !== 'refunded' && <>
                               <button onClick={() => { setActiveInvoice(inv); setShowInstallmentForm(true); setInstallmentForm({ installment_number: invInsts.length+1, amount:'', due_date:'', notes:'' }) }}
                                 style={{ padding:'5px 10px', backgroundColor:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>+ Installment</button>
                               <button onClick={() => sendReminder(inv)}
@@ -344,6 +369,16 @@ export default function FeesPage() {
                               <button onClick={() => { setShowPaymentModal({...inv,type:'invoice'}); setPaymentMode('Cash') }}
                                 style={{ padding:'5px 10px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>✅ Mark Paid</button>
                             </>}
+                            {inv.status === 'paid' && (
+                              <button onClick={() => { setShowRefundModal(inv); setRefundForm({ refund_amount: inv.paid_amount, refund_reason: '', refund_date: new Date().toISOString().split('T')[0] }) }}
+                                style={{ padding:'5px 10px', backgroundColor:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>↩️ Refund</button>
+                            )}
+                            {inv.status === 'refunded' && (
+                              <div style={{ fontSize:'12px', color:'#a78bfa' }}>
+                                ↩️ Refunded ₹{Number(inv.refund_amount).toLocaleString()} on {inv.refund_date}
+                                {inv.refund_reason && <div style={{ color:'rgba(255,255,255,0.3)' }}>{inv.refund_reason}</div>}
+                              </div>
+                            )}
                             <button onClick={() => deleteInvoice(inv.id)}
                               style={{ padding:'5px 10px', backgroundColor:'rgba(239,68,68,0.1)', color:'#f87171', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>🗑️</button>
                           </div>
@@ -445,6 +480,10 @@ export default function FeesPage() {
                                 <button onClick={() => { setShowPaymentModal({...inv,type:'invoice'}); setPaymentMode('Cash') }}
                                   style={{ padding:'5px 10px', backgroundColor:'rgba(16,185,129,0.15)', color:'#34d399', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>✅ Pay</button>
                               </>}
+                              {inv.status === 'paid' && (
+                                <button onClick={() => { setShowRefundModal(inv); setRefundForm({ refund_amount: inv.paid_amount, refund_reason: '', refund_date: new Date().toISOString().split('T')[0] }) }}
+                                  style={{ padding:'5px 10px', backgroundColor:'rgba(167,139,250,0.15)', color:'#a78bfa', border:'none', borderRadius:'6px', cursor:'pointer', fontSize:'12px' }}>↩️ Refund</button>
+                                )}
                             </div>
                           </div>
                           {invInsts.length > 0 && (
@@ -588,6 +627,41 @@ export default function FeesPage() {
           </div>
         </div>
       )}
+      {/* Refund Modal */}
+      {showRefundModal && (
+        <div className="modal-overlay" onClick={() => setShowRefundModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>↩️ Mark as Refunded</h3>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '20px' }}>
+              {showRefundModal.students?.full_name} · {showRefundModal.fee_type}
+            </p>
+            <div style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+              ℹ️ Please ensure the refund has been processed via GetePay dashboard or bank transfer before marking here.
+            </div>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Refund Amount (₹) *</label>
+            <input type='number' value={refundForm.refund_amount}
+              onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })}
+              placeholder='Enter refund amount' style={inputStyle} />
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Refund Date *</label>
+            <input type='date' value={refundForm.refund_date}
+              onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })}
+              style={inputStyle} />
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Reason for Refund *</label>
+            <input value={refundForm.refund_reason}
+              onChange={e => setRefundForm({ ...refundForm, refund_reason: e.target.value })}
+              placeholder='e.g. Duplicate payment, Withdrawal, etc.'
+              style={inputStyle} />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowRefundModal(null)} className="btn-secondary">Cancel</button>
+              <button onClick={markRefunded} disabled={savingRefund}
+                style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #a78bfa, #c4b5fd)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                {savingRefund ? '⏳ Saving...' : '↩️ Confirm Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
     </ModuleGuard>
   )
