@@ -7,7 +7,7 @@ import AdminSidebar from '@/components/AdminSidebar'
 import ModuleGuard from '@/components/ModuleGuard'
 
 const FEE_TYPES = ['Registration Fee', 'Admission Fee', 'Annual Fee', 'Tuition Fee', 'Books & Materials', 'Uniform', 'Event Fee', 'Daycare Fee', 'Transport Fee']
-const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Online']
+const PAYMENT_MODES = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Card', 'Online']
 
 /*const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
@@ -39,6 +39,8 @@ export default function FeesPage() {
   const [showStructureForm, setShowStructureForm] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(null)
   const [paymentMode, setPaymentMode] = useState('Cash')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentNotes, setPaymentNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
   const [searchStudent, setSearchStudent] = useState('')
@@ -119,33 +121,39 @@ export default function FeesPage() {
   }
 
   const markInvoicePaid = async (invoice, mode) => {
-    await supabase.from('fee_invoices').update({
-      status: 'paid',
-      paid_amount: invoice.total_amount,
-      payment_mode: mode,
-      payment_date: new Date().toISOString().split('T')[0]
-    }).eq('id', invoice.id)
-    setShowPaymentModal(null)
-    await fetchAll()
+  await supabase.from('fee_invoices').update({
+    status: 'paid',
+    paid_amount: invoice.total_amount,
+    payment_mode: mode,
+    payment_date: paymentDate,
+    payment_notes: paymentNotes
+  }).eq('id', invoice.id)
+  setShowPaymentModal(null)
+  setPaymentNotes('')
+  setPaymentDate(new Date().toISOString().split('T')[0])
+  await fetchAll()
   }
 
-  const markInstallmentPaid = async (inst, mode) => {
-    await supabase.from('fee_installments').update({
-      status: 'paid',
-      paid_amount: inst.amount,
-      payment_mode: mode,
-      payment_date: new Date().toISOString().split('T')[0]
-    }).eq('id', inst.id)
-    const invoiceInsts = installments.filter(i => i.invoice_id === inst.invoice_id)
-    const paidTotal = invoiceInsts.filter(i => i.status === 'paid' || i.id === inst.id).reduce((s, i) => s + Number(i.amount), 0)
-    const invoice = invoices.find(i => i.id === inst.invoice_id)
-    if (invoice) {
-      const newStatus = paidTotal >= invoice.total_amount ? 'paid' : 'partial'
-      await supabase.from('fee_invoices').update({ paid_amount: paidTotal, status: newStatus }).eq('id', inst.invoice_id)
-    }
-    setShowPaymentModal(null)
-    await fetchAll()
+const markInstallmentPaid = async (inst, mode) => {
+  await supabase.from('fee_installments').update({
+    status: 'paid',
+    paid_amount: inst.amount,
+    payment_mode: mode,
+    payment_date: paymentDate,
+    payment_notes: paymentNotes
+  }).eq('id', inst.id)
+  const invoiceInsts = installments.filter(i => i.invoice_id === inst.invoice_id)
+  const paidTotal = invoiceInsts.filter(i => i.status === 'paid' || i.id === inst.id).reduce((s, i) => s + Number(i.amount), 0)
+  const invoice = invoices.find(i => i.id === inst.invoice_id)
+  if (invoice) {
+    const newStatus = paidTotal >= invoice.total_amount ? 'paid' : 'partial'
+    await supabase.from('fee_invoices').update({ paid_amount: paidTotal, status: newStatus }).eq('id', inst.invoice_id)
   }
+  setShowPaymentModal(null)
+  setPaymentNotes('')
+  setPaymentDate(new Date().toISOString().split('T')[0])
+  await fetchAll()
+}
 
   const markRefunded = async () => {
   if (!refundForm.refund_amount || !refundForm.refund_reason) {
@@ -570,23 +578,30 @@ export default function FeesPage() {
       {showPaymentModal && (
         <div className="modal-overlay" onClick={() => setShowPaymentModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth:'380px' }}>
-            <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'8px' }}>✅ Record Payment</h3>
-            <p style={{ color:'rgba(255,255,255,0.5)', fontSize:'14px', marginBottom:'20px' }}>
-              Amount: <strong style={{ color:'#38bdf8' }}>₹{showPaymentModal.type==='invoice' ? Number(showPaymentModal.total_amount).toLocaleString() : Number(showPaymentModal.amount).toLocaleString()}</strong>
-            </p>
-            <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'10px' }}>Payment Mode *</label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'20px' }}>
-              {PAYMENT_MODES.map(mode => (
-                <button key={mode} onClick={() => setPaymentMode(mode)}
-                  style={{ padding:'7px 16px', borderRadius:'20px', border:`1px solid ${paymentMode===mode?'#38bdf8':'#334155'}`, backgroundColor:paymentMode===mode?'rgba(56,189,248,0.15)':'transparent', color:paymentMode===mode?'#38bdf8':'#94a3b8', cursor:'pointer', fontSize:'13px' }}>
-                  {mode}
-                </button>
-              ))}
-            </div>
-            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
-              <button onClick={() => setShowPaymentModal(null)} className="btn-secondary">Cancel</button>
-              <button onClick={() => showPaymentModal.type==='invoice' ? markInvoicePaid(showPaymentModal, paymentMode) : markInstallmentPaid(showPaymentModal, paymentMode)} className="btn-primary">Confirm Payment</button>
-            </div>
+          <h3 style={{ fontSize:'18px', fontWeight:'700', marginBottom:'8px' }}>✅ Record Payment</h3>
+          <p style={{ color:'rgba(255,255,255,0.5)', fontSize:'14px', marginBottom:'20px' }}>
+            Amount: <strong style={{ color:'#38bdf8' }}>₹{showPaymentModal.type==='invoice' ? Number(showPaymentModal.total_amount).toLocaleString() : Number(showPaymentModal.amount).toLocaleString()}</strong>
+          </p>
+          <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'10px' }}>Payment Mode *</label>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'20px' }}>
+            {PAYMENT_MODES.map(mode => (
+              <button key={mode} onClick={() => setPaymentMode(mode)}
+                style={{ padding:'7px 16px', borderRadius:'20px', border:`1px solid ${paymentMode===mode?'#38bdf8':'#334155'}`, backgroundColor:paymentMode===mode?'rgba(56,189,248,0.15)':'transparent', color:paymentMode===mode?'#38bdf8':'#94a3b8', cursor:'pointer', fontSize:'13px' }}>
+                {mode}
+              </button>
+            ))}
+          </div>
+          <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Payment Date *</label>
+          <input type='date' value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+            style={inputStyle} />
+          <label style={{ color:'#94a3b8', fontSize:'13px', display:'block', marginBottom:'6px' }}>Transaction ID / Receipt No / Notes</label>
+          <input value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)}
+            placeholder='e.g. TXN123456 or Receipt #45 or Cash paid at office'
+            style={inputStyle} />
+          <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+            <button onClick={() => setShowPaymentModal(null)} className="btn-secondary">Cancel</button>
+            <button onClick={() => showPaymentModal.type==='invoice' ? markInvoicePaid(showPaymentModal, paymentMode) : markInstallmentPaid(showPaymentModal, paymentMode)} className="btn-primary">Confirm Payment</button>
+          </div>
           </div>
         </div>
       )}
