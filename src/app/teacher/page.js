@@ -76,7 +76,11 @@ export default function TeacherPortal() {
   })
   const [savingDiary, setSavingDiary] = useState(false)
   const [diaryFilter, setDiaryFilter] = useState('all')
-
+  const [schoolEvents, setSchoolEvents] = useState([])
+  const [eventsView, setEventsView] = useState('calendar')
+  const [eventsCalMonth, setEventsCalMonth] = useState(new Date().getMonth())
+  const [eventsCalYear, setEventsCalYear] = useState(new Date().getFullYear())
+  const [selectedEvent, setSelectedEvent] = useState(null)
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
@@ -93,7 +97,7 @@ export default function TeacherPortal() {
     const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
     const teacherPrograms = spData?.map(p => p.program) || []
 
-const { data: sData } = await supabase.from('students')
+    const { data: sData } = await supabase.from('students')
       .select('*')
       .eq('status', 'active')
       .eq('school_id', prof.school_id)
@@ -156,6 +160,18 @@ const { data: sData } = await supabase.from('students')
       .order('from_date')
     const progHols = (progHolData || []).filter(h => h.programs?.some(p => teacherPrograms.includes(p)))
     setHolidays([...(holData || []), ...progHols].sort((a, b) => a.from_date.localeCompare(b.from_date)))
+    // Load events for teacher's programs
+      const { data: eventsData } = await supabase
+        .from('school_events')
+        .select('*')
+        .eq('school_id', prof.school_id)
+        .order('event_date')
+      const teacherEvents = (eventsData || []).filter(ev =>
+        ev.programs?.includes('all') ||
+        ev.programs?.some(p => teacherPrograms.includes(p))
+      )
+      setSchoolEvents(teacherEvents)
+
     // Load payslips
     const { data: payslipData } = await supabase.from('payroll')
       .select('*').eq('staff_id', user.id).order('month', { ascending: false })
@@ -614,6 +630,20 @@ const fetchMessages = async () => {
     if (success) alert('✅ Push notifications enabled!')
   }
   
+  const EVENT_TYPES_TEACHER = [
+  { id: 'celebration', label: 'Celebration', icon: '🎉' },
+  { id: 'sports', label: 'Sports', icon: '🏃' },
+  { id: 'cultural', label: 'Cultural', icon: '🎨' },
+  { id: 'trip', label: 'Field Trip', icon: '🚌' },
+  { id: 'meeting', label: 'Meeting', icon: '🤝' },
+  { id: 'photoday', label: 'Photo Day', icon: '📸' },
+  { id: 'graduation', label: 'Graduation', icon: '🎓' },
+  { id: 'other', label: 'Other', icon: '📋' },
+  ]
+  const ET_MAP_TEACHER = Object.fromEntries(EVENT_TYPES_TEACHER.map(e => [e.id, e]))
+  const MONTHS_T = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const DAYS_T = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   const present = attendance.filter(a => a.status === 'present').length
@@ -623,6 +653,7 @@ const fetchMessages = async () => {
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'attendance', label: 'Attendance', icon: '✅' },
     { id: 'curriculum', label: 'Curriculum', icon: '📚' },
+    { id: 'events', label: 'Events', icon: '📅' },
     { id: 'moments', label: 'Moments', icon: '📸' },
     { id: 'students', label: 'Students', icon: '👶' },
     { id: 'announcements', label: 'Announcements', icon: '📢' },
@@ -1596,6 +1627,158 @@ const fetchMessages = async () => {
               </>
             )}
 
+            {activeTab === 'events' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>📅 Event Calendar</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>School events and celebrations</div>
+                </div>
+
+                {/* View Toggle */}
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
+                  {[['calendar', '📅 Calendar'], ['list', '📋 List']].map(([v, l]) => (
+                    <button key={v} onClick={() => setEventsView(v)}
+                      style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '500', fontFamily: "'DM Sans', sans-serif", background: eventsView === v ? 'rgba(56,189,248,0.15)' : 'transparent', color: eventsView === v ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {/* CALENDAR VIEW */}
+                {eventsView === 'calendar' && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '20px', padding: '20px' }}>
+                    {/* Month Nav */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <button onClick={() => { if (eventsCalMonth === 0) { setEventsCalMonth(11); setEventsCalYear(y => y-1) } else setEventsCalMonth(m => m-1) }}
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 12px', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>← Prev</button>
+                      <div style={{ fontSize: '18px', fontWeight: '700' }}>{MONTHS_T[eventsCalMonth]} {eventsCalYear}</div>
+                      <button onClick={() => { if (eventsCalMonth === 11) { setEventsCalMonth(0); setEventsCalYear(y => y+1) } else setEventsCalMonth(m => m+1) }}
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 12px', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Next →</button>
+                    </div>
+
+                    {/* Day Headers */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '3px' }}>
+                      {DAYS_T.map(d => (
+                        <div key={d} style={{ textAlign: 'center', fontSize: '11px', fontWeight: '600', color: d === 'Sun' ? '#f87171' : 'rgba(255,255,255,0.4)', padding: '6px 0' }}>{d}</div>
+                      ))}
+                    </div>
+
+                    {/* Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
+                      {Array.from({ length: new Date(eventsCalYear, eventsCalMonth, 1).getDay() }).map((_, i) => <div key={`e-${i}`} />)}
+                      {Array.from({ length: new Date(eventsCalYear, eventsCalMonth + 1, 0).getDate() }).map((_, i) => {
+                        const day = i + 1
+                        const dateStr = `${eventsCalYear}-${String(eventsCalMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                        const dayEvents = schoolEvents.filter(e => e.event_date === dateStr)
+                        const isHoliday = holidays.some(h => new Date(dateStr) >= new Date(h.from_date) && new Date(dateStr) <= new Date(h.to_date))
+                        const isToday = new Date().toISOString().split('T')[0] === dateStr
+                        const isSunday = new Date(eventsCalYear, eventsCalMonth, day).getDay() === 0
+                        return (
+                          <div key={day}
+                            style={{ minHeight: '70px', background: isHoliday && dayEvents.length > 0 ? 'rgba(245,158,11,0.06)' : isHoliday ? 'rgba(239,68,68,0.06)' : dayEvents.length > 0 ? 'rgba(56,189,248,0.06)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isToday ? '#38bdf8' : isHoliday && dayEvents.length > 0 ? 'rgba(245,158,11,0.3)' : isHoliday ? 'rgba(239,68,68,0.3)' : dayEvents.length > 0 ? 'rgba(56,189,248,0.25)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '6px', padding: '4px', cursor: dayEvents.length > 0 ? 'pointer' : 'default' }}
+                            onClick={() => dayEvents.length > 0 && setSelectedEvent(dayEvents[0])}>
+                            <div style={{ fontSize: '11px', fontWeight: '600', color: isToday ? '#38bdf8' : isSunday || isHoliday ? '#f87171' : 'rgba(255,255,255,0.6)', marginBottom: '2px' }}>{day}</div>
+                            {isHoliday && <div style={{ fontSize: '8px', color: '#f87171', background: 'rgba(239,68,68,0.15)', borderRadius: '3px', padding: '1px 3px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏖️ Holiday</div>}
+                            {dayEvents.slice(0, 1).map(ev => (
+                              <div key={ev.id} style={{ fontSize: '8px', color: '#38bdf8', background: 'rgba(56,189,248,0.15)', borderRadius: '3px', padding: '1px 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {ET_MAP_TEACHER[ev.event_type]?.icon} {ev.title}
+                              </div>
+                            ))}
+                            {dayEvents.length > 1 && <div style={{ fontSize: '8px', color: '#a78bfa' }}>+{dayEvents.length-1}</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* LIST VIEW */}
+                {eventsView === 'list' && (
+                  <>
+                    {schoolEvents.filter(e => new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0))).length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                        <div style={{ fontSize: '40px', marginBottom: '12px' }}>📅</div>
+                        No upcoming events for your programs.
+                      </div>
+                    ) : schoolEvents
+                      .filter(e => new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0)))
+                      .map(ev => {
+                        const et = ET_MAP_TEACHER[ev.event_type]
+                        return (
+                          <div key={ev.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px', marginBottom: '10px', cursor: 'pointer' }}
+                            onClick={() => setSelectedEvent(ev)}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
+                                {et?.icon || '📋'}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{ev.title}</div>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: '#38bdf8', fontSize: '13px' }}>📅 {ev.event_date}</span>
+                                  {ev.start_time && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>⏰ {ev.start_time}{ev.end_time ? ` - ${ev.end_time}` : ''}</span>}
+                                  {ev.venue && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📍 {ev.venue}</span>}
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>{et?.label}</span>
+                                  {(ev.programs || []).map(p => (
+                                    <span key={p} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{p}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    }
+                  </>
+                )}
+
+                {/* Event Detail Modal */}
+                {selectedEvent && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+                    onClick={() => setSelectedEvent(null)}>
+                    <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '460px' }}
+                      onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                          <div style={{ fontSize: '36px' }}>{ET_MAP_TEACHER[selectedEvent.event_type]?.icon || '📋'}</div>
+                          <div>
+                            <div style={{ fontWeight: '700', fontSize: '18px' }}>{selectedEvent.title}</div>
+                            <div style={{ color: '#38bdf8', fontSize: '13px' }}>{ET_MAP_TEACHER[selectedEvent.event_type]?.label}</div>
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedEvent(null)}
+                          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '20px' }}>×</button>
+                      </div>
+                      <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
+                        {[
+                          ['📅 Date', selectedEvent.event_date],
+                          selectedEvent.start_time && ['⏰ Time', `${selectedEvent.start_time}${selectedEvent.end_time ? ` - ${selectedEvent.end_time}` : ''}`],
+                          selectedEvent.venue && ['📍 Venue', selectedEvent.venue],
+                        ].filter(Boolean).map(([label, value]) => (
+                          <div key={label} style={{ display: 'flex', gap: '10px' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', minWidth: '80px' }}>{label}</span>
+                            <span style={{ color: '#fff', fontSize: '14px' }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedEvent.description && (
+                        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px' }}>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '6px' }}>Description</div>
+                          <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', lineHeight: '1.6', whiteSpace: 'pre-line' }}>{selectedEvent.description}</div>
+                        </div>
+                      )}
+                      {selectedEvent.attachment_url && (
+                        <a href={selectedEvent.attachment_url} target='_blank' rel='noreferrer'
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', textDecoration: 'none', fontSize: '13px' }}>
+                          📎 {selectedEvent.attachment_name || 'Download Attachment'}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </div>

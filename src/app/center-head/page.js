@@ -34,6 +34,9 @@ export default function CenterHeadPortal() {
   const [bdayMonth, setBdayMonth] = useState(new Date().getMonth())
   const [bdayYear, setBdayYear] = useState(new Date().getFullYear())
   const [bdaySelectedDay, setBdaySelectedDay] = useState(null)
+  const [schoolEvents, setSchoolEvents] = useState([])
+  const [eventsView, setEventsView] = useState('list')
+  const [selectedEvent, setSelectedEvent] = useState(null)
 
   const router = useRouter()
 
@@ -90,11 +93,18 @@ export default function CenterHeadPortal() {
       supabase.from('schools').select('*').eq('id', prof.school_id).single(),
       supabase.from('students').select('*').eq('school_id', prof.school_id).eq('status', 'active').order('full_name')
     ])
-    setSchoolForBirthday(schRes.data)
-    setBirthdayStudents(stuRes.data || [])
+      setSchoolForBirthday(schRes.data)
+      setBirthdayStudents(stuRes.data || [])
 
-    setLoading(false)
-  }
+      const { data: eventsData } = await supabase
+        .from('school_events')
+        .select('*')
+        .eq('school_id', prof.school_id)
+        .order('event_date')
+      setSchoolEvents(eventsData || [])
+
+      setLoading(false)
+    }
 
   const fetchEnquiryNotes = async (enquiryId) => {
     const { data } = await supabase.from('enquiry_notes').select('*, profiles(full_name)').eq('enquiry_id', enquiryId).order('created_at', { ascending: false })
@@ -162,6 +172,8 @@ export default function CenterHeadPortal() {
     await loadData()
   }
 
+  
+
   const today = new Date().toISOString().split('T')[0]
   const todayFollowUps = followUps.filter(f => f.due_date === today && f.status === 'pending')
   const missedFollowUps = followUps.filter(f => f.status === 'pending' && new Date(`${f.due_date}T${f.due_time}`) < new Date())
@@ -176,12 +188,25 @@ export default function CenterHeadPortal() {
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }
 
+  const EVENT_TYPES_TEACHER = [
+  { id: 'celebration', label: 'Celebration', icon: '🎉' },
+  { id: 'sports', label: 'Sports', icon: '🏃' },
+  { id: 'cultural', label: 'Cultural', icon: '🎨' },
+  { id: 'trip', label: 'Field Trip', icon: '🚌' },
+  { id: 'meeting', label: 'Meeting', icon: '🤝' },
+  { id: 'photoday', label: 'Photo Day', icon: '📸' },
+  { id: 'graduation', label: 'Graduation', icon: '🎓' },
+  { id: 'other', label: 'Other', icon: '📋' },
+  ]
+  const ET_MAP_TEACHER = Object.fromEntries(EVENT_TYPES_TEACHER.map(e => [e.id, e]))
+
   const tabs = [
     { id: 'today', label: "Today's Tasks", icon: '📋' },
     { id: 'enquiries', label: 'All Enquiries', icon: '🎯' },
     { id: 'visits', label: 'Visits', icon: '🏫' },
     { id: 'missed', label: `Missed (${missedFollowUps.length})`, icon: '🚨' },
     { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
+    { id: 'events', label: 'Events', icon: '📅' },
   ]
 
   return (
@@ -587,6 +612,95 @@ export default function CenterHeadPortal() {
                   <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
                     <div style={{ fontSize: '40px', marginBottom: '12px' }}>🎂</div>
                     No birthdays in {BDAY_MONTHS[bdayMonth]}
+                  </div>
+                )}
+              </>
+            )}  
+
+            {/* EVENTS */}
+            {activeTab === 'events' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>📅 Event Calendar</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>All school events and celebrations</div>
+                </div>
+                {schoolEvents.filter(e => new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0))).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>📅</div>
+                    No upcoming events.
+                  </div>
+                ) : schoolEvents
+                  .filter(e => new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0)))
+                  .map(ev => {
+                    const et = ET_MAP_TEACHER[ev.event_type]
+                    return (
+                      <div key={ev.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setSelectedEvent(ev)}>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
+                            {et?.icon || '📋'}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{ev.title}</div>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#38bdf8', fontSize: '13px' }}>📅 {ev.event_date}</span>
+                              {ev.start_time && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>⏰ {ev.start_time}</span>}
+                              {ev.venue && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📍 {ev.venue}</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>{et?.label}</span>
+                              {(ev.programs || []).map(p => (
+                                <span key={p} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{p}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                }
+
+                {/* Event Detail Modal */}
+                {selectedEvent && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+                    onClick={() => setSelectedEvent(null)}>
+                    <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '460px' }}
+                      onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                          <div style={{ fontSize: '36px' }}>{ET_MAP_TEACHER[selectedEvent.event_type]?.icon || '📋'}</div>
+                          <div>
+                            <div style={{ fontWeight: '700', fontSize: '18px' }}>{selectedEvent.title}</div>
+                            <div style={{ color: '#38bdf8', fontSize: '13px' }}>{ET_MAP_TEACHER[selectedEvent.event_type]?.label}</div>
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedEvent(null)}
+                          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '20px' }}>×</button>
+                      </div>
+                      <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
+                        {[
+                          ['📅 Date', selectedEvent.event_date],
+                          selectedEvent.start_time && ['⏰ Time', `${selectedEvent.start_time}${selectedEvent.end_time ? ` - ${selectedEvent.end_time}` : ''}`],
+                          selectedEvent.venue && ['📍 Venue', selectedEvent.venue],
+                        ].filter(Boolean).map(([label, value]) => (
+                          <div key={label} style={{ display: 'flex', gap: '10px' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', minWidth: '80px' }}>{label}</span>
+                            <span style={{ color: '#fff', fontSize: '14px' }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedEvent.description && (
+                        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px' }}>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '6px' }}>Description</div>
+                          <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '14px', lineHeight: '1.6', whiteSpace: 'pre-line' }}>{selectedEvent.description}</div>
+                        </div>
+                      )}
+                      {selectedEvent.attachment_url && (
+                        <a href={selectedEvent.attachment_url} target='_blank' rel='noreferrer'
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', textDecoration: 'none', fontSize: '13px' }}>
+                          📎 {selectedEvent.attachment_name || 'Download Attachment'}
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )}
               </>
