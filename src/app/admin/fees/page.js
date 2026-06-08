@@ -45,6 +45,7 @@ export default function FeesPage() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [searchStudent, setSearchStudent] = useState('')
   const [activeInvoice, setActiveInvoice] = useState(null)
+  const [searchStudentView, setSearchStudentView] = useState('')
 
   const { schoolId } = useSchool()
 
@@ -418,10 +419,18 @@ const markInstallmentPaid = async (inst, mode) => {
             {view === 'student' && (
               <>
                 {!selectedStudent ? (
-                  <>
-                    <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Select a Student</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
-                      {students.map(s => {
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Select a Student</h3>
+                        <input
+                          placeholder='Search student...'
+                          value={searchStudentView}
+                          onChange={e => setSearchStudentView(e.target.value)}
+                          style={{ padding: '9px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', minWidth: '220px', outline: 'none' }}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
+                        {students.filter(s => !searchStudentView || s.full_name.toLowerCase().includes(searchStudentView.toLowerCase()) || s.program?.toLowerCase().includes(searchStudentView.toLowerCase())).map(s => {
                         const sInv = invoices.filter(i => i.student_id === s.id)
                         const sPaid = sInv.reduce((sum,i) => sum+Number(i.paid_amount), 0)
                         const sTotal = sInv.reduce((sum,i) => sum+Number(i.total_amount), 0)
