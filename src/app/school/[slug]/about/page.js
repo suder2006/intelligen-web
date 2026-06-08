@@ -59,8 +59,8 @@
 
   {/* Policy links */}
   <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
-    <a href={`/school/${school.slug}/refund`} style={{ padding: '8px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: '8px', color: '#38bdf8', fontSize: '13px', textDecoration: 'none' }}>💰 Refund Policy</a>
-    <a href={`/school/${school.slug}/terms`} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px', textDecoration: 'none' }}>📄 Terms & Conditions</a>
-    <a href={`/school/${school.slug}/privacy`} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px', textDecoration: 'none' }}>🔒 Privacy Policy</a>
+    <a href='/school/timekids-annanagar/refund' style={{ padding: '8px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: '8px', color: '#38bdf8', fontSize: '13px', textDecoration: 'none' }}>💰 Refund Policy</a>
+    <a href='/school/timekids-annanagar/terms' style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px', textDecoration: 'none' }}>📄 Terms & Conditions</a>
+    <a href='/school/timekids-annanagar/privacy' style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px', textDecoration: 'none' }}>🔒 Privacy Policy</a>
   </div>
 </div>
