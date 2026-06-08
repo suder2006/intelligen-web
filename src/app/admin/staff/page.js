@@ -27,15 +27,20 @@ export default function StaffPage() {
       const fetchAll = async () => {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-      const [{ data: staffData }, { data: progsData }, { data: spData }] = await Promise.all([
-    supabase.from('profiles').select('*')
-      .in('role', ['teacher', 'staff', 'center_head', 'school_admin'])
-      .eq('school_id', schoolId)
-      .neq('id', user.id)
-      .order('created_at', { ascending: false }),
-      supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
-      supabase.from('staff_programs').select('*')
-    ])  
+      const [{ data: staffData }, { data: progsData }] = await Promise.all([
+        supabase.from('profiles').select('*')
+          .in('role', ['teacher', 'staff', 'center_head', 'school_admin'])
+          .eq('school_id', schoolId)
+          .neq('id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
+      ])
+
+      // Fetch staff_programs only for this school's staff
+      const staffIds = (staffData || []).map(s => s.id)
+      const { data: spData } = staffIds.length > 0
+        ? await supabase.from('staff_programs').select('*').in('staff_id', staffIds)
+        : { data: [] } 
     setStaff(staffData || [])
     setPrograms(progsData?.map(p => p.value) || [])
     // Build map: staff_id -> [programs]
