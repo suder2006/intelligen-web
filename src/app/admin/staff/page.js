@@ -33,7 +33,7 @@ export default function StaffPage() {
           .eq('school_id', schoolId)
           .neq('id', user.id)
           .order('created_at', { ascending: false }),
-        supabase.from('curriculum_masters').select('*').eq('type', 'program').order('value'),
+        supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value'),
       ])
 
       // Fetch staff_programs only for this school's staff
