@@ -861,29 +861,62 @@ const fetchMessages = async () => {
                     <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
                       {currView === 'today' ? '🎉 No activities scheduled for today!' : 'No curriculum planned for this week.'}
                     </div>
-                  ) : filtered.map(item => {
-                    const done = completions.some(c => c.curriculum_id === item.id)
-                    return (
-                      <div key={item.id} style={{ backgroundColor: done ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                              <span style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.program}</span>
-                              <span style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.time_slot}</span>
-                              <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.day}</span>
+                      ) : filtered.map(item => {
+                        const done = completions.some(c => c.curriculum_id === item.id)
+                        const dateEvents = schoolEvents.filter(e => e.event_date === item.assigned_date)
+                        return (
+                        <div key={item.id} style={{ backgroundColor: done ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
+                          
+                          {/* Header row */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                <span style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.program}</span>
+                                {item.time_slot && <span style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.time_slot}</span>}
+                                <span style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '3px 10px', borderRadius: '20px', fontSize: '12px' }}>{item.day}</span>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', padding: '3px 0' }}>📅 {item.assigned_date}</span>
+                              </div>
+                              {/* Events for this date */}
+                              {dateEvents.length > 0 && (
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                  {dateEvents.map(ev => (
+                                    <span key={ev.id} style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}>
+                                      {ET_MAP_TEACHER[ev.event_type]?.icon || '📅'} {ev.title}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <div style={{ fontWeight: '600', fontSize: '15px', marginBottom: '4px' }}>{item.planned_activity || 'Activity'}</div>
-                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{item.activity_category} · {item.activity_type}</div>
-                            {item.materials_needed && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '4px' }}>🧰 {item.materials_needed}</div>}
-                            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '4px' }}>📅 {item.assigned_date}</div>
+                            <button onClick={() => markComplete(item.id)}
+                              style={{ padding: '8px 14px', backgroundColor: done ? '#10b981' : '#1e293b', color: done ? '#fff' : '#94a3b8', border: `1px solid ${done ? '#10b981' : '#334155'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {done ? '✅ Done' : '○ Mark Done'}
+                            </button>
                           </div>
-                          <button onClick={() => markComplete(item.id)}
-                            style={{ padding: '8px 14px', backgroundColor: done ? '#10b981' : '#1e293b', color: done ? '#fff' : '#94a3b8', border: `1px solid ${done ? '#10b981' : '#334155'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                            {done ? '✅ Done' : '○ Mark Done'}
-                          </button>
+
+                          {/* Curriculum Fields */}
+                          <div style={{ display: 'grid', gap: '8px' }}>
+                            {[
+                              { icon: '💡', label: 'Concept Focus', value: item.concept_focus },
+                              { icon: '🎤', label: 'Assembly', value: item.assembly_time },
+                              { icon: '⭕', label: 'Circle Time', value: item.circle_time },
+                              { icon: '📖', label: 'Curriculum', value: item.curriculum },
+                              { icon: '🎮', label: 'Play', value: item.play_type },
+                              { icon: '🏠', label: 'Home Task', value: item.home_task },
+                              { icon: '📝', label: 'Notes', value: item.teacher_notes },
+                            ].filter(f => f.value).map(field => (
+                              <div key={field.label} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                                <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{field.icon}</span>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>{field.label}</div>
+                                  <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: '1.5' }}>{field.value}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
                         </div>
-                      </div>
-                    )
+                      )
+
                   })
                 })()}
               </>
