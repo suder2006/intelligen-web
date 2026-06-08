@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
 
 export default function PlannerPage() {
   const router = useRouter()
@@ -232,10 +232,10 @@ async function confirmUpload() {
   }
 
   const grouped = curriculum.reduce((acc, row) => {
-    const key = row.day || 'Unknown'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(row)
-    return acc
+  const key = row.assigned_date || 'Unknown'
+  if (!acc[key]) acc[key] = []
+  acc[key].push(row)
+  return acc
   }, {})
 
   const inputStyle = { width: '100%', marginTop: '6px', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }
@@ -379,9 +379,11 @@ async function confirmUpload() {
                 <p>No curriculum entries yet. Click ➕ Add Entry to start planning!</p>
               </div>
             )}
-            {DAYS.map(day => grouped[day] && (
-              <div key={day} style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '20px', border: '1px solid #334155', marginBottom: '16px' }}>
-                <h3 style={{ color: '#38bdf8', marginBottom: '16px' }}>📅 {day}</h3>
+            {Object.keys(grouped).sort().map(date => grouped[date] && (
+              <div key={date} style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '20px', border: '1px solid #334155', marginBottom: '16px' }}>
+                <h3 style={{ color: '#38bdf8', marginBottom: '16px' }}>
+                  📅 {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}
+                </h3>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
