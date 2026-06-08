@@ -899,7 +899,7 @@ const fetchMessages = async () => {
                               { icon: '💡', label: 'Concept Focus', value: item.concept_focus },
                               { icon: '🎤', label: 'Assembly', value: item.assembly_time },
                               { icon: '⭕', label: 'Circle Time', value: item.circle_time },
-                              { icon: '📖', label: 'Curriculum', value: item.curriculum },
+                              { icon: '📖', label: 'Curriculum', value: item.planned_activity },
                               { icon: '🎮', label: 'Play', value: item.play_type },
                               { icon: '🏠', label: 'Home Task', value: item.home_task },
                               { icon: '📝', label: 'Notes', value: item.teacher_notes },
