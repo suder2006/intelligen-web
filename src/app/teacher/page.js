@@ -83,7 +83,7 @@ export default function TeacherPortal() {
   const [selectedEvent, setSelectedEvent] = useState(null)
 
   useEffect(() => { loadData() }, [])
-  useEffect(() => { if (!loading) fetchAttendance() }, [date])
+  useEffect(() => { if (!loading) fetchCurriculum() }, [currWeek])
 
   const loadData = async () => {
     setLoading(true)
@@ -110,7 +110,7 @@ export default function TeacherPortal() {
     setStudents(sData || [])
     setAnnouncements(aData || [])
 
-    await fetchCurriculum()
+    await fetchCurriculum(teacherPrograms)
     await fetchMoments(prof.school_id)
     const { data: progs } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', prof.school_id).order('value')
     setPrograms(progs?.map(p => p.value) || [])
@@ -423,7 +423,7 @@ const fetchCurriculum = async (teacherPrograms = []) => {
     } else {
       await supabase.from('curriculum_completion').insert({ curriculum_id: curriculumId, teacher_id: user.id })
     }
-    await fetchCurriculum(teacherPrograms)
+    await fetchCurriculum()
   }
 
   const changeWeek = (direction) => {
