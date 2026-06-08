@@ -390,22 +390,30 @@ const fetchMessages = async () => {
     fetchMoments()
   }
 
-  const fetchCurriculum = async () => {
+const fetchCurriculum = async (teacherPrograms = []) => {
   const weekEnd = new Date(currWeek)
   weekEnd.setDate(weekEnd.getDate() + 6)
-  const { data: spData } = await supabase.from('staff_programs')
-    .select('program').eq('staff_id', (await supabase.auth.getUser()).data.user.id)
-  const teacherPrograms = spData?.map(p => p.program) || []
-  if (teacherPrograms.length === 0) { setCurriculum([]); setCompletions([]); return }
+  
+  // If no programs passed, fetch them
+  let programs = teacherPrograms
+  if (programs.length === 0) {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: spData } = await supabase.from('staff_programs')
+      .select('program').eq('staff_id', user.id)
+    programs = spData?.map(p => p.program) || []
+  }
+  
+  if (programs.length === 0) { setCurriculum([]); setCompletions([]); return }
+  
   const { data: curr } = await supabase.from('curriculum').select('*')
     .gte('assigned_date', currWeek)
     .lte('assigned_date', weekEnd.toISOString().split('T')[0])
-    .in('program', teacherPrograms)
+    .in('program', programs)
     .order('assigned_date').order('time_slot')
   const { data: comp } = await supabase.from('curriculum_completion').select('*')
   setCurriculum(curr || [])
   setCompletions(comp || [])
-  }
+}
 
   const markComplete = async (curriculumId) => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -415,7 +423,7 @@ const fetchMessages = async () => {
     } else {
       await supabase.from('curriculum_completion').insert({ curriculum_id: curriculumId, teacher_id: user.id })
     }
-    await fetchCurriculum()
+    await fetchCurriculum(teacherPrograms)
   }
 
   const changeWeek = (direction) => {
