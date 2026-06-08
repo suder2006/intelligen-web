@@ -391,15 +391,20 @@ const fetchMessages = async () => {
   }
 
   const fetchCurriculum = async () => {
-    const weekEnd = new Date(currWeek)
-    weekEnd.setDate(weekEnd.getDate() + 6)
-    const { data: curr } = await supabase.from('curriculum').select('*')
-      .gte('assigned_date', currWeek)
-      .lte('assigned_date', weekEnd.toISOString().split('T')[0])
-      .order('assigned_date').order('time_slot')
-    const { data: comp } = await supabase.from('curriculum_completion').select('*')
-    setCurriculum(curr || [])
-    setCompletions(comp || [])
+  const weekEnd = new Date(currWeek)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+  const { data: spData } = await supabase.from('staff_programs')
+    .select('program').eq('staff_id', (await supabase.auth.getUser()).data.user.id)
+  const teacherPrograms = spData?.map(p => p.program) || []
+  if (teacherPrograms.length === 0) { setCurriculum([]); setCompletions([]); return }
+  const { data: curr } = await supabase.from('curriculum').select('*')
+    .gte('assigned_date', currWeek)
+    .lte('assigned_date', weekEnd.toISOString().split('T')[0])
+    .in('program', teacherPrograms)
+    .order('assigned_date').order('time_slot')
+  const { data: comp } = await supabase.from('curriculum_completion').select('*')
+  setCurriculum(curr || [])
+  setCompletions(comp || [])
   }
 
   const markComplete = async (curriculumId) => {
