@@ -306,6 +306,7 @@ const handleSubmit = async () => {
                     { label: '🔒 Privacy Policy', href: '/school/timekids-annanagar/privacy' },
                     { label: '📄 Terms & Conditions', href: '/school/timekids-annanagar/terms' },
                     { label: '💰 Refund Policy', href: '/school/timekids-annanagar/refund' },
+                    { label: 'ℹ️ About School', href: '/school/timekids-annanagar/about' },
                   ].map(link => (
                     <a key={link.href} href={link.href}
                       style={{ padding: '6px 12px', background: '#f0f4ff', border: '1px solid #dbeafe', borderRadius: '6px', color: '#1e3a8a', fontSize: '12px', fontFamily: 'DM Sans', fontWeight: '500', textDecoration: 'none', transition: 'all 0.2s', display: 'inline-block' }}
@@ -384,6 +385,7 @@ const handleSubmit = async () => {
           </span>
         </div>
         <div style={{ marginBottom: '16px' }}>
+          <a href="/about">About Us</a>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/terms">Terms of Service</a>
           <a href="/refund-policy">Refund Policy</a>
