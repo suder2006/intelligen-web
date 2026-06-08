@@ -394,7 +394,7 @@ async function confirmUpload() {
                       </tr>
                     </thead>
                     <tbody>
-                      {grouped[day].map(row => (
+                      {grouped[date].map(row => (
                         <tr key={row.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '10px 12px', color: '#a78bfa', whiteSpace: 'nowrap' }}>{row.program}</td>
                           <td style={{ padding: '10px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{row.assigned_date}</td>
