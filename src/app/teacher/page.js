@@ -420,8 +420,12 @@ const fetchMessages = async () => {
   }
 
   const fetchAttendance = async () => {
-    const { data } = await supabase.from('attendance').select('*').eq('date', date)
-    setAttendance(data || [])
+  const studentIds = students.map(s => s.id)
+  if (studentIds.length === 0) { setAttendance([]); return }
+  const { data } = await supabase.from('attendance').select('*')
+    .eq('date', date)
+    .in('student_id', studentIds)
+  setAttendance(data || [])
   }
 
   const getStatus = (studentId) => attendance.find(a => a.student_id === studentId)?.status || null
