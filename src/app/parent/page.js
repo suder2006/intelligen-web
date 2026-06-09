@@ -124,15 +124,23 @@ export default function ParentPortal() {
     }
 
     // Load curriculum
-    const today = new Date()
-    const day = today.getDay()
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-    const weekStart = new Date(today.setDate(diff)).toISOString().split('T')[0]
-    const weekEnd = new Date(new Date(weekStart).setDate(new Date(weekStart).getDate() + 6)).toISOString().split('T')[0]
-    const [curr, news] = await Promise.all([
-      supabase.from('curriculum').select('*').gte('assigned_date', weekStart).lte('assigned_date', weekEnd).order('assigned_date').order('time_slot'),
-      supabase.from('curriculum_newsletter').select('*').order('created_at', { ascending: false }).limit(5)
-    ])
+  
+        const today = new Date()
+        const day = today.getDay()
+        const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+        const weekStart = new Date(today.setDate(diff)).toISOString().split('T')[0]
+        const weekEnd = new Date(new Date(weekStart).setDate(new Date(weekStart).getDate() + 6)).toISOString().split('T')[0]
+        const curriculumPrograms = [...new Set((s.data || []).map(st => st.program).filter(Boolean))]
+        const [curr, news] = await Promise.all([
+          curriculumPrograms.length > 0
+            ? supabase.from('curriculum').select('*')
+                .gte('assigned_date', weekStart)
+                .lte('assigned_date', weekEnd)
+                .in('program', curriculumPrograms)
+                .order('assigned_date').order('time_slot')
+            : Promise.resolve({ data: [] }),
+          supabase.from('curriculum_newsletter').select('*').order('created_at', { ascending: false }).limit(5)
+        ])
     const comp = await supabase.from('curriculum_completion').select('curriculum_id')
     const completedIds = comp.data?.map(c => c.curriculum_id) || []
     setCurriculum((curr.data || []).map(c => ({ ...c, completed: completedIds.includes(c.id) })))
@@ -243,9 +251,8 @@ export default function ParentPortal() {
       setTransportLogs(tlRes.data || [])
     }
 
-    // Load diary entries
-    if (studentIds.length > 0) {
-      const childPrograms = s.data?.map(st => st.program).filter(Boolean) || []
+        // Load diary entries
+      if (studentIds.length > 0) {
       const { data: diaryData } = await supabase.from('diary_entries')
         .select('*, profiles(full_name), students(full_name)')
         .eq('school_id', effectiveSid)
