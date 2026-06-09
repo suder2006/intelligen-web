@@ -2,7 +2,7 @@
   "name": "IntelliGen - Preschool Management",
   "short_name": "IntelliGen",
   "description": "Smart preschool management platform",
-  "start_url": "/",
+  "start_url": "/login",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#38bdf8",
