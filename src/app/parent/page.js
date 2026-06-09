@@ -130,13 +130,7 @@ export default function ParentPortal() {
     const weekStart = new Date(today.setDate(diff)).toISOString().split('T')[0]
     const weekEnd = new Date(new Date(weekStart).setDate(new Date(weekStart).getDate() + 6)).toISOString().split('T')[0]
     const [curr, news] = await Promise.all([
-      parentPrograms.length > 0
-        ? supabase.from('curriculum').select('*')
-            .gte('assigned_date', weekStart)
-            .lte('assigned_date', weekEnd)
-            .in('program', parentPrograms)
-            .order('assigned_date').order('time_slot')
-        : Promise.resolve({ data: [] }),
+      supabase.from('curriculum').select('*').gte('assigned_date', weekStart).lte('assigned_date', weekEnd).order('assigned_date').order('time_slot'),
       supabase.from('curriculum_newsletter').select('*').order('created_at', { ascending: false }).limit(5)
     ])
     const comp = await supabase.from('curriculum_completion').select('curriculum_id')
