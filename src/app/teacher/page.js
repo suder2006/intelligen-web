@@ -76,6 +76,7 @@ export default function TeacherPortal() {
   })
   const [savingDiary, setSavingDiary] = useState(false)
   const [diaryFilter, setDiaryFilter] = useState('all')
+  const [expandedStudents, setExpandedStudents] = useState({})
   const [schoolEvents, setSchoolEvents] = useState([])
   const [eventsView, setEventsView] = useState('calendar')
   const [eventsCalMonth, setEventsCalMonth] = useState(new Date().getMonth())
@@ -829,23 +830,103 @@ const fetchCurriculum = async (teacherPrograms = []) => {
             {activeTab === 'students' && (
               <>
                 <div className="section-title">👶 My Students ({students.length})</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead><tr><th>Name</th><th>Date of Birth</th><th>Gender</th><th>Status</th></tr></thead>
-                    <tbody>
-                      {students.length === 0 ? (
-                        <tr><td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.3)' }}>No students found.</td></tr>
-                      ) : students.map(s => (
-                        <tr key={s.id}>
-                          <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">{s.full_name?.[0]?.toUpperCase()}</div><span style={{ fontWeight: 500, color: '#fff' }}>{s.full_name}</span></div></td>
-                          <td style={{ color: 'rgba(255,255,255,0.5)' }}>{s.date_of_birth || '—'}</td>
-                          <td style={{ color: 'rgba(255,255,255,0.5)' }}>{s.gender || '—'}</td>
-                          <td><span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>{s.status}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {students.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No students found.</div>
+                ) : students.map(s => {
+                  const expanded = expandedStudents[s.id] || false
+                  const hasAlert = s.medical_alert || s.medical_alert_note
+                  return (
+                    <div key={s.id} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${hasAlert ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '14px', padding: '16px', marginBottom: '10px' }}>
+
+                      {/* Main row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '700', color: '#fff', flexShrink: 0 }}>
+                            {s.full_name?.[0]?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '15px', color: '#fff' }}>{s.full_name}</div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
+                              {s.program && <span style={{ fontSize: '12px', color: '#a78bfa' }}>{s.program}</span>}
+                              {s.gender && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>· {s.gender}</span>}
+                              {s.date_of_birth && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>· 🎂 {s.date_of_birth}</span>}
+                              {s.blood_group && <span style={{ fontSize: '12px', color: '#f87171' }}>· 🩸 {s.blood_group}</span>}
+                              {hasAlert && <span style={{ fontSize: '11px', color: '#f87171', background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: '20px', fontWeight: '600' }}>🚨 Medical Alert</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setExpandedStudents(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
+                          style={{ padding: '6px 14px', background: expanded ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.06)', border: `1px solid ${expanded ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: expanded ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                          {expanded ? '▲ Hide' : '▼ Details'}
+                        </button>
+                      </div>
+
+                      {/* Expandable Details */}
+                      {expanded && (
+                        <div style={{ marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px', display: 'grid', gap: '10px' }}>
+
+                          {/* Authorized Pickup */}
+                          {s.authorized_pickup && (
+                            <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.12)', borderRadius: '10px', padding: '12px 14px' }}>
+                              <div style={{ color: '#38bdf8', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>🚗 AUTHORIZED PICKUP PERSONS</div>
+                              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-line' }}>{s.authorized_pickup}</div>
+                            </div>
+                          )}
+
+                          {/* Allergies */}
+                          {s.allergies && (
+                            <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px 14px' }}>
+                              <div style={{ color: '#fbbf24', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>🌿 ALLERGIES</div>
+                              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-line' }}>{s.allergies}</div>
+                            </div>
+                          )}
+
+                          {/* Medical Info */}
+                          {s.medical_info && (
+                            <div style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: '10px', padding: '12px 14px' }}>
+                              <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>🏥 MEDICAL INFO / CONDITIONS</div>
+                              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-line' }}>{s.medical_info}</div>
+                            </div>
+                          )}
+
+                          {/* Medical Alert */}
+                          {(s.medical_alert || s.medical_alert_note) && (
+                            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '12px 14px' }}>
+                              <div style={{ color: '#f87171', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>🚨 MEDICAL ALERT</div>
+                              {s.medical_alert && <div style={{ color: '#fca5a5', fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>{s.medical_alert}</div>}
+                              {s.medical_alert_note && <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-line' }}>{s.medical_alert_note}</div>}
+                            </div>
+                          )}
+
+                          {/* Emergency Contact */}
+                          {s.emergency_contact && (
+                            <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px', padding: '12px 14px' }}>
+                              <div style={{ color: '#34d399', fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>📞 EMERGENCY CONTACT</div>
+                              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px' }}>{s.emergency_contact}</div>
+                            </div>
+                          )}
+
+                          {/* Immunization */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>💉 Immunization:</span>
+                            <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: s.immunization_complete ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: s.immunization_complete ? '#34d399' : '#fbbf24' }}>
+                              {s.immunization_complete ? '✅ Complete' : '⏳ Pending'}
+                            </span>
+                          </div>
+
+                          {/* No info */}
+                          {!s.authorized_pickup && !s.allergies && !s.medical_info && !s.medical_alert && !s.medical_alert_note && !s.emergency_contact && (
+                            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px', padding: '8px 0' }}>
+                              No additional details added yet.
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </>
             )}
 
