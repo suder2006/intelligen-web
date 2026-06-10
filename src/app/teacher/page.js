@@ -28,10 +28,15 @@ export default function TeacherPortal() {
   const momentFileRef = useRef()
   const [currWeek, setCurrWeek] = useState(() => {
     const today = new Date()
-    const day = today.getDay()
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1)
-    return new Date(today.setDate(diff)).toISOString().split('T')[0]
-  })
+    const dayOfWeek = today.getDay()
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + daysToMonday)
+    const y = monday.getFullYear()
+    const m = String(monday.getMonth() + 1).padStart(2, '0')
+    const d = String(monday.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+    })
   const router = useRouter()
   const [messages, setMessages] = useState([])
   const [replyText, setReplyText] = useState('')
@@ -263,8 +268,7 @@ const fetchMessages = async () => {
     if (!replyText.trim() || !replyingTo) return
     setSendingReply(true)
 
-    console.log('Sending reply to:', replyingTo) // ADD THIS debug
-    console.log('Parents list:', parents)          // ADD THIS debug
+
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('chat_messages').insert({
       sender_id: user.id,
@@ -391,9 +395,10 @@ const fetchMessages = async () => {
     fetchMoments()
   }
 
-const fetchCurriculum = async (teacherPrograms = []) => {
-  const weekEnd = new Date(currWeek)
-  weekEnd.setDate(weekEnd.getDate() + 6)
+  const fetchCurriculum = async (teacherPrograms = []) => {
+  const [y, m, d] = currWeek.split('-').map(Number)
+  const weekEndDate = new Date(y, m - 1, d + 6)
+  const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`
   
   // If no programs passed, fetch them
   let programs = teacherPrograms
@@ -408,7 +413,7 @@ const fetchCurriculum = async (teacherPrograms = []) => {
   
   const { data: curr } = await supabase.from('curriculum').select('*')
     .gte('assigned_date', currWeek)
-    .lte('assigned_date', weekEnd.toISOString().split('T')[0])
+    .lte('assigned_date', weekEndStr)
     .in('program', programs)
     .order('assigned_date').order('time_slot')
   const { data: comp } = await supabase.from('curriculum_completion').select('*')
@@ -428,10 +433,14 @@ const fetchCurriculum = async (teacherPrograms = []) => {
   }
 
   const changeWeek = (direction) => {
-    const d = new Date(currWeek)
-    d.setDate(d.getDate() + direction * 7)
-    setCurrWeek(d.toISOString().split('T')[0])
-  }
+    const [y, m, d] = currWeek.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    date.setDate(date.getDate() + direction * 7)
+    const yr = date.getFullYear()
+    const mo = String(date.getMonth() + 1).padStart(2, '0')
+    const dy = String(date.getDate()).padStart(2, '0')
+    setCurrWeek(`${yr}-${mo}-${dy}`)
+    }
 
   const fetchAttendance = async () => {
   const studentIds = students.map(s => s.id)
@@ -642,7 +651,7 @@ const fetchCurriculum = async (teacherPrograms = []) => {
 
   const enablePushNotifications = async () => {
     setPushLoading(true)
-    const success = await registerPushNotifications(supabase, user.id, prof.school_id)
+    const success = await registerPushNotifications(supabase, user.id, profile?.school_id)
     setPushEnabled(success)
     setPushLoading(false)
     if (success) alert('✅ Push notifications enabled!')
