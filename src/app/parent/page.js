@@ -100,12 +100,11 @@ export default function ParentPortal() {
         ? supabase.from('students').select('*').in('id', studentIds).eq('status', 'active')
         : Promise.resolve({ data: [] }),
       supabase.from('fee_invoices').select('*, fee_installments(*)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('created_at', { ascending: false }),
-      supabase.from('announcements').select('*').eq('school_id', sid).order('created_at', { ascending: false }).limit(10),
+      Promise.resolve({ data: [] }),
       supabase.from('attendance').select('*, students(full_name)').in('student_id', studentIds.length > 0 ? studentIds : ['__none__']).order('date', { ascending: false }).limit(60)
     ])
     setStudents(s.data || [])
     setFees(f.data || [])
-    setAnnouncements(a.data || [])
     setAttendance(at.data || [])
 
         // Get school_id from first student if parent has no school_id
@@ -122,7 +121,10 @@ export default function ParentPortal() {
     setSchoolUpi({ upi_id: schoolData?.upi_id || '', upi_name: schoolData?.upi_name || '', upi_description: schoolData?.upi_description || '' })
     setSchoolGetepay(schoolData)
     }
-
+    const { data: annData } = await supabase.from('announcements')
+    .select('*').eq('school_id', effectiveSid)
+    .order('created_at', { ascending: false }).limit(10)
+    setAnnouncements(annData || [])
     // Load curriculum
   
         const today = new Date()
