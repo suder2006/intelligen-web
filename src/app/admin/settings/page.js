@@ -12,6 +12,7 @@ const LOCKABLE_MODULES = [
   { id: 'fee_structure', label: 'Fee Structure', icon: '📋' },
   { id: 'payroll', label: 'Payroll', icon: '💰' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
+  { id: 'reports', label: 'Reports', icon: '📊' },
 ]
 export default function SchoolSettingsPage() {
   const { schoolId, schoolName } = useSchool()

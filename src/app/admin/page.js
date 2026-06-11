@@ -18,6 +18,7 @@ export default function AdminDashboard() {
   const [schoolId, setSchoolId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
+  const [restrictedModules, setRestrictedModules] = useState([])
   const router = useRouter()
 
   useEffect(() => {
@@ -31,6 +32,20 @@ export default function AdminDashboard() {
       setSchoolName(schoolData?.name || 'My School')
       const schoolId = prof?.school_id
       setSchoolId(schoolId)
+      // Check sub-admin restrictions
+        let userRestrictedModules = []
+        if (prof?.role === 'school_admin') {
+          const { data: sarData } = await supabase
+            .from('sub_admin_restrictions')
+            .select('restricted_modules')
+            .eq('user_id', user.id)
+            .eq('school_id', prof.school_id)
+            .eq('is_active', true)
+            .single()
+          userRestrictedModules = sarData?.restricted_modules || []
+        }
+        setRestrictedModules(userRestrictedModules)
+
       const [s, st, f, ad, at] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact' }).eq('school_id', schoolId),
         supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']).eq('school_id', schoolId),
@@ -170,14 +185,14 @@ export default function AdminDashboard() {
     { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   ]
 
-  const statCards = [
+      const statCards = [
     { label: 'Total Students', value: stats.students, icon: '👶', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)' },
     { label: 'Staff Members', value: stats.staff, icon: '👩‍🏫', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
     { label: 'Active Classes', value: stats.classes, icon: '📚', color: '#a78bfa', bg: 'rgba(167,139,250,0.1)' },
     { label: 'Pending Admissions', value: stats.admissions, icon: '📋', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-    { label: 'Unpaid Fees (₹)', value: `₹${stats.fees.toLocaleString()}`, icon: '💳', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+    ...(!restrictedModules.includes('fees') ? [{ label: 'Unpaid Fees (₹)', value: `₹${stats.fees.toLocaleString()}`, icon: '💳', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' }] : []),
     { label: "Today's Attendance", value: stats.attendance, icon: '✅', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
-  ]
+    ]
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
