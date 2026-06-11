@@ -29,7 +29,7 @@ export async function POST(request) {
     const transactionDate = new Date().toString()
 
     const data = {
-      mid: parseInt(school.getepay_mid),
+      mid: school.getepay_mid,
       amount: parseFloat(amount).toFixed(2),
       merchantTransactionId: transactionId,
       transactionDate: transactionDate,
@@ -69,6 +69,13 @@ export async function POST(request) {
     const ciphertext = encryptEas(JsonData, config.GetepayKey, config.GetepayIV)
     const newCipher = ciphertext.toUpperCase()
 
+    console.log('Sending to GetePay:', JSON.stringify({
+      mid: data.mid,
+      terminalId: data.terminalId,
+      req: newCipher.substring(0, 20) + '...'
+    }))
+    console.log('GetePay URL:', config.GetepayUrl)
+    
     const response = await fetch(config.GetepayUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
