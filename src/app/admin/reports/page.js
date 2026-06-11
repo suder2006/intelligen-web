@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
+import ModuleGuard from '@/components/ModuleGuard'
 
 
 
@@ -114,6 +115,7 @@ export default function ReportsPage() {
   ]
 
   return (
+    <ModuleGuard moduleId="reports">
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
@@ -620,5 +622,6 @@ export default function ReportsPage() {
         )}
       </div>
     </div>
+    </ModuleGuard>
   )
 }
