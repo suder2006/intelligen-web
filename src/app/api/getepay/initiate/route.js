@@ -58,7 +58,7 @@ export async function POST(request) {
     const config = {
       GetepayKey: school.getepay_key,
       GetepayIV: school.getepay_iv,
-      GetepayUrl: school.getepay_url || 'https://pay1.getepay.in:8443/getepayPortal/pg/generateInvoice',
+      GetepayUrl: (school.getepay_url || 'https://pay1.getepay.in:8443/getepayPortal/pg/generateInvoice').trim(),
     }
 
     // Encrypt and call GetePay

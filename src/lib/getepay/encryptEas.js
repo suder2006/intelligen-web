@@ -1,4 +1,4 @@
-import { AES, format, mode, pad } from "crypto-js";
+import { AES, enc, mode, pad } from "crypto-js";
 import Base64 from "crypto-js/enc-base64";
 
 function encryptEas(data, key, iv) {
@@ -8,9 +8,8 @@ function encryptEas(data, key, iv) {
     iv: ivs,
     mode: mode.CBC,
     padding: pad.Pkcs7,
-    format: format.Hex,
   });
-  return encrypted.toString();
+  return encrypted.ciphertext.toString(enc.Hex);
 }
 
 export default encryptEas;
