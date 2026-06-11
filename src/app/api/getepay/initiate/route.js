@@ -21,12 +21,12 @@ export async function POST(request) {
       .eq('id', school_id)
       .single()
 
-    if (!school?.getepay_mid) {
-      return NextResponse.json({ error: 'Payment gateway not configured' }, { status: 400 })
+    if (!school?.getepay_mid || !school?.getepay_terminal_id || !school?.getepay_key || !school?.getepay_iv) {
+      return NextResponse.json({ error: 'Payment gateway not fully configured' }, { status: 400 })
     }
 
     const transactionId = `INV-${invoice_id}-${Date.now()}`
-    const transactionDate = new Date().toString()
+    const transactionDate = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
     const data = {
       mid: school.getepay_mid,
