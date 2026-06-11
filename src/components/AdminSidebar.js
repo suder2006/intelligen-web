@@ -20,7 +20,7 @@ const navItems = [
   { href: '/admin/staff-report', label: 'Staff Report', icon: '📋' },
   { href: '/admin/payroll', label: 'Payroll', icon: '💰', moduleId: 'payroll' },
   { href: '/admin/messages', label: 'Messages', icon: '💬' },
-  { href: '/admin/curriculum/masters', label: 'Curriculum', icon: '📖' },
+  { href: '/admin/curriculum', label: 'Curriculum', icon: '📖' },
   { href: '/admin/moments', label: 'Moments', icon: '📸' },
   { href: '/admin/skills', label: 'Skills', icon: '🎯' },
   { href: '/admin/home-activities', label: 'Home Activities', icon: '🏠' },
