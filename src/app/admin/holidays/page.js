@@ -6,7 +6,7 @@ import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
 
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
-const HOLIDAY_TYPES = ['National Holiday', 'School Holiday', 'Program-specific Holiday', 'Staff Holiday', 'Optional Holiday']
+const HOLIDAY_TYPES = ['National Holiday', 'Public Holiday', 'School Holiday', 'Program-specific Holiday', 'Staff Holiday', 'Optional Holiday']
 const APPLIES_TO = [
   { value: 'all', label: '👥 Everyone (Staff + Students)' },
   { value: 'staff_only', label: '👩‍🏫 Staff Only' },
@@ -101,6 +101,7 @@ export default function AdminHolidaysPage() {
 
   const typeColor = {
     'National Holiday': { bg: 'rgba(239,68,68,0.15)', color: '#f87171', border: 'rgba(239,68,68,0.3)' },
+    'Public Holiday': { bg: 'rgba(251,146,60,0.15)', color: '#fb923c', border: 'rgba(251,146,60,0.3)' },
     'School Holiday': { bg: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'rgba(56,189,248,0.3)' },
     'Program-specific Holiday': { bg: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: 'rgba(167,139,250,0.3)' },
     'Staff Holiday': { bg: 'rgba(16,185,129,0.15)', color: '#34d399', border: 'rgba(16,185,129,0.3)' },
