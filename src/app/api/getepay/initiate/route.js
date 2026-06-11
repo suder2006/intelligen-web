@@ -88,7 +88,12 @@ export async function POST(request) {
         error: `GetePay returned invalid response: ${result.substring(0, 200)}` 
       }, { status: 500 })
     }
+    console.log('GetePay resultobj:', JSON.stringify(resultobj))
     const responseurl = resultobj.response
+    console.log('GetePay responseurl:', responseurl)
+    if (!responseurl) {
+      return NextResponse.json({ error: `GetePay returned no response field. Full response: ${JSON.stringify(resultobj)}` }, { status: 500 })
+    }
     const dataitem = JSON.parse(decryptEas(responseurl, config.GetepayKey, config.GetepayIV))
 
     // Save transaction to database
