@@ -18,6 +18,8 @@ export default function ReportsPage() {
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7))
   const [filterProgram, setFilterProgram] = useState('all')
   const [programs, setPrograms] = useState([])
+  const [filterStudent, setFilterStudent] = useState('all')
+  const [studentReportView, setStudentReportView] = useState('summary')
   
   const { schoolId } = useSchool()
 
@@ -62,6 +64,51 @@ export default function ReportsPage() {
       pct: recs.length > 0 ? Math.round((recs.filter(a => a.status === 'present').length / recs.length) * 100) : 0
     }
   }
+  // Get all working days in a month
+  const getMonthDates = (month) => {
+    const [year, mo] = month.split('-').map(Number)
+    const daysInMonth = new Date(year, mo, 0).getDate()
+    const dates = []
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${month}-${String(d).padStart(2, '0')}`
+      const dayOfWeek = new Date(year, mo - 1, d).getDay()
+      const dayName = new Date(year, mo - 1, d).toLocaleDateString('en-IN', { weekday: 'short' })
+      dates.push({ date: dateStr, dayName, isSunday: dayOfWeek === 0 })
+    }
+    return dates
+  }
+
+  // Export student daily attendance CSV
+  const exportStudentDailyCSV = () => {
+    const dates = getMonthDates(filterMonth)
+    const studentsToExport = filterStudent === 'all' 
+      ? filteredStudents 
+      : filteredStudents.filter(s => s.id === filterStudent)
+    
+    if (filterStudent !== 'all' && studentsToExport.length === 1) {
+      // Single student — day by day
+      const s = studentsToExport[0]
+      exportCSV(
+        ['Date', 'Day', 'Status'],
+        dates.filter(d => !d.isSunday).map(({ date, dayName }) => {
+          const rec = attendance.find(a => a.student_id === s.id && a.date === date)
+          return [date, dayName, rec?.status || 'absent']
+        }),
+        `${s.full_name}-attendance-${filterMonth}.csv`
+      )
+    } else {
+      // All students summary
+      exportCSV(
+        ['Student', 'Program', 'Present', 'Absent', 'Late', 'Total Days', 'Attendance %'],
+        studentsToExport.map(s => {
+          const stats = getStudentAttendance(s.id, filterMonth)
+          return [s.full_name, s.program || '', stats.present, stats.absent, stats.late, stats.total, `${stats.pct}%`]
+        }),
+        `student-attendance-${filterMonth}.csv`
+      )
+    }
+  }
+
 
   // Export to Excel (CSV)
   const exportCSV = (headers, rows, filename) => {
@@ -112,7 +159,8 @@ export default function ReportsPage() {
     { id: 'daily-attendance', label: '📅 Daily Attendance' },
     { id: 'student-attendance', label: '✅ Student Attendance' },
     { id: 'monthly-attendance', label: '📆 Monthly Overview' },
-  ]
+    { id: 'student-daily-report', label: '📋 Student Daily Report' },
+    ]
 
   return (
     <ModuleGuard moduleId="reports">
@@ -165,6 +213,9 @@ export default function ReportsPage() {
             )}
             {['student-attendance', 'monthly-attendance'].includes(activeReport) && (
               <button onClick={exportAttendance} className="btn-secondary">📥 Export Excel</button>
+            )}
+            {activeReport === 'student-daily-report' && (
+              <button onClick={exportStudentDailyCSV} className="btn-secondary">📥 Export Excel</button>
             )}
           </div>
         </div>
@@ -618,6 +669,231 @@ export default function ReportsPage() {
                 </div>
               </>
             )}
+
+            {/* STUDENT DAILY REPORT */}
+            {activeReport === 'student-daily-report' && (
+              <>
+                <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>📋 Student Daily Attendance Report</h2>
+
+                {/* Filters */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div>
+                    <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Month</div>
+                    <input type='month' value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+                      style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                  </div>
+                  <div>
+                    <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Program</div>
+                    <select value={filterProgram} onChange={e => { setFilterProgram(e.target.value); setFilterStudent('all') }}
+                      style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }}>
+                      <option value='all'>All Programs</option>
+                      {programs.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Student</div>
+                    <select value={filterStudent} onChange={e => setFilterStudent(e.target.value)}
+                      style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', minWidth: '200px' }}>
+                      <option value='all'>All Students</option>
+                      {filteredStudents.map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>)}
+                    </select>
+                  </div>
+                  {/* View toggle - only show when all students selected */}
+                  {filterStudent === 'all' && (
+                    <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '4px' }}>
+                      {[['summary', '📊 Summary'], ['detail', '📅 Day-wise']].map(([v, l]) => (
+                        <button key={v} onClick={() => setStudentReportView(v)}
+                          style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '500', fontFamily: "'DM Sans', sans-serif", background: studentReportView === v ? 'rgba(56,189,248,0.15)' : 'transparent', color: studentReportView === v ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* SINGLE STUDENT — Day by day */}
+                {filterStudent !== 'all' && (() => {
+                  const student = students.find(s => s.id === filterStudent)
+                  if (!student) return null
+                  const dates = getMonthDates(filterMonth)
+                  const stats = getStudentAttendance(student.id, filterMonth)
+                  return (
+                    <>
+                      {/* Student header */}
+                      <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>{student.full_name}</div>
+                          <div style={{ color: '#a78bfa', fontSize: '14px' }}>{student.program} · {filterMonth}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                          {[
+                            { label: 'Present', value: stats.present, color: '#10b981' },
+                            { label: 'Absent', value: stats.absent, color: '#ef4444' },
+                            { label: 'Late', value: stats.late, color: '#f59e0b' },
+                            { label: 'Total Days', value: stats.total, color: '#38bdf8' },
+                            { label: 'Attendance', value: `${stats.pct}%`, color: stats.pct >= 75 ? '#10b981' : '#ef4444' },
+                          ].map(item => (
+                            <div key={item.label} style={{ textAlign: 'center' }}>
+                              <div style={{ color: item.color, fontWeight: '700', fontSize: '18px' }}>{item.value}</div>
+                              <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>{item.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Day by day table */}
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Day</th>
+                              <th>Status</th>
+                              <th>Marked At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dates.map(({ date, dayName, isSunday }) => {
+                              const rec = attendance.find(a => a.student_id === student.id && a.date === date)
+                              const status = rec?.status || (isSunday ? 'sunday' : 'absent')
+                              return (
+                                <tr key={date} style={{ opacity: isSunday ? 0.4 : 1, background: status === 'absent' && !isSunday ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
+                                  <td style={{ fontWeight: '500' }}>{date}</td>
+                                  <td style={{ color: isSunday ? '#f87171' : 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{dayName}</td>
+                                  <td>
+                                    {isSunday ? (
+                                      <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>Sunday</span>
+                                    ) : (
+                                      <span className="badge" style={{
+                                        background: status === 'present' ? 'rgba(16,185,129,0.15)' : status === 'late' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                                        color: status === 'present' ? '#34d399' : status === 'late' ? '#fbbf24' : '#f87171'
+                                      }}>
+                                        {status === 'present' ? '✅ Present' : status === 'late' ? '⏰ Late' : '❌ Absent'}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
+                                    {rec?.checked_in_at ? new Date(rec.checked_in_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )
+                })()}
+
+                {/* ALL STUDENTS — Summary view */}
+                {filterStudent === 'all' && studentReportView === 'summary' && (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Program</th>
+                          <th>Present</th>
+                          <th>Absent</th>
+                          <th>Late</th>
+                          <th>Total Days</th>
+                          <th>Attendance %</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.map(s => {
+                          const stats = getStudentAttendance(s.id, filterMonth)
+                          return (
+                            <tr key={s.id}>
+                              <td style={{ fontWeight: '600', cursor: 'pointer', color: '#38bdf8' }}
+                                onClick={() => setFilterStudent(s.id)}>
+                                {s.full_name} →
+                              </td>
+                              <td><span style={{ color: '#a78bfa', fontSize: '13px' }}>{s.program || '—'}</span></td>
+                              <td><span style={{ color: '#10b981', fontWeight: '600' }}>{stats.present}</span></td>
+                              <td><span style={{ color: '#ef4444', fontWeight: '600' }}>{stats.absent}</span></td>
+                              <td><span style={{ color: '#f59e0b', fontWeight: '600' }}>{stats.late}</span></td>
+                              <td>{stats.total}</td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div className="progress-bar" style={{ flex: 1, minWidth: '60px' }}>
+                                    <div className="progress-fill" style={{ width: `${stats.pct}%`, background: stats.pct >= 75 ? '#10b981' : '#ef4444' }} />
+                                  </div>
+                                  <span style={{ fontSize: '12px', fontWeight: '600', color: stats.pct >= 75 ? '#10b981' : '#ef4444' }}>{stats.pct}%</span>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="badge" style={{
+                                  background: stats.pct >= 75 ? 'rgba(16,185,129,0.15)' : stats.total === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.15)',
+                                  color: stats.pct >= 75 ? '#34d399' : stats.total === 0 ? 'rgba(255,255,255,0.3)' : '#f87171'
+                                }}>
+                                  {stats.total === 0 ? 'No Data' : stats.pct >= 75 ? '✅ Good' : '⚠️ Low'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* ALL STUDENTS — Day-wise view */}
+                {filterStudent === 'all' && studentReportView === 'detail' && (() => {
+                  const dates = getMonthDates(filterMonth).filter(d => !d.isSunday)
+                  return (
+                    <div className="table-wrap">
+                      <table style={{ minWidth: `${200 + dates.length * 60}px` }}>
+                        <thead>
+                          <tr>
+                            <th style={{ position: 'sticky', left: 0, background: '#1a2744', zIndex: 1 }}>Student</th>
+                            <th style={{ position: 'sticky', left: '120px', background: '#1a2744', zIndex: 1 }}>Program</th>
+                            {dates.map(({ date, dayName }) => (
+                              <th key={date} style={{ textAlign: 'center', minWidth: '55px' }}>
+                                <div>{dayName}</div>
+                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>{date.slice(8)}</div>
+                              </th>
+                            ))}
+                            <th>%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredStudents.map(s => {
+                            const stats = getStudentAttendance(s.id, filterMonth)
+                            return (
+                              <tr key={s.id}>
+                                <td style={{ fontWeight: '600', position: 'sticky', left: 0, background: '#0f172a', zIndex: 1 }}>{s.full_name}</td>
+                                <td style={{ color: '#a78bfa', fontSize: '12px', position: 'sticky', left: '120px', background: '#0f172a', zIndex: 1 }}>{s.program}</td>
+                                {dates.map(({ date }) => {
+                                  const rec = attendance.find(a => a.student_id === s.id && a.date === date)
+                                  const status = rec?.status || 'absent'
+                                  return (
+                                    <td key={date} style={{ textAlign: 'center', padding: '8px 4px' }}>
+                                      <span style={{
+                                        display: 'inline-block', width: '28px', height: '28px', borderRadius: '50%', lineHeight: '28px', fontSize: '12px', fontWeight: '700',
+                                        background: status === 'present' ? 'rgba(16,185,129,0.2)' : status === 'late' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                                        color: status === 'present' ? '#34d399' : status === 'late' ? '#fbbf24' : '#f87171'
+                                      }}>
+                                        {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
+                                      </span>
+                                    </td>
+                                  )
+                                })}
+                                <td>
+                                  <span style={{ fontWeight: '700', color: stats.pct >= 75 ? '#10b981' : '#ef4444' }}>{stats.pct}%</span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })()}
+              </>
+            )}
+
           </>
         )}
       </div>
