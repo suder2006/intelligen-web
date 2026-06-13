@@ -889,10 +889,14 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
             {activeTab === 'curriculum' && (
               <>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-                  {['highlights', 'newsletter'].map(v => (
-                    <button key={v} onClick={() => setCurrView(v)}
-                      style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: currView === v ? '#38bdf8' : '#1e293b', color: currView === v ? '#0f172a' : '#94a3b8' }}>
-                      {v === 'highlights' ? '⭐ This Week' : '📰 Newsletter'}
+                  {[
+                    { id: 'highlights', label: '⭐ This Week' },
+                    { id: 'prev-week', label: '⏮️ Last Week' },
+                    { id: 'newsletter', label: '📰 Newsletter' },
+                  ].map(v => (
+                    <button key={v.id} onClick={() => setCurrView(v.id)}
+                      style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', backgroundColor: currView === v.id ? '#38bdf8' : '#1e293b', color: currView === v.id ? '#0f172a' : '#94a3b8' }}>
+                      {v.label}
                     </button>
                   ))}
                 </div>
@@ -918,17 +922,15 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                       </>
                     )}
                     <div className="section-title">📆 Daily Activities</div>
-                      {[...new Set(curriculum.map(c => c.assigned_date))].sort().map(date => {
-                        const dayItems = curriculum.filter(c => c.assigned_date === date)
-                        if (dayItems.length === 0) return null
-                        const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
-                        const isLastWeek = currentWeekStart && date < currentWeekStart
-                        return (
-                          <div key={date} className="card" style={{ marginBottom: '12px', borderColor: isLastWeek ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)', opacity: isLastWeek ? 0.7 : 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                              <div style={{ color: '#38bdf8', fontWeight: '600' }}>📅 {dayName}</div>
-                              {isLastWeek && <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '20px' }}>Last Week</span>}
-                            </div>
+                        {[...new Set(curriculum.filter(c => !currentWeekStart || c.assigned_date >= currentWeekStart).map(c => c.assigned_date))].sort().map(date => {
+                          const dayItems = curriculum.filter(c => c.assigned_date === date)
+                          if (dayItems.length === 0) return null
+                          const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+                          return (
+                            <div key={date} className="card" style={{ marginBottom: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <div style={{ color: '#38bdf8', fontWeight: '600' }}>📅 {dayName}</div>
+                              </div>
                             {dayItems.map(item => (
                             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <div>
@@ -946,6 +948,43 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                     {curriculum.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No curriculum planned for this week.</div>}
                   </>
                 )}
+
+                {currView === 'prev-week' && (
+                  <>
+                    <div style={{ backgroundColor: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: '14px', padding: '16px 20px', marginBottom: '20px' }}>
+                      <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>⏮️ Last Week's Curriculum</div>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>
+                        {curriculum.filter(c => currentWeekStart && c.assigned_date < currentWeekStart).filter(c => c.completed).length} of {curriculum.filter(c => currentWeekStart && c.assigned_date < currentWeekStart).length} activities completed last week
+                      </div>
+                    </div>
+                    <div className="section-title">📆 Last Week's Activities</div>
+                    {[...new Set(curriculum.filter(c => currentWeekStart && c.assigned_date < currentWeekStart).map(c => c.assigned_date))].sort().map(date => {
+                      const dayItems = curriculum.filter(c => c.assigned_date === date)
+                      if (dayItems.length === 0) return null
+                      const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+                      return (
+                        <div key={date} className="card" style={{ marginBottom: '12px', opacity: 0.85 }}>
+                          <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '12px' }}>📅 {dayName}</div>
+                          {dayItems.map(item => (
+                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <div>
+                                <div style={{ fontSize: '14px', fontWeight: '500' }}>{item.planned_activity || 'Activity'}</div>
+                                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{item.time_slot} · {item.program}</div>
+                              </div>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', backgroundColor: item.completed ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)', color: item.completed ? '#34d399' : 'rgba(255,255,255,0.3)' }}>
+                                {item.completed ? '✅ Done' : '⏳ Planned'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                    {curriculum.filter(c => currentWeekStart && c.assigned_date < currentWeekStart).length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No curriculum found for last week.</div>
+                    )}
+                  </>
+                )}  
+
                 {currView === 'newsletter' && (
                   newsletters.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No newsletters sent yet.</div>
