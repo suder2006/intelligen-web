@@ -90,6 +90,7 @@ export default function TeacherPortal() {
 
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchCurriculum() }, [currWeek])
+  useEffect(() => { if (!loading) fetchAttendance() }, [date])
 
   const loadData = async () => {
     setLoading(true)
@@ -149,7 +150,7 @@ export default function TeacherPortal() {
       .order('absence_date', { ascending: false }).limit(30)
     setStudentAbsences(absData || [])
 
-    await fetchAttendance()
+    await fetchAttendance((sData || []).map(s => s.id))
     // Load holidays for teacher's programs
     //const currentAY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
     const { data: holData } = await supabase.from('holidays')
@@ -442,8 +443,8 @@ const fetchMessages = async () => {
     setCurrWeek(`${yr}-${mo}-${dy}`)
     }
 
-  const fetchAttendance = async () => {
-  const studentIds = students.map(s => s.id)
+  const fetchAttendance = async (studentIdList = null) => {
+  const studentIds = studentIdList || students.map(s => s.id)
   if (studentIds.length === 0) { setAttendance([]); return }
   const { data } = await supabase.from('attendance').select('*')
     .eq('date', date)
