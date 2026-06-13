@@ -313,7 +313,7 @@ export default function AdminEnquiriesPage() {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
-        .main { margin-left: 240px; flex: 1; padding: 32px; }
+        .main { margin-left: 240px; flex: 1; padding: 32px; min-width: 0; overflow-x: hidden; }
         .btn-primary { background: linear-gradient(135deg, #0ea5e9, #38bdf8); border: none; border-radius: 10px; padding: 10px 20px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 20px; margin-bottom: 14px; }
@@ -464,7 +464,6 @@ export default function AdminEnquiriesPage() {
                       <th>Next Follow-up</th>
                       <th>Assigned To</th>
                       <th>Date</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -509,12 +508,6 @@ export default function AdminEnquiriesPage() {
                             </select>
                           </td>
                           <td style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{new Date(e.created_at).toLocaleDateString()}</td>
-                          <td onClick={ev => ev.stopPropagation()}>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <a href={`tel:${e.phone}`} style={{ padding: '4px 8px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', fontSize: '11px', textDecoration: 'none' }}>📞</a>
-                              <a href={`https://wa.me/${e.phone?.replace(/\D/g, '')}`} target='_blank' rel='noreferrer' style={{ padding: '4px 8px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '6px', color: '#34d399', fontSize: '11px', textDecoration: 'none' }}>💬</a>
-                            </div>
-                          </td>
                         </tr>
                       )
                     })}
