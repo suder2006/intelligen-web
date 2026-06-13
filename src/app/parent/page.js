@@ -63,6 +63,7 @@ export default function ParentPortal() {
   const [schoolGetepay, setSchoolGetepay] = useState(null)
   const [schoolPolicies, setSchoolPolicies] = useState({ policy_privacy: '', policy_terms: '', policy_refund: '' })
   const [activePolicy, setActivePolicy] = useState('policy_privacy')
+  const [currentWeekStart, setCurrentWeekStart] = useState('')
 
   const router = useRouter()
 
@@ -130,16 +131,17 @@ export default function ParentPortal() {
     const today = new Date()
     const dayOfWeek = today.getDay()
     const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    // Format dates in local time
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const thisMonday = new Date(today)
     thisMonday.setDate(today.getDate() + daysToMonday)
+    setCurrentWeekStart(fmt(thisMonday))
     // Last week Monday = this Monday - 7
     const lastMonday = new Date(thisMonday)
     lastMonday.setDate(thisMonday.getDate() - 7)
     // End = this Sunday
     const thisSunday = new Date(thisMonday)
     thisSunday.setDate(thisMonday.getDate() + 6)
-    // Format dates in local time
-    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const weekStart = fmt(lastMonday)  // 2 weeks ago Monday
     const weekEnd = fmt(thisSunday)    // This Sunday
     const curriculumPrograms = [...new Set((s.data || []).map(st => st.program).filter(Boolean))]
@@ -916,13 +918,18 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                       </>
                     )}
                     <div className="section-title">📆 Daily Activities</div>
-                    {['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day => {
-                      const dayItems = curriculum.filter(c => c.day === day)
-                      if (dayItems.length === 0) return null
-                      return (
-                        <div key={day} className="card" style={{ marginBottom: '12px' }}>
-                          <div style={{ color: '#38bdf8', fontWeight: '600', marginBottom: '12px' }}>📅 {day}</div>
-                          {dayItems.map(item => (
+                      {[...new Set(curriculum.map(c => c.assigned_date))].sort().map(date => {
+                        const dayItems = curriculum.filter(c => c.assigned_date === date)
+                        if (dayItems.length === 0) return null
+                        const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+                        const isLastWeek = currentWeekStart && date < currentWeekStart
+                        return (
+                          <div key={date} className="card" style={{ marginBottom: '12px', borderColor: isLastWeek ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)', opacity: isLastWeek ? 0.7 : 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <div style={{ color: '#38bdf8', fontWeight: '600' }}>📅 {dayName}</div>
+                              {isLastWeek && <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '20px' }}>Last Week</span>}
+                            </div>
+                            {dayItems.map(item => (
                             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <div>
                                 <div style={{ fontSize: '14px', fontWeight: '500' }}>{item.planned_activity || 'Activity'}</div>
