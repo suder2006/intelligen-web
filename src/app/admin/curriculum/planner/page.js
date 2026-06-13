@@ -26,6 +26,10 @@ export default function PlannerPage() {
   const [uploadPreview, setUploadPreview] = useState([])
   const [uploadErrors, setUploadErrors] = useState([])
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [filterProgram, setFilterProgram] = useState('')
+  const [filterDay, setFilterDay] = useState('')
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
 
 
   useEffect(() => {
@@ -231,12 +235,20 @@ async function confirmUpload() {
     window.scrollTo(0, 0)
   }
 
-  const grouped = curriculum.reduce((acc, row) => {
-  const key = row.assigned_date || 'Unknown'
-  if (!acc[key]) acc[key] = []
-  acc[key].push(row)
-  return acc
-  }, {})
+  const filteredCurriculum = curriculum.filter(row => {
+    if (filterProgram && row.program !== filterProgram) return false
+    if (filterDay && row.day !== filterDay) return false
+    if (filterFrom && row.assigned_date < filterFrom) return false
+    if (filterTo && row.assigned_date > filterTo) return false
+    return true
+    })
+
+  const grouped = filteredCurriculum.reduce((acc, row) => {
+    const key = row.assigned_date || 'Unknown'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(row)
+    return acc
+    }, {})
 
   const inputStyle = { width: '100%', marginTop: '6px', padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }
   const textareaStyle = { ...inputStyle, height: '72px', resize: 'vertical', fontFamily: 'inherit' }
@@ -271,7 +283,61 @@ async function confirmUpload() {
           </div>
         )}
         </div>
+        {/* Filters */}
+        {selectedBlock && curriculum.length > 0 && (
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '16px 20px', border: '1px solid #334155', marginBottom: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#94a3b8', alignSelf: 'center' }}>🔍 Filter:</div>
+            
+            {/* Program */}
+            <div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Program</div>
+              <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)}
+                style={{ padding: '8px 12px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px' }}>
+                <option value=''>All Programs</option>
+                {getMasters('program').map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
 
+            {/* Day */}
+            <div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Day</div>
+              <select value={filterDay} onChange={e => setFilterDay(e.target.value)}
+                style={{ padding: '8px 12px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px' }}>
+                <option value=''>All Days</option>
+                {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* From Date */}
+            <div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>From Date</div>
+              <input type='date' value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+                style={{ padding: '8px 12px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px' }} />
+            </div>
+
+            {/* To Date */}
+            <div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>To Date</div>
+              <input type='date' value={filterTo} onChange={e => setFilterTo(e.target.value)}
+                style={{ padding: '8px 12px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px' }} />
+            </div>
+
+            {/* Results count + Clear */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                {filteredCurriculum.length} of {curriculum.length} entries
+              </span>
+              {(filterProgram || filterDay || filterFrom || filterTo) && (
+                <button onClick={() => { setFilterProgram(''); setFilterDay(''); setFilterFrom(''); setFilterTo('') }}
+                  style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                  ✕ Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {/* Add/Edit Form */}
         {showForm && (
           <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '24px', border: '1px solid #38bdf8', marginBottom: '24px' }}>
