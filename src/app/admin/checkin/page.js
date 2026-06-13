@@ -37,7 +37,7 @@ const fetchAll = async () => {
     const [saRes, scRes, staffRes, studRes] = await Promise.all([
       supabase.from('staff_attendance').select('*, profiles(full_name, role, staff_type_groups(name))').eq('date', date).order('checkin_time'),
       supabase.from('student_checkins').select('*, students(full_name, program)').eq('date', date).order('checkin_time'),
-      supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'admin']).eq('school_id', schoolId).order('full_name'),
+      supabase.from('profiles').select('*').in('role', ['teacher', 'staff', 'school_admin']).eq('school_id', schoolId).order('full_name'),
       supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name')
     ])
     setStaffAttendance(saRes.data || [])
