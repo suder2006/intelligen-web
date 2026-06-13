@@ -28,7 +28,7 @@ export default function StaffAttendanceReport() {
     const [yr, mo] = filterMonth.split('-').map(Number)
     const monthEnd = new Date(yr, mo, 0).toISOString().split('T')[0]
     const [staffRes, attRes, leaveRes, grpRes] = await Promise.all([
-      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff']).eq('school_id', schoolId).order('full_name'),
+      supabase.from('profiles').select('*, staff_type_groups(name)').in('role', ['teacher', 'staff', 'school_admin']).eq('school_id', schoolId).order('full_name'),
       supabase.from('staff_attendance').select('*').eq('school_id', schoolId).gte('date', monthStart).lte('date', monthEnd).order('date'),
       supabase.from('leave_requests').select('*').eq('status', 'approved').eq('school_id', schoolId).gte('from_date', monthStart).lte('to_date', monthEnd),
       supabase.from('staff_type_groups').select('*').eq('school_id', schoolId).order('name')
