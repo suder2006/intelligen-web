@@ -46,6 +46,15 @@ export default function AdminEnquiriesPage() {
   const [programs, setPrograms] = useState([])
   const [saving2, setSaving2] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editForm, setEditForm] = useState({
+    parent_name: '', phone: '', email: '', child_name: '',
+    child_dob: '', program: '', lead_source: 'walk-in',
+    preferred_visit_date: '', notes: '', assigned_to: ''
+  })
+  const [editingId, setEditingId] = useState(null)
+  const [saving3, setSaving3] = useState(false)
+
   const { schoolId, schoolName } = useSchool()
 
   const [addForm, setAddForm] = useState({
@@ -161,6 +170,52 @@ export default function AdminEnquiriesPage() {
     setSaving2(false)
   }
 
+  const startEditEnquiry = (e) => {
+    setEditingId(e.id)
+    setEditForm({
+      parent_name: e.parent_name || '',
+      phone: e.phone || '',
+      email: e.email || '',
+      child_name: e.child_name || '',
+      child_dob: e.child_dob || '',
+      program: e.program || '',
+      lead_source: e.lead_source || 'walk-in',
+      preferred_visit_date: e.preferred_visit_date || '',
+      notes: e.notes || '',
+      assigned_to: e.assigned_to || ''
+    })
+    setShowEditForm(true)
+  }
+
+  const saveEditEnquiry = async () => {
+    if (!editForm.parent_name || !editForm.phone || !editForm.child_name) {
+      alert('Please fill Parent Name, Phone and Child Name'); return
+    }
+    setSaving3(true)
+    const dob = editForm.child_dob ? new Date(editForm.child_dob) : null
+    const now = new Date()
+    const ageMonths = dob ? (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth()) : null
+    await supabase.from('enquiries').update({
+      parent_name: editForm.parent_name,
+      phone: editForm.phone,
+      email: editForm.email || null,
+      child_name: editForm.child_name,
+      child_dob: editForm.child_dob || null,
+      child_age_years: ageMonths ? Math.floor(ageMonths / 12) : null,
+      child_age_months: ageMonths,
+      program: editForm.program || null,
+      lead_source: editForm.lead_source,
+      preferred_visit_date: editForm.preferred_visit_date || null,
+      notes: editForm.notes || null,
+      assigned_to: editForm.assigned_to || null,
+      updated_at: new Date().toISOString()
+    }).eq('id', editingId)
+    setShowEditForm(false)
+    setEditingId(null)
+    await fetchAll()
+    setSaving3(false)
+  }
+
   const enquiryUrl = `${APP_URL}/enquiry?school=${schoolId}`
   const copyEnquiryLink = () => {
     navigator.clipboard.writeText(enquiryUrl)
@@ -196,7 +251,7 @@ export default function AdminEnquiriesPage() {
       const wb = XLSX.read(evt.target.result, { type: 'binary' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws)
-      console.log('Raw Excel data:', JSON.stringify(data[0])) // ADD THIS for debug
+      
       // Validate and map data
       // Helper to convert Excel serial date to YYYY-MM-DD
       const excelDateToString = (serial) => {
@@ -464,6 +519,7 @@ export default function AdminEnquiriesPage() {
                       <th>Next Follow-up</th>
                       <th>Assigned To</th>
                       <th>Date</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -508,6 +564,12 @@ export default function AdminEnquiriesPage() {
                             </select>
                           </td>
                           <td style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{new Date(e.created_at).toLocaleDateString()}</td>
+                          <td onClick={ev => ev.stopPropagation()}>
+                            <button onClick={() => startEditEnquiry(e)}
+                              style={{ padding: '4px 10px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '6px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                              ✏️ Edit
+                            </button>
+                          </td>
                         </tr>
                       )
                     })}
@@ -746,7 +808,11 @@ export default function AdminEnquiriesPage() {
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
+              <button onClick={() => { setShowDetailModal(false); startEditEnquiry(selectedEnquiry) }}
+                style={{ padding: '10px 20px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '10px', color: '#fbbf24', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                ✏️ Edit Enquiry
+              </button>
               <button onClick={() => setShowDetailModal(false)} className="btn-secondary">Close</button>
             </div>
           </div>
@@ -925,6 +991,67 @@ export default function AdminEnquiriesPage() {
                 <button onClick={() => setShowUploadModal(false)} className="btn-primary">✅ Done</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Enquiry Modal */}
+      {showEditForm && (
+        <div className="modal-overlay" onClick={() => setShowEditForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>✏️ Edit Enquiry</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Parent Name *</label>
+                <input value={editForm.parent_name} onChange={e => setEditForm({ ...editForm, parent_name: e.target.value })} placeholder='Parent Name' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Phone *</label>
+                <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Child Name *</label>
+                <input value={editForm.child_name} onChange={e => setEditForm({ ...editForm, child_name: e.target.value })} placeholder='Child Name' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Child DOB</label>
+                <input type='date' value={editForm.child_dob} onChange={e => setEditForm({ ...editForm, child_dob: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Program</label>
+                <select value={editForm.program} onChange={e => setEditForm({ ...editForm, program: e.target.value })} style={inputStyle}>
+                  <option value=''>-- Select --</option>
+                  {programs.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Lead Source</label>
+                <select value={editForm.lead_source} onChange={e => setEditForm({ ...editForm, lead_source: e.target.value })} style={inputStyle}>
+                  {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Email</label>
+                <input type='email' value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} placeholder='email@example.com' style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Assign To</label>
+                <select value={editForm.assigned_to} onChange={e => setEditForm({ ...editForm, assigned_to: e.target.value })} style={inputStyle}>
+                  <option value=''>Unassigned</option>
+                  {centerHeads.map(ch => <option key={ch.id} value={ch.id}>{ch.full_name}</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Notes</label>
+                <input value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} placeholder='Any notes...' style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowEditForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveEditEnquiry} disabled={saving3} className="btn-primary">
+                {saving3 ? 'Saving...' : '✏️ Update Enquiry'}
+              </button>
+            </div>
           </div>
         </div>
       )}
