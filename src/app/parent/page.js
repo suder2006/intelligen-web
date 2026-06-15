@@ -6,6 +6,7 @@ import { APP_URL } from '@/lib/config'
 import { registerPushNotifications } from '@/lib/pushNotifications'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
 
 export default function ParentPortal() {
   const [moments, setMoments] = useState([])
@@ -67,6 +68,12 @@ export default function ParentPortal() {
   const [routeStops, setRouteStops] = useState([])
   const [settingLocation, setSettingLocation] = useState(null)
   const [locationSet, setLocationSet] = useState(null)
+  const [showMapPicker, setShowMapPicker] = useState(null) // stopId
+  const [mapPickerStudent, setMapPickerStudent] = useState(null)
+  const [mapSearch, setMapSearch] = useState('')
+  const [mapSearching, setMapSearching] = useState(false)
+  const [pickedLocation, setPickedLocation] = useState(null) // { lat, lng, address }
+  const [savingMapLocation, setSavingMapLocation] = useState(false)
 
   const router = useRouter()
 
@@ -458,6 +465,45 @@ export default function ParentPortal() {
     await loadData()
     setBookingLoading(false)
     alert('✅ Slot booked successfully!')
+  }
+
+    const searchAddress = async () => {
+    if (!mapSearch.trim()) return
+    setMapSearching(true)
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(mapSearch)}&limit=1&countrycodes=in`)
+      const data = await res.json()
+      if (data.length > 0) {
+        const { lat, lon, display_name } = data[0]
+        setPickedLocation({ lat: parseFloat(lat), lng: parseFloat(lon), address: display_name })
+      } else {
+        alert('Address not found. Try a more specific address.')
+      }
+    } catch (e) {
+      alert('Search failed. Please try again.')
+    }
+    setMapSearching(false)
+  }
+
+  const saveMapLocation = async () => {
+    if (!pickedLocation || !showMapPicker) return
+    setSavingMapLocation(true)
+    await supabase.from('route_stops').update({
+      home_latitude: pickedLocation.lat,
+      home_longitude: pickedLocation.lng,
+      address: pickedLocation.address
+    }).eq('id', showMapPicker)
+    setRouteStops(prev => prev.map(s => s.id === showMapPicker
+      ? { ...s, home_latitude: pickedLocation.lat, home_longitude: pickedLocation.lng, address: pickedLocation.address }
+      : s
+    ))
+    setSavingMapLocation(false)
+    setShowMapPicker(null)
+    setMapPickerStudent(null)
+    setPickedLocation(null)
+    setMapSearch('')
+    setLocationSet(showMapPicker)
+    setTimeout(() => setLocationSet(null), 3000)
   }
 
     const setHomeLocation = async (stopId, studentName) => {
@@ -1580,37 +1626,37 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                           const hasLocation = stop.home_latitude && stop.home_longitude
                           return (
                             <div style={{ background: hasLocation ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)', border: `1px solid ${hasLocation ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                <div>
-                                  <div style={{ fontWeight: '600', fontSize: '14px', color: hasLocation ? '#34d399' : '#fbbf24', marginBottom: '4px' }}>
-                                    {hasLocation ? '📍 Home Location Set ✅' : '📍 Set Your Home Location'}
-                                  </div>
-                                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                                    {hasLocation
-                                      ? `Location saved · Driver can calculate ETA to your home`
-                                      : 'Required for live tracking & ETA calculation'}
-                                  </div>
-                                  {hasLocation && (
-                                    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>
-                                      📌 {stop.home_latitude?.toFixed(5)}, {stop.home_longitude?.toFixed(5)}
-                                    </div>
-                                  )}
+                              <div style={{ fontWeight: '600', fontSize: '14px', color: hasLocation ? '#34d399' : '#fbbf24', marginBottom: '4px' }}>
+                                {hasLocation ? '📍 Home Location Set ✅' : '📍 Set Your Home Location'}
+                              </div>
+                              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '12px' }}>
+                                {hasLocation ? 'Location saved · Driver can calculate ETA' : 'Required for live tracking & ETA calculation'}
+                              </div>
+                              {hasLocation && (
+                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '12px' }}>
+                                  📌 {stop.home_latitude?.toFixed(5)}, {stop.home_longitude?.toFixed(5)}
+                                  {stop.address && <div style={{ marginTop: '2px', color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>{stop.address.slice(0, 60)}...</div>}
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                                  <button
-                                    onClick={() => setHomeLocation(stop.id, student?.full_name)}
-                                    disabled={settingLocation === stop.id}
-                                    style={{ padding: '8px 16px', background: hasLocation ? 'rgba(56,189,248,0.15)' : 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: hasLocation ? '1px solid rgba(56,189,248,0.3)' : 'none', borderRadius: '10px', color: hasLocation ? '#38bdf8' : '#000', fontWeight: '700', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
-                                    {settingLocation === stop.id ? '⏳ Getting location...' : hasLocation ? '🔄 Update Location' : '📍 Set My Location'}
-                                  </button>
-                                  {locationSet === stop.id && (
-                                    <span style={{ color: '#34d399', fontSize: '12px', fontWeight: '600' }}>✅ Location saved!</span>
-                                  )}
-                                </div>
+                              )}
+                              {locationSet === stop.id && (
+                                <div style={{ color: '#34d399', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>✅ Location saved!</div>
+                              )}
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => setHomeLocation(stop.id, student?.full_name)}
+                                  disabled={settingLocation === stop.id}
+                                  style={{ padding: '8px 14px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '10px', color: '#38bdf8', fontWeight: '600', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                                  {settingLocation === stop.id ? '⏳ Getting...' : '📍 Use Current Location'}
+                                </button>
+                                <button
+                                  onClick={() => { setShowMapPicker(stop.id); setMapPickerStudent(student); setPickedLocation(null); setMapSearch('') }}
+                                  style={{ padding: '8px 14px', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '10px', color: '#a78bfa', fontWeight: '600', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                                  🗺️ Pick on Map
+                                </button>
                               </div>
                             </div>
                           )
-                        })()}    
+                        })()}      
 
                         {/* Today's Journey Timeline */}
                         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
@@ -2068,6 +2114,63 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
               <button onClick={bookSlot} disabled={bookingLoading}
                 style={{ flex: 1, padding: '11px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                 {bookingLoading ? '⏳ Booking...' : '✅ Confirm Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Map Picker Modal */}
+      {showMapPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}
+          onClick={() => setShowMapPicker(null)}>
+          <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>🗺️ Pick Home Location</h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '16px' }}>
+              {mapPickerStudent?.full_name} — Search your address or click on the map
+            </p>
+
+            {/* Search Box */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input
+                value={mapSearch}
+                onChange={e => setMapSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && searchAddress()}
+                placeholder='Search address e.g. Anna Nagar, Chennai'
+                style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }}
+              />
+              <button onClick={searchAddress} disabled={mapSearching}
+                style={{ padding: '10px 16px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                {mapSearching ? '⏳' : '🔍'}
+              </button>
+            </div>
+
+            {/* Map */}
+            <MapPicker
+              pickedLocation={pickedLocation}
+              onLocationPick={(lat, lng) => setPickedLocation({ lat, lng, address: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })}
+            />
+
+            {/* Picked location info */}
+            {pickedLocation && (
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '12px', marginTop: '12px', marginBottom: '16px' }}>
+                <div style={{ color: '#34d399', fontWeight: '600', fontSize: '13px', marginBottom: '4px' }}>📍 Selected Location</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px' }}>{pickedLocation.address}</div>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>
+                  {pickedLocation.lat.toFixed(6)}, {pickedLocation.lng.toFixed(6)}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => { setShowMapPicker(null); setPickedLocation(null); setMapSearch('') }}
+                style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                Cancel
+              </button>
+              <button onClick={saveMapLocation} disabled={!pickedLocation || savingMapLocation}
+                style={{ flex: 1, padding: '11px', background: pickedLocation ? 'linear-gradient(135deg, #10b981, #34d399)' : 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '10px', color: pickedLocation ? '#fff' : 'rgba(255,255,255,0.3)', fontWeight: '700', fontSize: '14px', cursor: pickedLocation ? 'pointer' : 'default', fontFamily: "'DM Sans', sans-serif" }}>
+                {savingMapLocation ? '⏳ Saving...' : '✅ Save This Location'}
               </button>
             </div>
           </div>
