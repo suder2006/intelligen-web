@@ -64,6 +64,9 @@ export default function ParentPortal() {
   const [schoolPolicies, setSchoolPolicies] = useState({ policy_privacy: '', policy_terms: '', policy_refund: '' })
   const [activePolicy, setActivePolicy] = useState('policy_privacy')
   const [currentWeekStart, setCurrentWeekStart] = useState('')
+  const [routeStops, setRouteStops] = useState([])
+  const [settingLocation, setSettingLocation] = useState(null)
+  const [locationSet, setLocationSet] = useState(null)
 
   const router = useRouter()
 
@@ -261,9 +264,16 @@ export default function ParentPortal() {
           .lte('event_time', `${new Date().toISOString().split('T')[0]}T23:59:59`)
           .order('event_time', { ascending: false })
       ])
-      setStudentTransportData(stRes.data || [])
-      setTransportLogs(tlRes.data || [])
+    setStudentTransportData(stRes.data || [])
+    setTransportLogs(tlRes.data || [])
+
+    // Load route stops for parent's students
+    if (studentIds.length > 0) {
+      const { data: stopsData } = await supabase.from('route_stops')
+        .select('*').in('student_id', studentIds)
+      setRouteStops(stopsData || [])
     }
+  }
 
         // Load diary entries
       if (studentIds.length > 0) {
@@ -450,7 +460,36 @@ export default function ParentPortal() {
     alert('✅ Slot booked successfully!')
   }
 
-  const loadTransportData = async () => {
+    const setHomeLocation = async (stopId, studentName) => {
+    if (!navigator.geolocation) {
+      alert('Location not supported by your browser')
+      return
+    }
+    setSettingLocation(stopId)
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords
+        await supabase.from('route_stops').update({
+          home_latitude: latitude,
+          home_longitude: longitude
+        }).eq('id', stopId)
+        setRouteStops(prev => prev.map(s => s.id === stopId
+          ? { ...s, home_latitude: latitude, home_longitude: longitude }
+          : s
+        ))
+        setSettingLocation(null)
+        setLocationSet(stopId)
+        setTimeout(() => setLocationSet(null), 3000)
+      },
+      (error) => {
+        setSettingLocation(null)
+        alert('Could not get location. Please enable location access in your browser.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+    const loadTransportData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     const { data: linkedStudents } = await supabase
       .from('parent_students').select('student_id').eq('parent_id', user.id)
@@ -467,9 +506,14 @@ export default function ParentPortal() {
         .order('event_time', { ascending: false })
     ])
 
-    setStudentTransportData(stRes.data || [])
-    setTransportLogs(tlRes.data || [])
-  }
+      setStudentTransportData(stRes.data || [])
+      setTransportLogs(tlRes.data || [])
+
+      // Load route stops
+      const { data: stopsData } = await supabase.from('route_stops')
+        .select('*').in('student_id', studentIds)
+      setRouteStops(stopsData || [])
+    }
 
   const enablePushNotifications = async () => {
     setPushLoading(true)
@@ -1528,6 +1572,45 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                             )}
                           </div>
                         </div>
+
+                        {/* Set Home Location */}
+                        {(() => {
+                          const stop = routeStops.find(s => s.student_id === ct.student_id)
+                          if (!stop) return null
+                          const hasLocation = stop.home_latitude && stop.home_longitude
+                          return (
+                            <div style={{ background: hasLocation ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)', border: `1px solid ${hasLocation ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                  <div style={{ fontWeight: '600', fontSize: '14px', color: hasLocation ? '#34d399' : '#fbbf24', marginBottom: '4px' }}>
+                                    {hasLocation ? '📍 Home Location Set ✅' : '📍 Set Your Home Location'}
+                                  </div>
+                                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+                                    {hasLocation
+                                      ? `Location saved · Driver can calculate ETA to your home`
+                                      : 'Required for live tracking & ETA calculation'}
+                                  </div>
+                                  {hasLocation && (
+                                    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>
+                                      📌 {stop.home_latitude?.toFixed(5)}, {stop.home_longitude?.toFixed(5)}
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                                  <button
+                                    onClick={() => setHomeLocation(stop.id, student?.full_name)}
+                                    disabled={settingLocation === stop.id}
+                                    style={{ padding: '8px 16px', background: hasLocation ? 'rgba(56,189,248,0.15)' : 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: hasLocation ? '1px solid rgba(56,189,248,0.3)' : 'none', borderRadius: '10px', color: hasLocation ? '#38bdf8' : '#000', fontWeight: '700', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                                    {settingLocation === stop.id ? '⏳ Getting location...' : hasLocation ? '🔄 Update Location' : '📍 Set My Location'}
+                                  </button>
+                                  {locationSet === stop.id && (
+                                    <span style={{ color: '#34d399', fontSize: '12px', fontWeight: '600' }}>✅ Location saved!</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()}    
 
                         {/* Today's Journey Timeline */}
                         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
