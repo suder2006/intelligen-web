@@ -23,7 +23,17 @@ export default function AdminTransportPage() {
   const [markingStudent, setMarkingStudent] = useState(null)
   const [lastMarkedStudent, setLastMarkedStudent] = useState(null)
   const [todayLogs, setTodayLogs] = useState([])
-
+  const [stops, setStops] = useState([])
+  const [selectedStopsRoute, setSelectedStopsRoute] = useState('')
+  const [savingStop, setSavingStop] = useState(false)
+  const [stopForm, setStopForm] = useState({
+    student_id: '', stop_order: 1,
+    expected_pickup_time: '07:00',
+    expected_dropoff_time: '13:30',
+    address: ''
+  })
+  const [showStopForm, setShowStopForm] = useState(false)
+  const [editingStop, setEditingStop] = useState(null)
   const [form, setForm] = useState({
     name: '', vehicle_number: '', driver_name: '', driver_phone: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
@@ -116,6 +126,68 @@ export default function AdminTransportPage() {
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
     afternoon_drop_time: '13:30', is_active: true
   })
+
+  const fetchStops = async (routeId) => {
+    const { data } = await supabase.from('route_stops')
+      .select('*, students(full_name, program)')
+      .eq('route_id', routeId)
+      .order('stop_order')
+    setStops(data || [])
+  }
+
+  const saveStop = async () => {
+    if (!stopForm.student_id) { alert('Please select a student'); return }
+    setSavingStop(true)
+    if (editingStop) {
+      await supabase.from('route_stops').update({
+        stop_order: stopForm.stop_order,
+        expected_pickup_time: stopForm.expected_pickup_time,
+        expected_dropoff_time: stopForm.expected_dropoff_time,
+        address: stopForm.address
+      }).eq('id', editingStop)
+    } else {
+      await supabase.from('route_stops').insert({
+        school_id: schoolId,
+        route_id: selectedStopsRoute,
+        student_id: stopForm.student_id,
+        stop_order: stopForm.stop_order,
+        expected_pickup_time: stopForm.expected_pickup_time,
+        expected_dropoff_time: stopForm.expected_dropoff_time,
+        address: stopForm.address
+      })
+    }
+    setShowStopForm(false)
+    setEditingStop(null)
+    setStopForm({ student_id: '', stop_order: stops.length + 2, expected_pickup_time: '07:00', expected_dropoff_time: '13:30', address: '' })
+    await fetchStops(selectedStopsRoute)
+    setSavingStop(false)
+  }
+
+  const deleteStop = async (id) => {
+    if (!confirm('Remove this stop?')) return
+    await supabase.from('route_stops').delete().eq('id', id)
+    await fetchStops(selectedStopsRoute)
+  }
+
+  const moveStop = async (stop, direction) => {
+    const sortedStops = [...stops].sort((a, b) => a.stop_order - b.stop_order)
+    const idx = sortedStops.findIndex(s => s.id === stop.id)
+    const swapIdx = idx + direction
+    if (swapIdx < 0 || swapIdx >= sortedStops.length) return
+    const swapStop = sortedStops[swapIdx]
+    await Promise.all([
+      supabase.from('route_stops').update({ stop_order: swapStop.stop_order }).eq('id', stop.id),
+      supabase.from('route_stops').update({ stop_order: stop.stop_order }).eq('id', swapStop.id)
+    ])
+    await fetchStops(selectedStopsRoute)
+  }
+
+  // Students already assigned to this route but not yet added as stops
+  const getUnassignedStopStudents = () => {
+    const stopStudentIds = stops.map(s => s.student_id)
+    const routeStudentIds = studentTransport.filter(st => st.route_id === selectedStopsRoute).map(st => st.student_id)
+    return students.filter(s => routeStudentIds.includes(s.id) && !stopStudentIds.includes(s.id))
+  }
 
   const getMarkRouteStudents = () => {
     if (!selectedMarkRoute) return []
@@ -259,7 +331,7 @@ export default function AdminTransportPage() {
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['routes', '🚌 Routes'], ['assign', '👶 Assign Students'], ['mark', '✅ Mark Events'], ['logs', '📋 Daily Logs']].map(([v, l]) => (
+          {[['routes', '🚌 Routes'], ['assign', '👶 Assign Students'], ['stops', '🗺️ Manage Stops'], ['mark', '✅ Mark Events'], ['logs', '📋 Daily Logs']].map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
@@ -401,6 +473,171 @@ export default function AdminTransportPage() {
                 )}
               </>
             )}
+
+            {/* MANAGE STOPS VIEW */}
+            {view === 'stops' && (
+              <>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
+                  Set the pickup stop order and expected times for each student on a route.
+                </div>
+
+                {/* Route Selector */}
+                <div className="card" style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '12px', color: '#38bdf8' }}>Select Route</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {routes.length === 0 ? (
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No routes yet. Create routes first.</div>
+                    ) : routes.map(r => (
+                      <button key={r.id} onClick={() => { setSelectedStopsRoute(r.id); fetchStops(r.id); setShowStopForm(false) }}
+                        style={{ padding: '9px 16px', borderRadius: '10px', border: `2px solid ${selectedStopsRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedStopsRoute === r.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedStopsRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '13px' }}>
+                        🚌 {r.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedStopsRoute && (
+                  <>
+                    {/* Add Stop Button */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <div style={{ fontWeight: '700', fontSize: '16px' }}>
+                        🗺️ Stop Order
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', fontWeight: '400', marginLeft: '8px' }}>{stops.length} stops</span>
+                      </div>
+                      {getUnassignedStopStudents().length > 0 && (
+                        <button onClick={() => {
+                          setShowStopForm(true)
+                          setEditingStop(null)
+                          setStopForm({ student_id: '', stop_order: stops.length + 1, expected_pickup_time: '07:00', expected_dropoff_time: '13:30', address: '' })
+                        }} className="btn-primary">+ Add Stop</button>
+                      )}
+                    </div>
+
+                    {/* Add/Edit Stop Form */}
+                    {showStopForm && (
+                      <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                        <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px' }}>{editingStop ? '✏️ Edit Stop' : '➕ Add Stop'}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          {!editingStop && (
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Student *</label>
+                              <select value={stopForm.student_id} onChange={e => setStopForm({ ...stopForm, student_id: e.target.value })} style={inputStyle}>
+                                <option value=''>-- Select Student --</option>
+                                {getUnassignedStopStudents().map(s => (
+                                  <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          <div>
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Stop Order</label>
+                            <input type='number' min='1' value={stopForm.stop_order} onChange={e => setStopForm({ ...stopForm, stop_order: parseInt(e.target.value) })} style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Address</label>
+                            <input value={stopForm.address} onChange={e => setStopForm({ ...stopForm, address: e.target.value })} placeholder='e.g. 12, Anna Nagar' style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Expected Pickup Time</label>
+                            <input type='time' value={stopForm.expected_pickup_time} onChange={e => setStopForm({ ...stopForm, expected_pickup_time: e.target.value })} style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🏠 Expected Dropoff Time</label>
+                            <input type='time' value={stopForm.expected_dropoff_time} onChange={e => setStopForm({ ...stopForm, expected_dropoff_time: e.target.value })} style={inputStyle} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                          <button onClick={() => { setShowStopForm(false); setEditingStop(null) }} className="btn-secondary">Cancel</button>
+                          <button onClick={saveStop} disabled={savingStop} className="btn-primary">{savingStop ? 'Saving...' : editingStop ? 'Update Stop' : 'Add Stop'}</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Stops List */}
+                    {stops.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
+                        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🗺️</div>
+                        <div>No stops added yet. Click "+ Add Stop" to begin.</div>
+                        {studentTransport.filter(st => st.route_id === selectedStopsRoute).length === 0 && (
+                          <div style={{ color: '#f87171', fontSize: '13px', marginTop: '8px' }}>⚠️ No students assigned to this route yet. Go to "Assign Students" first.</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        {/* Legend */}
+                        <div style={{ display: 'flex', gap: '16px', marginBottom: '14px', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
+                          <span>🌅 Morning pickup time</span>
+                          <span>🏠 Afternoon dropoff time</span>
+                          <span>↕️ Drag to reorder</span>
+                        </div>
+
+                        {[...stops].sort((a, b) => a.stop_order - b.stop_order).map((stop, idx) => (
+                          <div key={stop.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 16px', marginBottom: '10px' }}>
+
+                            {/* Stop Number */}
+                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '16px', flexShrink: 0 }}>
+                              {stop.stop_order}
+                            </div>
+
+                            {/* Student Info */}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{stop.students?.full_name}</div>
+                              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
+                                <span style={{ color: '#a78bfa' }}>{stop.students?.program}</span>
+                                {stop.address && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📍 {stop.address}</span>}
+                                {stop.expected_pickup_time && <span style={{ color: '#38bdf8' }}>🌅 {stop.expected_pickup_time}</span>}
+                                {stop.expected_dropoff_time && <span style={{ color: '#a78bfa' }}>🏠 {stop.expected_dropoff_time}</span>}
+                                {stop.home_latitude && <span style={{ color: '#10b981' }}>📌 Location set</span>}
+                                {!stop.home_latitude && <span style={{ color: '#f59e0b' }}>📌 Location not set (parent will set)</span>}
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                              {/* Move Up */}
+                              <button onClick={() => moveStop(stop, -1)} disabled={idx === 0}
+                                style={{ padding: '6px 10px', background: idx === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: idx === 0 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '12px' }}>
+                                ▲
+                              </button>
+                              {/* Move Down */}
+                              <button onClick={() => moveStop(stop, 1)} disabled={idx === stops.length - 1}
+                                style={{ padding: '6px 10px', background: idx === stops.length - 1 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: idx === stops.length - 1 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === stops.length - 1 ? 'default' : 'pointer', fontSize: '12px' }}>
+                                ▼
+                              </button>
+                              {/* Edit */}
+                              <button onClick={() => {
+                                setEditingStop(stop.id)
+                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time || '07:00', expected_dropoff_time: stop.expected_dropoff_time || '13:30', address: stop.address || '' })
+                                setShowStopForm(true)
+                              }}
+                                style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>
+                                ✏️
+                              </button>
+                              {/* Delete */}
+                              <button onClick={() => deleteStop(stop.id)}
+                                style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* School as final stop */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '14px', padding: '14px 16px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
+                            🏫
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '700', color: '#34d399' }}>School</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>Final destination</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}  
 
             {/* MARK EVENTS VIEW */}
             {view === 'mark' && (
