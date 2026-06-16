@@ -128,10 +128,9 @@ export default function AdminTransportPage() {
     afternoon_drop_time: '13:30', is_active: true
   })
   const fetchDrivers = async () => {
-    const { data, error } = await supabase.from('profiles')
+    const { data } = await supabase.from('profiles')
       .select('*')
       .eq('school_id', schoolId).eq('role', 'driver').order('full_name')
-    if (error) console.log('fetchDrivers error:', error)
     setDrivers(data || [])
   }
 
@@ -705,15 +704,22 @@ export default function AdminTransportPage() {
                           <select
                             value={assignedRoute?.id || ''}
                             onChange={async e => {
-                              // Remove from old route
-                              await supabase.from('transport_routes')
-                                .update({ driver_profile_id: null })
-                                .eq('driver_profile_id', driver.id)
-                              // Assign to new route
-                              if (e.target.value) {
-                                await supabase.from('transport_routes')
-                                  .update({ driver_profile_id: driver.id })
-                                  .eq('id', e.target.value)
+                              // RLS blocks updating transport_routes.driver_profile_id
+                              // from the client, so route the write through the
+                              // server-side service-role endpoint.
+                              const res = await fetch('/api/admin/assign-driver-route', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  driver_profile_id: driver.id,
+                                  route_id: e.target.value || null,
+                                  school_id: schoolId
+                                })
+                              })
+                              if (!res.ok) {
+                                const { error } = await res.json().catch(() => ({}))
+                                alert(`Could not assign route: ${error || res.statusText}`)
+                                return
                               }
                               await fetchAll()
                               await fetchDrivers()
