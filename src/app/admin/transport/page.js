@@ -35,11 +35,6 @@ export default function AdminTransportPage() {
   const [showStopForm, setShowStopForm] = useState(false)
   const [editingStop, setEditingStop] = useState(null)
   const [drivers, setDrivers] = useState([])
-  const [showDriverForm, setShowDriverForm] = useState(false)
-  const [savingDriver, setSavingDriver] = useState(false)
-  const [driverForm, setDriverForm] = useState({
-    full_name: '', email: '', phone: '', password: 'Driver@123456', route_id: ''
-  })
   const [form, setForm] = useState({
     name: '', vehicle_number: '', driver_name: '', driver_phone: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
@@ -139,55 +134,6 @@ export default function AdminTransportPage() {
     setDrivers(data || [])
   }
 
-  const saveDriver = async () => {
-    if (!driverForm.full_name || !driverForm.email) {
-      alert('Please fill Name and Email'); return
-    }
-    setSavingDriver(true)
-    try {
-      // Call server-side API
-      const res = await fetch('/api/admin/create-driver', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: driverForm.email,
-          password: driverForm.password,
-          full_name: driverForm.full_name,
-          phone: driverForm.phone,
-          school_id: schoolId
-        })
-      })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-
-      // Assign to route if selected
-      if (driverForm.route_id && data.user_id) {
-        await supabase.from('transport_routes').update({
-          driver_profile_id: data.user_id
-        }).eq('id', driverForm.route_id)
-      }
-
-      setShowDriverForm(false)
-      setDriverForm({ full_name: '', email: '', phone: '', password: 'Driver@123456', route_id: '' })
-      await fetchDrivers()
-      await fetchAll()
-      alert(`✅ Driver account created!\nEmail: ${driverForm.email}\nPassword: ${driverForm.password}`)
-    } catch (e) {
-      alert('Error: ' + e.message)
-    }
-    setSavingDriver(false)
-  }
-
-  const deleteDriver = async (driver) => {
-    if (!confirm(`Remove driver ${driver.full_name}?`)) return
-    // Unassign from route
-    await supabase.from('transport_routes').update({ driver_profile_id: null })
-      .eq('driver_profile_id', driver.id)
-    // Delete profile
-    await supabase.from('profiles').delete().eq('id', driver.id)
-    await fetchDrivers()
-    await fetchAll()
-  }
   const fetchStops = async (routeId) => {
     const { data } = await supabase.from('route_stops')
       .select('*, students(full_name, program)')
@@ -388,9 +334,7 @@ export default function AdminTransportPage() {
           {view === 'logs' && (
             <button onClick={exportLogs} className="btn-secondary">📥 Export</button>
           )}
-          {view === 'drivers' && (
-            <button onClick={() => setShowDriverForm(true)} className="btn-primary">+ Add Driver</button>
-          )}
+
         </div>
 
         {/* View Tabs */}
@@ -707,108 +651,78 @@ export default function AdminTransportPage() {
             {view === 'drivers' && (
               <>
                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
-                  Manage driver accounts. Each driver can login at intelligenapp.com/driver
+                  Assign drivers to routes. To add a new driver, go to 
+                  <a href='/admin/staff' style={{ color: '#38bdf8', marginLeft: '4px' }}>
+                    Staff Management
+                  </a> and add staff with role "Driver 🚌".
                 </div>
 
-                {/* Add Driver Form */}
-                {showDriverForm && (
-                  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                    <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px', fontSize: '16px' }}>👨‍✈️ Add New Driver</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Full Name *</label>
-                        <input value={driverForm.full_name} onChange={e => setDriverForm({ ...driverForm, full_name: e.target.value })} placeholder='e.g. Periyasamy' style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Email *</label>
-                        <input type='email' value={driverForm.email} onChange={e => setDriverForm({ ...driverForm, email: e.target.value })} placeholder='driver@email.com' style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Phone</label>
-                        <input value={driverForm.phone} onChange={e => setDriverForm({ ...driverForm, phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Password</label>
-                        <input value={driverForm.password} onChange={e => setDriverForm({ ...driverForm, password: e.target.value })} style={inputStyle} />
-                      </div>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Assign to Route</label>
-                        <select value={driverForm.route_id} onChange={e => setDriverForm({ ...driverForm, route_id: e.target.value })} style={inputStyle}>
-                          <option value=''>-- Select Route --</option>
-                          {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#fbbf24' }}>
-                      ⚠️ Driver will login at: <strong>intelligenapp.com/driver</strong>
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                      <button onClick={() => setShowDriverForm(false)} className="btn-secondary">Cancel</button>
-                      <button onClick={saveDriver} disabled={savingDriver} className="btn-primary">
-                        {savingDriver ? '⏳ Creating...' : '✅ Create Driver Account'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Drivers List */}
+                {/* Driver list */}
                 {drivers.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px' }}>👨‍✈️</div>
-                    <div>No drivers yet. Click "+ Add Driver" to create one.</div>
+                    <div style={{ marginBottom: '12px' }}>No drivers found.</div>
+                    <a href='/admin/staff'
+                      style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', textDecoration: 'none', display: 'inline-block' }}>
+                      + Add Driver in Staff Management
+                    </a>
                   </div>
-                ) : drivers.map(driver => (
-                  <div key={driver.id} className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
-                          👨‍✈️
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{driver.full_name}</div>
-                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '13px' }}>
-                            {driver.phone && <span style={{ color: '#38bdf8' }}>📞 {driver.phone}</span>}
-                            {driver.transport_routes?.name ? (
-                              <span style={{ color: '#34d399' }}>🚌 {driver.transport_routes.name}</span>
-                            ) : (
-                              <span style={{ color: '#f87171' }}>⚠️ No route assigned</span>
-                            )}
+                ) : drivers.map(driver => {
+                  const assignedRoute = routes.find(r => r.driver_profile_id === driver.id)
+                  return (
+                    <div key={driver.id} className="card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
+                            👨‍✈️
                           </div>
-                          <div style={{ marginTop: '4px' }}>
-                            <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontWeight: '600' }}>
-                              🔑 intelligenapp.com/driver
-                            </span>
+                          <div>
+                            <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{driver.full_name}</div>
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '13px' }}>
+                              {driver.phone && <span style={{ color: '#38bdf8' }}>📞 {driver.phone}</span>}
+                              {assignedRoute ? (
+                                <span style={{ color: '#34d399' }}>🚌 {assignedRoute.name}</span>
+                              ) : (
+                                <span style={{ color: '#f87171' }}>⚠️ No route assigned</span>
+                              )}
+                            </div>
+                            <div style={{ marginTop: '4px' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontWeight: '600' }}>
+                                🔑 Login: intelligenapp.com/driver
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {/* Reassign route */}
-                        <select
-                          defaultValue={routes.find(r => r.driver_profile_id === driver.id)?.id || ''}
-                          onChange={async e => {
-                            // Remove from old route
-                            await supabase.from('transport_routes').update({ driver_profile_id: null }).eq('driver_profile_id', driver.id)
-                            // Assign to new route
-                            if (e.target.value) {
-                              await supabase.from('transport_routes').update({ driver_profile_id: driver.id }).eq('id', e.target.value)
-                            }
-                            await fetchAll()
-                            await fetchDrivers()
-                          }}
-                          style={{ padding: '6px 10px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                          <option value=''>-- No Route --</option>
-                          {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
-                        <button onClick={() => deleteDriver(driver)}
-                          style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>
-                          🗑️
-                        </button>
+                        {/* Assign Route */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Assign Route:</label>
+                          <select
+                            value={assignedRoute?.id || ''}
+                            onChange={async e => {
+                              // Remove from old route
+                              await supabase.from('transport_routes')
+                                .update({ driver_profile_id: null })
+                                .eq('driver_profile_id', driver.id)
+                              // Assign to new route
+                              if (e.target.value) {
+                                await supabase.from('transport_routes')
+                                  .update({ driver_profile_id: driver.id })
+                                  .eq('id', e.target.value)
+                              }
+                              await fetchAll()
+                              await fetchDrivers()
+                            }}
+                            style={{ padding: '8px 12px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                            <option value=''>-- No Route --</option>
+                            {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </>
-            )}
+            )}  
 
             {/* MARK EVENTS VIEW */}
             {view === 'mark' && (
