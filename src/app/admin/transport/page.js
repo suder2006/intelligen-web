@@ -128,9 +128,10 @@ export default function AdminTransportPage() {
     afternoon_drop_time: '13:30', is_active: true
   })
   const fetchDrivers = async () => {
-    const { data } = await supabase.from('profiles')
-      .select('*, transport_routes!transport_routes_driver_profile_id_fkey(name)')
+    const { data, error } = await supabase.from('profiles')
+      .select('*')
       .eq('school_id', schoolId).eq('role', 'driver').order('full_name')
+    if (error) console.log('fetchDrivers error:', error)
     setDrivers(data || [])
   }
 
