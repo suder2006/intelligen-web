@@ -28,8 +28,8 @@ export default function AdminTransportPage() {
   const [savingStop, setSavingStop] = useState(false)
   const [stopForm, setStopForm] = useState({
     student_id: '', stop_order: 1,
-    expected_pickup_time: '07:00',
-    expected_dropoff_time: '13:30',
+    expected_pickup_time: '08:30',
+    drop_time: '12:30',
     address: ''
   })
   const [showStopForm, setShowStopForm] = useState(false)
@@ -149,23 +149,30 @@ export default function AdminTransportPage() {
       await supabase.from('route_stops').update({
         stop_order: stopForm.stop_order,
         expected_pickup_time: stopForm.expected_pickup_time,
-        expected_dropoff_time: stopForm.expected_dropoff_time,
+        drop_time: stopForm.drop_time,
         address: stopForm.address
       }).eq('id', editingStop)
     } else {
+      // Check for duplicate first
+      const duplicate = stops.find(s => s.student_id === stopForm.student_id)
+      if (duplicate) {
+        alert('This student already has a stop on this route!')
+        setSavingStop(false)
+        return
+      }
       await supabase.from('route_stops').insert({
         school_id: schoolId,
         route_id: selectedStopsRoute,
         student_id: stopForm.student_id,
         stop_order: stopForm.stop_order,
         expected_pickup_time: stopForm.expected_pickup_time,
-        expected_dropoff_time: stopForm.expected_dropoff_time,
+        drop_time: stopForm.drop_time,
         address: stopForm.address
       })
     }
     setShowStopForm(false)
     setEditingStop(null)
-    setStopForm({ student_id: '', stop_order: stops.length + 2, expected_pickup_time: '07:00', expected_dropoff_time: '13:30', address: '' })
+    setStopForm({ student_id: '', stop_order: stops.length + 2, expected_pickup_time: '08:30', drop_time: '12:30', address: '' })
     await fetchStops(selectedStopsRoute)
     setSavingStop(false)
   }
@@ -551,12 +558,16 @@ export default function AdminTransportPage() {
                             <input value={stopForm.address} onChange={e => setStopForm({ ...stopForm, address: e.target.value })} placeholder='e.g. 12, Anna Nagar' style={inputStyle} />
                           </div>
                           <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Expected Pickup Time</label>
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Morning Pickup Time</label>
                             <input type='time' value={stopForm.expected_pickup_time} onChange={e => setStopForm({ ...stopForm, expected_pickup_time: e.target.value })} style={inputStyle} />
                           </div>
                           <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🏠 Expected Dropoff Time</label>
-                            <input type='time' value={stopForm.expected_dropoff_time} onChange={e => setStopForm({ ...stopForm, expected_dropoff_time: e.target.value })} style={inputStyle} />
+                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🏠 Afternoon Drop Time</label>
+                            <select value={stopForm.drop_time} onChange={e => setStopForm({ ...stopForm, drop_time: e.target.value })} style={inputStyle}>
+                              <option value='12:30'>12:30 PM</option>
+                              <option value='14:30'>2:30 PM</option>
+                              <option value='16:30'>4:30 PM</option>
+                            </select>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
@@ -599,7 +610,11 @@ export default function AdminTransportPage() {
                                 <span style={{ color: '#a78bfa' }}>{stop.students?.program}</span>
                                 {stop.address && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📍 {stop.address}</span>}
                                 {stop.expected_pickup_time && <span style={{ color: '#38bdf8' }}>🌅 {stop.expected_pickup_time}</span>}
-                                {stop.expected_dropoff_time && <span style={{ color: '#a78bfa' }}>🏠 {stop.expected_dropoff_time}</span>}
+                                {stop.drop_time && (
+                                  <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', fontWeight: '600' }}>
+                                    🏠 Drop: {stop.drop_time === '12:30' ? '12:30 PM' : stop.drop_time === '14:30' ? '2:30 PM' : '4:30 PM'}
+                                  </span>
+                                )}
                                 {stop.home_latitude && <span style={{ color: '#10b981' }}>📌 Location set</span>}
                                 {!stop.home_latitude && <span style={{ color: '#f59e0b' }}>📌 Location not set (parent will set)</span>}
                               </div>
@@ -620,7 +635,7 @@ export default function AdminTransportPage() {
                               {/* Edit */}
                               <button onClick={() => {
                                 setEditingStop(stop.id)
-                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time || '07:00', expected_dropoff_time: stop.expected_dropoff_time || '13:30', address: stop.address || '' })
+                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time || '08:30', drop_time: stop.drop_time || '12:30', address: stop.address || '' })
                                 setShowStopForm(true)
                               }}
                                 style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>
@@ -947,10 +962,7 @@ export default function AdminTransportPage() {
                 <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Morning Pickup Time</label>
                 <input type='time' value={form.morning_pickup_time} onChange={e => setForm({ ...form, morning_pickup_time: e.target.value })} style={inputStyle} />
               </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🏠 Afternoon Drop Time</label>
-                <input type='time' value={form.afternoon_drop_time} onChange={e => setForm({ ...form, afternoon_drop_time: e.target.value })} style={inputStyle} />
-              </div>
+
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', marginBottom: '20px' }}>
               <input type='checkbox' checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />
