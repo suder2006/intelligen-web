@@ -30,8 +30,8 @@ export default function LoginPage() {
     else if (profile?.role === 'teacher') router.push('/teacher')
     else if (profile?.role === 'parent') router.push('/parent')
     else if (profile?.role === 'center_head') router.push('/center-head')
+    else if (profile?.role === 'driver') router.push('/driver')
     else router.push('/admin')
-    setLoading(false)
   }
 
   return (
