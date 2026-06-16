@@ -272,7 +272,7 @@ const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
                 {route.vehicle_number && <span>🚌 {route.vehicle_number}</span>}
                 {route.morning_pickup_time && <span>🌅 Morning: {route.morning_pickup_time}</span>}
-                {route.afternoon_drop_time && <span>🏠 Afternoon: {route.afternoon_drop_time}</span>}
+                
               </div>
             </div>
 
