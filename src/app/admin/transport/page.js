@@ -38,7 +38,7 @@ export default function AdminTransportPage() {
   const [form, setForm] = useState({
     name: '', vehicle_number: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
-    afternoon_drop_time: '13:30', is_active: true
+    is_active: true
   })
 
   const { schoolId } = useSchool()
@@ -125,7 +125,7 @@ export default function AdminTransportPage() {
   const resetForm = () => setForm({
     name: '', vehicle_number: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
-    afternoon_drop_time: '13:30', is_active: true
+    is_active: true
   })
   const fetchDrivers = async () => {
     const { data } = await supabase.from('profiles')
@@ -408,12 +408,7 @@ export default function AdminTransportPage() {
                                 <div style={{ fontWeight: '600', color: '#38bdf8' }}>🌅 {route.morning_pickup_time}</div>
                               </div>
                             )}
-                            {route.afternoon_drop_time && (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>AFTERNOON DROP</div>
-                                <div style={{ fontWeight: '600', color: '#a78bfa' }}>🏠 {route.afternoon_drop_time}</div>
-                              </div>
-                            )}
+
                           </div>
                           {/* Assigned students */}
                           {assigned.length > 0 && (
@@ -430,7 +425,7 @@ export default function AdminTransportPage() {
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => { setEditingRoute(route); setForm({ name: route.name, vehicle_number: route.vehicle_number || '', caretaker_name: route.caretaker_name || '', caretaker_phone: route.caretaker_phone || '', morning_pickup_time: route.morning_pickup_time || '08:00', afternoon_drop_time: route.afternoon_drop_time || '13:30', is_active: route.is_active }); setShowRouteForm(true) }}
+                          <button onClick={() => { setEditingRoute(route); setForm({ name: route.name, vehicle_number: route.vehicle_number || '', caretaker_name: route.caretaker_name || '', caretaker_phone: route.caretaker_phone || '', morning_pickup_time: route.morning_pickup_time || '08:00', is_active: route.is_active }); setShowRouteForm(true) }}
                             style={{ padding: '7px 12px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px' }}>✏️ Edit</button>
                           <button onClick={() => deleteRoute(route.id)}
                             style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>🗑️</button>
