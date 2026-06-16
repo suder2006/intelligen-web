@@ -218,7 +218,7 @@ const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
   // Filter stops based on trip type
   const activeStops = tripType === 'morning'
     ? [...stops].sort((a, b) => a.stop_order - b.stop_order)
-    : [...stops].filter(s => s.drop_time === selectedDropTime)
+    : [...stops].filter(s => s.drop_time?.startsWith(selectedDropTime))
         .sort((a, b) => a.stop_order - b.stop_order)
 
   const completedStops = activeStops.filter(s => isStopDone(s.id)).length
@@ -315,7 +315,7 @@ const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
                         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '8px' }}>Select Drop Time</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                           {[['12:30', '12:30 PM'], ['14:30', '2:30 PM'], ['16:30', '4:30 PM']].map(([time, label]) => {
-                            const studentsForTime = stops.filter(s => s.drop_time === time)
+                            const studentsForTime = stops.filter(s => s.drop_time?.startsWith(time))
                             if (studentsForTime.length === 0) return null
                             return (
                               <button key={time} onClick={() => setSelectedDropTime(time)}
