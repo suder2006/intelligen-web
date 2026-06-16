@@ -15,6 +15,7 @@ export default function DriverPage() {
   const [ending, setEnding] = useState(false)
   const [markingStop, setMarkingStop] = useState(null)
   const [tripType, setTripType] = useState('morning')
+  const [selectedDropTime, setSelectedDropTime] = useState('12:30')
   const [currentLocation, setCurrentLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [lastLocationSent, setLastLocationSent] = useState(null)
@@ -107,6 +108,7 @@ export default function DriverPage() {
       school_id: profile.school_id,
       route_id: route.id,
       trip_type: tripType,
+      trip_time: tripType === 'morning' ? 'morning' : selectedDropTime,
       status: 'active',
       started_at: new Date().toISOString()
     }).select().single()
@@ -210,10 +212,16 @@ export default function DriverPage() {
     setMarkingStop(null)
   }
 
-  const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
+const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
   const getStopStatus = (stopId) => tripLogs.find(l => l.stop_id === stopId)?.status
 
-  const completedStops = stops.filter(s => isStopDone(s.id)).length
+  // Filter stops based on trip type
+  const activeStops = tripType === 'morning'
+    ? [...stops].sort((a, b) => a.stop_order - b.stop_order)
+    : [...stops].filter(s => s.drop_time === selectedDropTime)
+        .sort((a, b) => a.stop_order - b.stop_order)
+
+  const completedStops = activeStops.filter(s => isStopDone(s.id)).length
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: "'DM Sans', sans-serif" }}>
@@ -293,7 +301,7 @@ export default function DriverPage() {
                   <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '16px' }}>Start New Trip</div>
                   <div style={{ marginBottom: '16px' }}>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '8px' }}>Trip Type</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                       {[['morning', '🌅 Morning Pickup'], ['afternoon', '🏠 Afternoon Drop']].map(([type, label]) => (
                         <button key={type} onClick={() => setTripType(type)}
                           style={{ padding: '12px', borderRadius: '10px', border: `2px solid ${tripType === type ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: tripType === type ? 'rgba(56,189,248,0.15)' : 'transparent', color: tripType === type ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '14px' }}>
@@ -301,14 +309,38 @@ export default function DriverPage() {
                         </button>
                       ))}
                     </div>
+                    {/* Afternoon drop time selector */}
+                    {tripType === 'afternoon' && (
+                      <div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '8px' }}>Select Drop Time</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                          {[['12:30', '12:30 PM'], ['14:30', '2:30 PM'], ['16:30', '4:30 PM']].map(([time, label]) => {
+                            const studentsForTime = stops.filter(s => s.drop_time === time)
+                            if (studentsForTime.length === 0) return null
+                            return (
+                              <button key={time} onClick={() => setSelectedDropTime(time)}
+                                style={{ padding: '10px 8px', borderRadius: '10px', border: `2px solid ${selectedDropTime === time ? '#a78bfa' : 'rgba(255,255,255,0.1)'}`, background: selectedDropTime === time ? 'rgba(167,139,250,0.15)' : 'transparent', color: selectedDropTime === time ? '#a78bfa' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '13px', textAlign: 'center' }}>
+                                {label}
+                                <div style={{ fontSize: '11px', marginTop: '2px', opacity: 0.7 }}>{studentsForTime.length} students</div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Stop Preview */}
-                  <div style={{ marginBottom: '16px' }}>
+                      <div style={{ marginBottom: '16px' }}>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '8px' }}>
-                      {stops.length} stops on this route:
+                      {activeStops.length} students for this trip:
                     </div>
-                    {stops.map((stop, idx) => (
+                    {activeStops.length === 0 && (
+                      <div style={{ color: '#f87171', fontSize: '13px', padding: '10px', background: 'rgba(239,68,68,0.08)', borderRadius: '8px', marginBottom: '10px' }}>
+                        ⚠️ No students assigned to this drop time. Check Manage Stops.
+                      </div>
+                    )}
+                    {activeStops.map((stop, idx) => (
                       <div key={stop.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                         <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(56,189,248,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: '#38bdf8', flexShrink: 0 }}>{idx + 1}</div>
                         <div>
@@ -316,7 +348,7 @@ export default function DriverPage() {
                           <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
                             {stop.address || 'No address set'}
                             {tripType === 'morning' && stop.expected_pickup_time && ` · 🌅 ${stop.expected_pickup_time}`}
-                            {tripType === 'afternoon' && stop.expected_dropoff_time && ` · 🏠 ${stop.expected_dropoff_time}`}
+                            {tripType === 'afternoon' && stop.drop_time && ` · 🏠 ${stop.drop_time === '12:30' ? '12:30 PM' : stop.drop_time === '14:30' ? '2:30 PM' : '4:30 PM'}`}
                           </div>
                         </div>
                       </div>
@@ -345,24 +377,24 @@ export default function DriverPage() {
                         Started: {new Date(activeTrip.started_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ color: '#34d399', fontWeight: '700', fontSize: '22px' }}>{completedStops}/{stops.length}</div>
+                      <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: '#34d399', fontWeight: '700', fontSize: '22px' }}>{completedStops}/{activeStops.length}</div>
                       <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>stops done</div>
                     </div>
                   </div>
 
                   {/* Progress bar */}
                   <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #10b981, #34d399)', borderRadius: '4px', width: `${stops.length > 0 ? (completedStops / stops.length) * 100 : 0}%`, transition: 'width 0.5s' }} />
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #10b981, #34d399)', borderRadius: '4px', width: `${activeStops.length > 0 ? (completedStops / activeStops.length) * 100 : 0}%`, transition: 'width 0.5s' }} />
                   </div>
                 </div>
 
                 {/* Stop List */}
                 <div style={{ marginBottom: '20px' }}>
-                  {stops.map((stop, idx) => {
+                  {activeStops.map((stop, idx) => {
                     const done = isStopDone(stop.id)
                     const status = getStopStatus(stop.id)
-                    const isNext = !done && stops.slice(0, idx).every(s => isStopDone(s.id))
+                    const isNext = !done && activeStops.slice(0, idx).every(s => isStopDone(s.id))
                     return (
                       <div key={stop.id} style={{ background: done ? 'rgba(16,185,129,0.06)' : isNext ? 'rgba(56,189,248,0.08)' : 'rgba(255,255,255,0.03)', border: `2px solid ${done ? 'rgba(16,185,129,0.3)' : isNext ? 'rgba(56,189,248,0.4)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '16px', padding: '16px', marginBottom: '10px' }}>
                         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
@@ -415,7 +447,7 @@ export default function DriverPage() {
 
                   {/* School stop */}
                   <div style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: completedStops === stops.length ? 'linear-gradient(135deg, #10b981, #34d399)' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: completedStops === activeStops.length ? 'linear-gradient(135deg, #10b981, #34d399)' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
                       🏫
                     </div>
                     <div>
