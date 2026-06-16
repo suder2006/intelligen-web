@@ -1,14 +1,33 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const router = useRouter()
+
+  useEffect(() => {
+    checkExistingSession()
+  }, [])
+
+  const checkExistingSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      const { data: profile } = await supabase
+        .from('profiles').select('role').eq('id', session.user.id).single()
+      if (profile?.role === 'super_admin') router.push('/super-admin')
+      else if (profile?.role === 'school_admin') router.push('/admin')
+      else if (profile?.role === 'teacher') router.push('/teacher')
+      else if (profile?.role === 'parent') router.push('/parent')
+      else if (profile?.role === 'center_head') router.push('/center-head')
+      else if (profile?.role === 'driver') router.push('/driver')
+    }
+    setLoading(false)
+  }
 
   const handleLogin = async () => {
     setLoading(true)
@@ -34,6 +53,14 @@ export default function LoginPage() {
     else router.push('/admin')
   }
 
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px' }}>Intelli<span style={{ color: '#38bdf8' }}>Gen</span></div>
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Loading...</div>
+      </div>
+    </div>
+  )
   return (
     <div style={{
       minHeight: '100vh',
