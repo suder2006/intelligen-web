@@ -36,7 +36,7 @@ export default function AdminTransportPage() {
   const [editingStop, setEditingStop] = useState(null)
   const [drivers, setDrivers] = useState([])
   const [form, setForm] = useState({
-    name: '', vehicle_number: '', driver_name: '', driver_phone: '',
+    name: '', vehicle_number: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
     afternoon_drop_time: '13:30', is_active: true
   })
@@ -49,7 +49,7 @@ export default function AdminTransportPage() {
   const fetchAll = async () => {
     setLoading(true)
     const [routesRes, studentsRes, stRes] = await Promise.all([
-      supabase.from('transport_routes').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_routes').select('*, profiles:driver_profile_id(full_name, phone)').eq('school_id', schoolId).order('name'),
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name'),
       supabase.from('student_transport').select('*, transport_routes(name)').eq('school_id', schoolId)
     ])
@@ -123,7 +123,7 @@ export default function AdminTransportPage() {
   }
 
   const resetForm = () => setForm({
-    name: '', vehicle_number: '', driver_name: '', driver_phone: '',
+    name: '', vehicle_number: '',
     caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
     afternoon_drop_time: '13:30', is_active: true
   })
@@ -376,11 +376,16 @@ export default function AdminTransportPage() {
                                 <div style={{ fontWeight: '600', color: '#fbbf24' }}>🚌 {route.vehicle_number}</div>
                               </div>
                             )}
-                            {route.driver_name && (
+                              {route.profiles?.full_name ? (
                               <div>
                                 <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>DRIVER</div>
-                                <div style={{ fontWeight: '600' }}>👨‍✈️ {route.driver_name}</div>
-                                {route.driver_phone && <div style={{ color: '#38bdf8', fontSize: '12px' }}>📞 {route.driver_phone}</div>}
+                                <div style={{ fontWeight: '600' }}>👨‍✈️ {route.profiles.full_name}</div>
+                                {route.profiles?.phone && <div style={{ color: '#38bdf8', fontSize: '12px' }}>📞 {route.profiles.phone}</div>}
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>DRIVER</div>
+                                <div style={{ color: '#f87171', fontSize: '13px' }}>⚠️ Not assigned</div>
                               </div>
                             )}
                             {route.caretaker_name && (
@@ -418,7 +423,7 @@ export default function AdminTransportPage() {
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => { setEditingRoute(route); setForm({ name: route.name, vehicle_number: route.vehicle_number || '', driver_name: route.driver_name || '', driver_phone: route.driver_phone || '', caretaker_name: route.caretaker_name || '', caretaker_phone: route.caretaker_phone || '', morning_pickup_time: route.morning_pickup_time || '08:00', afternoon_drop_time: route.afternoon_drop_time || '13:30', is_active: route.is_active }); setShowRouteForm(true) }}
+                          <button onClick={() => { setEditingRoute(route); setForm({ name: route.name, vehicle_number: route.vehicle_number || '', caretaker_name: route.caretaker_name || '', caretaker_phone: route.caretaker_phone || '', morning_pickup_time: route.morning_pickup_time || '08:00', afternoon_drop_time: route.afternoon_drop_time || '13:30', is_active: route.is_active }); setShowRouteForm(true) }}
                             style={{ padding: '7px 12px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px' }}>✏️ Edit</button>
                           <button onClick={() => deleteRoute(route.id)}
                             style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>🗑️</button>
@@ -761,7 +766,7 @@ export default function AdminTransportPage() {
                     return route ? (
                       <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
                         {route.vehicle_number && <span style={{ color: '#fbbf24' }}>🚌 {route.vehicle_number}</span>}
-                        {route.driver_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {route.driver_name} · 📞 {route.driver_phone}</span>}
+                        {route.profiles?.full_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {route.profiles.full_name} {route.profiles?.phone && `· 📞 ${route.profiles.phone}`}</span>}
                         {route.caretaker_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👩 {route.caretaker_name}</span>}
                       </div>
                     ) : null
@@ -922,14 +927,7 @@ export default function AdminTransportPage() {
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Vehicle Number</label>
             <input value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} placeholder='e.g. TN01AB1234' style={inputStyle} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Driver Name</label>
-                <input value={form.driver_name} onChange={e => setForm({ ...form, driver_name: e.target.value })} placeholder='Driver name' style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Driver Phone</label>
-                <input value={form.driver_phone} onChange={e => setForm({ ...form, driver_phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} />
-              </div>
+              
               <div>
                 <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Caretaker Name</label>
                 <input value={form.caretaker_name} onChange={e => setForm({ ...form, caretaker_name: e.target.value })} placeholder='Caretaker name' style={inputStyle} />
