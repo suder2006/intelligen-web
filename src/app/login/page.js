@@ -103,6 +103,7 @@ export default function LoginPage() {
           <div className="role-badge"><span className="role-dot" style={{background:'#38bdf8'}}></span>Teacher</div>
           <div className="role-badge"><span className="role-dot" style={{background:'#a78bfa'}}></span>Parent</div>
           <div className="role-badge"><span className="role-dot" style={{background:'#34d399'}}></span>Center Head</div>
+          <div className="role-badge"><span className="role-dot" style={{background:'#f59e0b'}}></span>Driver</div>
         </div>
       </div>
     </div>
