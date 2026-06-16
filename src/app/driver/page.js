@@ -348,7 +348,7 @@ const isStopDone = (stopId) => tripLogs.some(l => l.stop_id === stopId)
                           <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
                             {stop.address || 'No address set'}
                             {tripType === 'morning' && stop.expected_pickup_time && ` · 🌅 ${stop.expected_pickup_time}`}
-                            {tripType === 'afternoon' && stop.drop_time && ` · 🏠 ${stop.drop_time === '12:30' ? '12:30 PM' : stop.drop_time === '14:30' ? '2:30 PM' : '4:30 PM'}`}
+                            {tripType === 'afternoon' && stop.drop_time && ` · 🏠 ${stop.drop_time?.startsWith('12:30') ? '12:30 PM' : stop.drop_time?.startsWith('14:30') ? '2:30 PM' : '4:30 PM'}`}
                           </div>
                         </div>
                       </div>
