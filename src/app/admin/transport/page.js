@@ -604,10 +604,10 @@ export default function AdminTransportPage() {
                               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
                                 <span style={{ color: '#a78bfa' }}>{stop.students?.program}</span>
                                 {stop.address && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📍 {stop.address}</span>}
-                                {stop.expected_pickup_time && <span style={{ color: '#38bdf8' }}>🌅 {stop.expected_pickup_time}</span>}
+                                {stop.expected_pickup_time && <span style={{ color: '#38bdf8' }}>🌅 {stop.expected_pickup_time?.substring(0, 5)}</span>}
                                 {stop.drop_time && (
                                   <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', fontWeight: '600' }}>
-                                    🏠 Drop: {stop.drop_time === '12:30' ? '12:30 PM' : stop.drop_time === '14:30' ? '2:30 PM' : '4:30 PM'}
+                                    🏠 Drop: {stop.drop_time?.startsWith('12:30') ? '12:30 PM' : stop.drop_time?.startsWith('14:30') ? '2:30 PM' : '4:30 PM'}
                                   </span>
                                 )}
                                 {stop.home_latitude && <span style={{ color: '#10b981' }}>📌 Location set</span>}
@@ -630,7 +630,8 @@ export default function AdminTransportPage() {
                               {/* Edit */}
                               <button onClick={() => {
                                 setEditingStop(stop.id)
-                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time || '08:30', drop_time: stop.drop_time || '12:30', address: stop.address || '' })
+                                const dt = stop.drop_time?.substring(0, 5) || '12:30'
+                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time?.substring(0, 5) || '08:30', drop_time: dt, address: stop.address || '' })
                                 setShowStopForm(true)
                               }}
                                 style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>
