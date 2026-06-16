@@ -145,27 +145,25 @@ export default function AdminTransportPage() {
     }
     setSavingDriver(true)
     try {
-      // Create auth user via admin API
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: driverForm.email,
-        password: driverForm.password,
-        email_confirm: true
+      // Call server-side API
+      const res = await fetch('/api/admin/create-driver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: driverForm.email,
+          password: driverForm.password,
+          full_name: driverForm.full_name,
+          phone: driverForm.phone,
+          school_id: schoolId
+        })
       })
-      if (authError) throw authError
-
-      // Create profile
-      await supabase.from('profiles').insert({
-        id: authData.user.id,
-        full_name: driverForm.full_name,
-        role: 'driver',
-        school_id: schoolId,
-        phone: driverForm.phone || null
-      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
 
       // Assign to route if selected
-      if (driverForm.route_id) {
+      if (driverForm.route_id && data.user_id) {
         await supabase.from('transport_routes').update({
-          driver_profile_id: authData.user.id
+          driver_profile_id: data.user_id
         }).eq('id', driverForm.route_id)
       }
 
