@@ -29,7 +29,7 @@ export default function StaffPage() {
       const { data: { user } } = await supabase.auth.getUser()
       const [{ data: staffData }, { data: progsData }] = await Promise.all([
         supabase.from('profiles').select('*')
-          .in('role', ['teacher', 'staff', 'center_head', 'school_admin'])
+          .in('role', ['teacher', 'staff', 'center_head', 'school_admin', 'driver'])
           .eq('school_id', schoolId)
           .neq('id', user.id)
           .order('created_at', { ascending: false }),
@@ -163,7 +163,13 @@ export default function StaffPage() {
                 <div key={s.id} className="staff-card">
                   <div className="avatar">{s.full_name?.[0]?.toUpperCase() || '?'}</div>
                   <div className="staff-name">{s.full_name}</div>
-                  <div className="staff-role">{s.role === 'teacher' ? 'Teacher' : 'School Admin'}</div>
+                  <div className="staff-role">
+                    {s.role === 'teacher' ? '👩‍🏫 Teacher' : 
+                     s.role === 'staff' ? '👤 Staff' :
+                     s.role === 'center_head' ? '🏫 Center Head' :
+                     s.role === 'school_admin' ? '⚙️ School Admin' :
+                     s.role === 'driver' ? '🚌 Driver' : s.role}
+                  </div>
                   {s.email && <div className="staff-info">✉️ {s.email}</div>}
                   {s.phone && <div className="staff-info">📞 {s.phone}</div>}
                   <div style={{ marginTop: '12px', marginBottom: '8px' }}>
@@ -228,6 +234,7 @@ export default function StaffPage() {
               <option value="staff">Staff</option>
               <option value="center_head">Center Head</option>
               <option value="school_admin">School Admin</option>
+              <option value="driver">Driver 🚌</option>
             </select>
             <label className="form-label">Assign Programs</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '16px' }}>
