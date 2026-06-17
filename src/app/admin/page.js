@@ -19,6 +19,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const [restrictedModules, setRestrictedModules] = useState([])
+  const [parentActivity, setParentActivity] = useState(null)
+  const [parentActivityLoading, setParentActivityLoading] = useState(false)
+  const [showParentList, setShowParentList] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -69,7 +72,16 @@ export default function AdminDashboard() {
       const today = new Date().toISOString().split('T')[0]
       ;(notifRes.data || []).forEach(n => { if (n.notification_date === today) sentMap[n.student_id] = true })
       setWishSent(sentMap)
-      
+      // Fetch parent activity
+      if (schoolId) {
+        const paRes = await fetch('/api/admin/parent-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ school_id: schoolId })
+        })
+        const paData = await paRes.json()
+        setParentActivity(paData)
+      }
       setLoading(false)  
     }
     load()
@@ -153,6 +165,21 @@ export default function AdminDashboard() {
     if (todays.length === 0) { alert('All wishes already sent today!'); return }
     if (!confirm(`Send birthday wishes to ${todays.length} student(s)?`)) return
     for (const s of todays) { await sendBirthdayWish(s) }
+  }
+  
+  const fetchParentActivity = async () => {
+    if (!schoolId) return
+    setParentActivityLoading(true)
+    try {
+      const res = await fetch('/api/admin/parent-activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId })
+      })
+      const data = await res.json()
+      setParentActivity(data)
+    } catch (e) { console.log('Parent activity error:', e) }
+    setParentActivityLoading(false)
   }
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
@@ -361,6 +388,89 @@ export default function AdminDashboard() {
             </div>
           )
         })()}
+
+        {/* Parent Activity Section */}
+        <div style={{ marginBottom: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="section-title" style={{ marginBottom: 0 }}>👪 Parent Activity</div>
+            <button onClick={fetchParentActivity} disabled={parentActivityLoading}
+              style={{ padding: '7px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600' }}>
+              {parentActivityLoading ? '⏳...' : '🔄 Refresh'}
+            </button>
+          </div>
+
+          {/* Stats Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            {[
+              { label: 'Total Parents', value: parentActivity?.total ?? '...', color: '#38bdf8', icon: '👪' },
+              { label: 'Logged in Today', value: parentActivity?.today ?? '...', color: '#10b981', icon: '✅' },
+              { label: 'Logged in This Week', value: parentActivity?.week ?? '...', color: '#a78bfa', icon: '📅' },
+              { label: 'Never Logged In', value: parentActivity?.never ?? '...', color: '#f87171', icon: '⚠️' },
+              { label: 'Push Enabled', value: parentActivity?.pushEnabled ?? '...', color: '#fbbf24', icon: '🔔' },
+            ].map(item => (
+              <div key={item.label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '16px' }}>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: item.color, marginBottom: '4px' }}>
+                  {item.icon} {parentActivityLoading ? '...' : item.value}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Parent List Toggle */}
+          {parentActivity?.parents?.length > 0 && (
+            <>
+              <button onClick={() => setShowParentList(!showParentList)}
+                style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }}>
+                {showParentList ? '▲ Hide' : '▼ Show'} Parent List ({parentActivity.parents.length})
+              </button>
+
+              {showParentList && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600', textTransform: 'uppercase' }}>Parent</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600', textTransform: 'uppercase' }}>Email</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600', textTransform: 'uppercase' }}>Last Login</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600', textTransform: 'uppercase' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parentActivity.parents.map(p => {
+                        const lastLogin = p.last_sign_in_at ? new Date(p.last_sign_in_at) : null
+                        const today = new Date(); today.setHours(0, 0, 0, 0)
+                        const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
+                        const isToday = lastLogin && lastLogin >= today
+                        const isWeek = lastLogin && lastLogin >= weekAgo
+                        const isNever = !lastLogin
+                        return (
+                          <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ fontWeight: '600', fontSize: '13px' }}>{p.full_name}</div>
+                              {p.phone && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{p.phone}</div>}
+                            </td>
+                            <td style={{ padding: '10px 14px', color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>{p.email || '—'}</td>
+                            <td style={{ padding: '10px 14px', color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
+                              {lastLogin ? lastLogin.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                            </td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                                background: isNever ? 'rgba(239,68,68,0.15)' : isToday ? 'rgba(16,185,129,0.15)' : isWeek ? 'rgba(167,139,250,0.15)' : 'rgba(245,158,11,0.15)',
+                                color: isNever ? '#f87171' : isToday ? '#34d399' : isWeek ? '#a78bfa' : '#fbbf24' }}>
+                                {isNever ? '⚠️ Never' : isToday ? '✅ Today' : isWeek ? '📅 This Week' : '💤 Inactive'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         {/* Quick Links */}
         <div className="section-title">Quick Access</div>
         <div className="quick-links">
