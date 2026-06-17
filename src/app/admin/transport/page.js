@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
+import dynamic from 'next/dynamic'
+const AdminLiveMap = dynamic(() => import('@/components/AdminLiveMap'), { ssr: false })
 
 export default function AdminTransportPage() {
   const [routes, setRoutes] = useState([])
@@ -42,10 +44,41 @@ export default function AdminTransportPage() {
   })
 
   const { schoolId } = useSchool()
+  const [liveTrips, setLiveTrips] = useState([])
+  const [liveLocations, setLiveLocations] = useState({})
+  const [liveInterval, setLiveInterval] = useState(null)
 
+  useEffect(() => {
+    if (view === 'livemap' && schoolId) {
+      fetchLiveData()
+      const interval = setInterval(fetchLiveData, 15000)
+      setLiveInterval(interval)
+    } else {
+      if (liveInterval) { clearInterval(liveInterval); setLiveInterval(null) }
+    }
+    return () => { if (liveInterval) clearInterval(liveInterval) }
+  }, [view, schoolId])
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
   useEffect(() => { if (schoolId) fetchLogs() }, [filterDate, filterRoute, schoolId])
+  
+  const fetchLiveData = async () => {
+    // Get all active trips for this school
+    const { data: trips } = await supabase.from('trips')
+      .select('*, transport_routes(name, vehicle_number, profiles:driver_profile_id(full_name))')
+      .eq('school_id', schoolId)
+      .eq('status', 'active')
+    setLiveTrips(trips || [])
 
+    // Get latest location for each active trip
+    const locations = {}
+    for (const trip of (trips || [])) {
+      const { data: loc } = await supabase.from('vehicle_locations')
+        .select('*').eq('trip_id', trip.id)
+        .order('timestamp', { ascending: false }).limit(1).single()
+      if (loc) locations[trip.id] = loc
+    }
+    setLiveLocations(locations)
+  }  
   const fetchAll = async () => {
     setLoading(true)
     const [routesRes, studentsRes, stRes] = await Promise.all([
@@ -346,7 +379,7 @@ export default function AdminTransportPage() {
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['routes', '🚌 Routes'], ['assign', '👶 Assign Students'], ['stops', '🗺️ Manage Stops'], ['drivers', '👨‍✈️ Drivers'], ['mark', '✅ Mark Events'], ['logs', '📋 Daily Logs']].map(([v, l]) => (
+          {[['routes', '🚌 Routes'], ['assign', '👶 Assign Students'], ['stops', '🗺️ Manage Stops'], ['drivers', '👨‍✈️ Drivers'], ['mark', '✅ Mark Events'], ['logs', '📋 Daily Logs'], ['livemap', '🗺️ Live Map']].map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
@@ -931,6 +964,80 @@ export default function AdminTransportPage() {
                 )}
               </>
             )}
+
+            {/* LIVE MAP VIEW */}
+            {view === 'livemap' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🗺️ Live Van Tracking</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                      {liveTrips.length > 0 ? `${liveTrips.length} active trip${liveTrips.length > 1 ? 's' : ''}` : 'No active trips right now'}
+                      · Updates every 15 sec
+                    </div>
+                  </div>
+                  <button onClick={fetchLiveData}
+                    style={{ padding: '8px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                    🔄 Refresh
+                  </button>
+                </div>
+
+                {/* Active trips summary */}
+                {liveTrips.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                    {liveTrips.map(trip => {
+                      const loc = liveLocations[trip.id]
+                      return (
+                        <div key={trip.id} className="card" style={{ borderColor: 'rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.04)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                            <div style={{ fontWeight: '700', color: '#34d399' }}>🚌 {trip.transport_routes?.name}</div>
+                            <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: '600' }}>🟢 Live</span>
+                          </div>
+                          {trip.transport_routes?.vehicle_number && (
+                            <div style={{ color: '#fbbf24', fontSize: '12px', marginBottom: '4px' }}>🚌 {trip.transport_routes.vehicle_number}</div>
+                          )}
+                          {trip.transport_routes?.profiles?.full_name && (
+                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '4px' }}>👨‍✈️ {trip.transport_routes.profiles.full_name}</div>
+                          )}
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>
+                            {trip.trip_type === 'morning' ? '🌅 Morning Pickup' : '🏠 Afternoon Drop'}
+                          </div>
+                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
+                            Started: {new Date(trip.started_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          {loc && (
+                            <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                              📡 Last: {new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              {loc.speed > 0 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Live Map */}
+                {liveTrips.length > 0 && Object.keys(liveLocations).length > 0 ? (
+                  <AdminLiveMap
+                    trips={liveTrips}
+                    locations={liveLocations}
+                  />
+                ) : liveTrips.length > 0 ? (
+                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>📡</div>
+                    <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '4px' }}>Waiting for GPS location...</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Driver needs to allow GPS on their phone</div>
+                  </div>
+                ) : (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '60px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚌</div>
+                    <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '8px' }}>No Active Trips</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Live map will appear when driver starts a trip</div>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </div>
@@ -971,6 +1078,7 @@ export default function AdminTransportPage() {
           </div>
         </div>
       )}
+
     </div>
   )
 }
