@@ -72,12 +72,13 @@ export default function AdminDashboard() {
       const today = new Date().toISOString().split('T')[0]
       ;(notifRes.data || []).forEach(n => { if (n.notification_date === today) sentMap[n.student_id] = true })
       setWishSent(sentMap)
-      // Fetch parent activity
-      if (schoolId) {
+      // Fetch parent activity - use effectiveSid not schoolId state
+      const effectiveSchoolId = prof?.school_id
+      if (effectiveSchoolId) {
         const paRes = await fetch('/api/admin/parent-activity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ school_id: schoolId })
+          body: JSON.stringify({ school_id: effectiveSchoolId })
         })
         const paData = await paRes.json()
         setParentActivity(paData)
@@ -167,7 +168,7 @@ export default function AdminDashboard() {
     for (const s of todays) { await sendBirthdayWish(s) }
   }
   
-  const fetchParentActivity = async () => {
+const fetchParentActivity = async () => {
     if (!schoolId) return
     setParentActivityLoading(true)
     try {
@@ -177,6 +178,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ school_id: schoolId })
       })
       const data = await res.json()
+      console.log('Parent activity:', data)
       setParentActivity(data)
     } catch (e) { console.log('Parent activity error:', e) }
     setParentActivityLoading(false)
