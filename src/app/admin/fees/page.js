@@ -540,7 +540,21 @@ const markInstallmentPaid = async (inst, mode) => {
                     </div>
                   ))}
                 </div>
-
+                {/* Program Filter */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setFilterStatus('all')}
+                    className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}>
+                    All Programs
+                  </button>
+                  {[...new Set(students.map(s => s.program).filter(Boolean))].map(prog => (
+                    <button key={prog}
+                      onClick={() => setFilterStatus(prog)}
+                      className={`filter-btn ${filterStatus === prog ? 'active' : ''}`}>
+                      {prog}
+                    </button>
+                  ))}
+                </div>    
                 {/* Pending students list */}
                 {students
                   .map(s => {
@@ -552,7 +566,7 @@ const markInstallmentPaid = async (inst, mode) => {
                     const pendingAmount = pendingInvoices.reduce((sum, i) => sum + Number(i.total_amount) - Number(i.paid_amount), 0)
                     return { ...s, pendingInvoices, pendingAmount }
                   })
-                  .filter(s => s.pendingAmount > 0)
+                  .filter(s => s.pendingAmount > 0 && (filterStatus === 'all' || s.program === filterStatus))
                   .sort((a, b) => b.pendingAmount - a.pendingAmount)
                   .map(s => {
                     const isOverdue = s.pendingInvoices.some(i => i.due_date && new Date(i.due_date) < new Date())
