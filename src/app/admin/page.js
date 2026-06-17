@@ -188,6 +188,7 @@ const fetchParentActivity = async () => {
   const navItems = [
     { href: '/admin', label: 'Dashboard', icon: '⊞' },
     { href: '/admin/students', label: 'Students', icon: '👶' },
+    { href: '/admin/parents', label: 'Parents', icon: '👪' },
     { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
     { href: '/admin/staff-groups', label: 'Staff Groups', icon: '⏰' },
     { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
