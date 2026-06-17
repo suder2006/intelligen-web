@@ -267,7 +267,7 @@ const markInstallmentPaid = async (inst, mode) => {
         </div>
 
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['overview', '📊 Overview'], ['invoices', '📋 All Invoices'], ['student', '👶 By Student']].map(([v, l]) => (
+          {[['overview', '📊 Overview'], ['invoices', '📋 All Invoices'], ['student', '👶 By Student'], ['pending', '⚠️ Pending']].map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
@@ -522,6 +522,122 @@ const markInstallmentPaid = async (inst, mode) => {
                       )
                     })}
                   </>
+                )}
+              </>
+            )}
+            {view === 'pending' && (
+              <>
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Students with Pending', value: students.filter(s => invoices.filter(i => i.student_id === s.id && i.status !== 'paid' && i.status !== 'refunded').reduce((sum, i) => sum + Number(i.total_amount) - Number(i.paid_amount), 0) > 0).length, color: '#f59e0b' },
+                    { label: 'Total Pending', value: `₹${totalPending.toLocaleString()}`, color: '#ef4444' },
+                    { label: 'Overdue Invoices', value: overdueCount, color: '#f87171' },
+                  ].map(item => (
+                    <div key={item.label} className="card" style={{ padding: '16px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '700', color: item.color }}>{item.value}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pending students list */}
+                {students
+                  .map(s => {
+                    const pendingInvoices = invoices.filter(i =>
+                      i.student_id === s.id &&
+                      i.status !== 'paid' &&
+                      i.status !== 'refunded'
+                    )
+                    const pendingAmount = pendingInvoices.reduce((sum, i) => sum + Number(i.total_amount) - Number(i.paid_amount), 0)
+                    return { ...s, pendingInvoices, pendingAmount }
+                  })
+                  .filter(s => s.pendingAmount > 0)
+                  .sort((a, b) => b.pendingAmount - a.pendingAmount)
+                  .map(s => {
+                    const isOverdue = s.pendingInvoices.some(i => i.due_date && new Date(i.due_date) < new Date())
+                    const mostOverdue = s.pendingInvoices
+                      .filter(i => i.due_date && new Date(i.due_date) < new Date())
+                      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0]
+                    const daysOverdue = mostOverdue
+                      ? Math.floor((new Date() - new Date(mostOverdue.due_date)) / (1000 * 60 * 60 * 24))
+                      : 0
+                    return (
+                      <div key={s.id} className="card" style={{ borderColor: isOverdue ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.15)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: isOverdue ? 'linear-gradient(135deg, #ef4444, #f87171)' : 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff', fontSize: '16px', flexShrink: 0 }}>
+                              {s.full_name?.[0]?.toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '2px' }}>{s.full_name}</div>
+                              <div style={{ color: '#a78bfa', fontSize: '13px', marginBottom: '4px' }}>{s.program}</div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontWeight: '600' }}>
+                                  {s.pendingInvoices.length} invoice{s.pendingInvoices.length > 1 ? 's' : ''} pending
+                                </span>
+                                {isOverdue && (
+                                  <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(239,68,68,0.15)', color: '#f87171', fontWeight: '600' }}>
+                                    🚨 {daysOverdue} days overdue
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                            <div style={{ fontSize: '22px', fontWeight: '700', color: isOverdue ? '#f87171' : '#f59e0b' }}>
+                              ₹{s.pendingAmount.toLocaleString()}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button onClick={() => sendReminder(s.pendingInvoices[0])}
+                                style={{ padding: '6px 12px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                💬 Remind
+                              </button>
+                              <button onClick={() => { setSelectedStudent(s); setView('student') }}
+                                style={{ padding: '6px 12px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                👁️ View
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Invoice breakdown */}
+                        <div style={{ marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                          {s.pendingInvoices.map(inv => {
+                            const invPending = Number(inv.total_amount) - Number(inv.paid_amount)
+                            const invOverdue = inv.due_date && new Date(inv.due_date) < new Date()
+                            return (
+                              <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <div>
+                                  <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>{inv.fee_type}</span>
+                                  {inv.due_date && (
+                                    <span style={{ fontSize: '11px', color: invOverdue ? '#f87171' : 'rgba(255,255,255,0.3)', marginLeft: '8px' }}>
+                                      {invOverdue ? '🚨' : '📅'} Due: {inv.due_date}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <span style={{ color: '#f59e0b', fontWeight: '600', fontSize: '13px' }}>₹{invPending.toLocaleString()}</span>
+                                  <span style={{ padding: '2px 6px', borderRadius: '20px', fontSize: '11px', background: statusBg[inv.status] || statusBg.unpaid, color: statusColor[inv.status] || statusColor.unpaid }}>{inv.status}</span>
+                                  <button onClick={() => { setShowPaymentModal({ ...inv, type: 'invoice' }); setPaymentMode('Cash') }}
+                                    style={{ padding: '3px 8px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '6px', color: '#34d399', cursor: 'pointer', fontSize: '11px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                                    ✅ Pay
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                {students.filter(s => invoices.filter(i => i.student_id === s.id && i.status !== 'paid' && i.status !== 'refunded').reduce((sum, i) => sum + Number(i.total_amount) - Number(i.paid_amount), 0) > 0).length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎉</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>All fees collected!</div>
+                    <div style={{ fontSize: '14px' }}>No pending fees at the moment.</div>
+                  </div>
                 )}
               </>
             )}
