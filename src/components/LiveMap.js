@@ -35,13 +35,9 @@ export default function LiveMap({ vanLocation, homeLocation }) {
     if (!vanLocation) return
     const latlng = [vanLocation.lat, vanLocation.lng]
     if (vanMarkerRef.current) {
-      // Move the existing marker so it visibly travels across the map.
+      // Move the existing marker and keep the map centered on the van.
       vanMarkerRef.current.setLatLng(latlng)
-      // Only recenter when the van leaves the visible area — recentering on
-      // every update would pin the marker to the middle and look frozen.
-      if (!map.getBounds().contains(latlng)) {
-        map.panTo(latlng, { animate: true })
-      }
+      map.panTo(latlng, { animate: true })
     } else {
       const vanIcon = L.divIcon({
         html: '<div style="font-size:28px;line-height:1">🚌</div>',
