@@ -30,20 +30,60 @@ export async function POST(req) {
       return NextResponse.json({ error: 'school_id is required' }, { status: 400 })
     }
 
-    // Get all parents for this school
-    const { data: parents, error: parentsError } = await supabaseAdmin
+    // Parents are linked to a school through their children, NOT through
+    // profiles.school_id (which is null for almost all parents). So we must
+    // resolve the parent set the same way the parent portal does:
+    //   students (by school_id) -> parent_students -> profiles
+    // We also union in any profiles that DO carry school_id + role=parent
+    // (legacy / directly-assigned parents) so nobody is missed.
+    const parentIdSet = new Set()
+
+    // 1. Parents linked via their children
+    const { data: schoolStudents, error: studentsError } = await supabaseAdmin
+      .from('students')
+      .select('id')
+      .eq('school_id', school_id)
+    if (studentsError) throw studentsError
+
+    const studentIds = (schoolStudents || []).map(s => s.id)
+    if (studentIds.length > 0) {
+      const { data: links, error: linksError } = await supabaseAdmin
+        .from('parent_students')
+        .select('parent_id')
+        .in('student_id', studentIds)
+      if (linksError) throw linksError
+      ;(links || []).forEach(l => l.parent_id && parentIdSet.add(l.parent_id))
+    }
+
+    // 2. Parents directly assigned to the school via profiles.school_id
+    const { data: directParents, error: directError } = await supabaseAdmin
       .from('profiles')
-      .select('id, full_name, phone')
+      .select('id')
       .eq('school_id', school_id)
       .eq('role', 'parent')
+    if (directError) throw directError
+    ;(directParents || []).forEach(p => parentIdSet.add(p.id))
 
-    if (parentsError) throw parentsError
+    // 3. Load profile details, keeping only genuine parents
+    const allParentIds = [...parentIdSet]
+    let parents = []
+    if (allParentIds.length > 0) {
+      const { data: profs, error: profsError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name, phone, role')
+        .in('id', allParentIds)
+        .eq('role', 'parent')
+      if (profsError) throw profsError
+      parents = profs || []
+    }
 
-    const parentIds = parents?.map(p => p.id) || []
+    const parentIds = parents.map(p => p.id)
+    parentIdSet.clear()
+    parentIds.forEach(id => parentIdSet.add(id))
+
     if (parentIds.length === 0) {
       return NextResponse.json({ total: 0, today: 0, week: 0, never: 0, pushEnabled: 0, parents: [] })
     }
-    const parentIdSet = new Set(parentIds)
 
     // Get auth users for last sign in (requires service role) — paginated
     const allAuthUsers = await listAllAuthUsers()
