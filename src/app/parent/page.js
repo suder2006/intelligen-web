@@ -78,6 +78,7 @@ export default function ParentPortal() {
   const [activeTrip, setActiveTrip] = useState(null)
   const [vanLocation, setVanLocation] = useState(null)
   const [liveRefreshInterval, setLiveRefreshInterval] = useState(null)
+  const [nearbyNotified, setNearbyNotified] = useState({})
   const router = useRouter()
 
  useEffect(() => { 
@@ -560,7 +561,40 @@ export default function ParentPortal() {
       .select('*').eq('trip_id', trip.id)
       .order('timestamp', { ascending: false }).limit(1).single()
     if (loc) {
-      setVanLocation({ lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude), timestamp: loc.timestamp })
+      const vanLat = parseFloat(loc.latitude)
+      const vanLng = parseFloat(loc.longitude)
+      setVanLocation({ lat: vanLat, lng: vanLng, timestamp: loc.timestamp })
+
+      // Check distance to each child's home stop
+      for (const ct of studentTransportData) {
+        const stop = routeStops.find(s => s.student_id === ct.student_id)
+        if (!stop?.home_latitude || !stop?.home_longitude) continue
+
+        const dist = calculateDistance(
+          vanLat, vanLng,
+          parseFloat(stop.home_latitude),
+          parseFloat(stop.home_longitude)
+        )
+
+        // If within 500m and not already notified for this trip
+        const notifyKey = `${trip.id}_${ct.student_id}`
+        if (dist < 0.5 && !nearbyNotified[notifyKey]) {
+          setNearbyNotified(prev => ({ ...prev, [notifyKey]: true }))
+          // Send push notification
+          try {
+            await fetch('/api/push/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userIds: [user.id],
+                title: '🚌 Van is Almost Here!',
+                body: `Van is ${(dist * 1000).toFixed(0)}m away · ~${Math.round((dist / 20) * 60)} mins`,
+                url: '/parent'
+              })
+            })
+          } catch (e) { console.log('Push error:', e) }
+        }
+      }
     }
   }
 
