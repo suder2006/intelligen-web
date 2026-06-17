@@ -77,7 +77,7 @@ export default function LiveMap({ vanLocation, homeLocation }) {
     }
   }, [])
 
-  // Update van marker when location changes
+// Update van marker when location changes
   useEffect(() => {
     if (!vanLocation || !mapInstanceRef.current) return
     import('leaflet').then(L => {
@@ -88,13 +88,17 @@ export default function LiveMap({ vanLocation, homeLocation }) {
         iconAnchor: [16, 16]
       })
       if (vanMarkerRef.current) {
+        // Move existing marker
         vanMarkerRef.current.setLatLng([vanLocation.lat, vanLocation.lng])
+        // Pan map to follow van
+        mapInstanceRef.current.panTo([vanLocation.lat, vanLocation.lng], { animate: true })
       } else {
         vanMarkerRef.current = L.marker([vanLocation.lat, vanLocation.lng], { icon: vanIcon })
           .addTo(mapInstanceRef.current).bindPopup('🚌 School Van')
+        mapInstanceRef.current.setView([vanLocation.lat, vanLocation.lng], 15)
       }
     })
-  }, [vanLocation])
+  }, [vanLocation?.lat, vanLocation?.lng])
 
   return (
     <div ref={mapRef} style={{ width: '100%', height: '250px', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }} />
