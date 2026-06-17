@@ -13,7 +13,7 @@ export default function AttendancePage() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   
   const { schoolId } = useSchool()
-
+  const [filterProgram, setFilterProgram] = useState('all')
 
 
   useEffect(() => { if (schoolId) fetchData() }, [date, schoolId])
@@ -46,16 +46,22 @@ export default function AttendancePage() {
 
   const markAll = async (status) => {
     setSaving(true)
-    for (const student of students) {
+    for (const student of filteredStudents) {
       await markAttendance(student.id, status)
     }
     setSaving(false)
   }
 
-  const present = attendance.filter(a => a.status === 'present').length
-  const absent = attendance.filter(a => a.status === 'absent').length
-  const late = attendance.filter(a => a.status === 'late').length
-  const notMarked = students.length - attendance.length
+  const filteredStudents = filterProgram === 'all'
+    ? students
+    : students.filter(s => s.program === filterProgram)
+
+  const programs = [...new Set(students.map(s => s.program).filter(Boolean))]
+
+  const present = attendance.filter(a => filteredStudents.some(s => s.id === a.student_id) && a.status === 'present').length
+  const absent = attendance.filter(a => filteredStudents.some(s => s.id === a.student_id) && a.status === 'absent').length
+  const late = attendance.filter(a => filteredStudents.some(s => s.id === a.student_id) && a.status === 'late').length
+  const notMarked = filteredStudents.length - attendance.filter(a => filteredStudents.some(s => s.id === a.student_id)).length
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
@@ -98,7 +104,7 @@ export default function AttendancePage() {
         <div className="topbar">
           <div>
             <div className="page-title">✅ Attendance</div>
-            <div className="page-sub">{students.length} students enrolled</div>
+            <div className="page-sub">{filteredStudents.length} of {students.length} students</div>
           </div>
           <input className="date-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
@@ -121,7 +127,23 @@ export default function AttendancePage() {
             <div className="sum-label">⬜ Not Marked</div>
           </div>
         </div>
-
+        {/* Program Filter */}
+        {programs.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setFilterProgram('all')}
+              style={{ padding: '7px 16px', borderRadius: '20px', border: `1px solid ${filterProgram === 'all' ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: filterProgram === 'all' ? 'rgba(56,189,248,0.15)' : 'transparent', color: filterProgram === 'all' ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+              All Programs
+            </button>
+            {programs.map(prog => (
+              <button key={prog}
+                onClick={() => setFilterProgram(prog)}
+                style={{ padding: '7px 16px', borderRadius: '20px', border: `1px solid ${filterProgram === prog ? '#a78bfa' : 'rgba(255,255,255,0.1)'}`, background: filterProgram === prog ? 'rgba(167,139,250,0.15)' : 'transparent', color: filterProgram === prog ? '#a78bfa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                {prog}
+              </button>
+            ))}
+          </div>
+        )}  
         {students.length > 0 && (
           <div className="bulk-btns">
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', alignSelf: 'center' }}>Mark all as:</span>
@@ -144,7 +166,7 @@ export default function AttendancePage() {
                 <tr><td colSpan={3} className="empty">Loading...</td></tr>
               ) : students.length === 0 ? (
                 <tr><td colSpan={3} className="empty">No active students. Add students first!</td></tr>
-              ) : students.map(s => {
+              ) : filteredStudents.map(s => {
                 const status = getStatus(s.id)
                 return (
                   <tr key={s.id}>
