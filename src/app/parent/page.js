@@ -7,6 +7,7 @@ import { registerPushNotifications } from '@/lib/pushNotifications'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
+const LiveMap = dynamic(() => import('@/components/LiveMap'), { ssr: false })
 
 export default function ParentPortal() {
   const [moments, setMoments] = useState([])
@@ -74,7 +75,9 @@ export default function ParentPortal() {
   const [mapSearching, setMapSearching] = useState(false)
   const [pickedLocation, setPickedLocation] = useState(null) // { lat, lng, address }
   const [savingMapLocation, setSavingMapLocation] = useState(false)
-
+  const [activeTrip, setActiveTrip] = useState(null)
+  const [vanLocation, setVanLocation] = useState(null)
+  const [liveRefreshInterval, setLiveRefreshInterval] = useState(null)
   const router = useRouter()
 
  useEffect(() => { 
@@ -535,6 +538,44 @@ export default function ParentPortal() {
     )
   }
 
+    const calculateDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng/2) * Math.sin(dLng/2)
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  }
+
+  const fetchLiveLocation = async (routeId) => {
+    // Get active trip
+    const { data: trip } = await supabase.from('trips')
+      .select('*').eq('route_id', routeId).eq('status', 'active').single()
+    setActiveTrip(trip || null)
+    if (!trip) { setVanLocation(null); return }
+
+    // Get latest vehicle location
+    const { data: loc } = await supabase.from('vehicle_locations')
+      .select('*').eq('trip_id', trip.id)
+      .order('timestamp', { ascending: false }).limit(1).single()
+    if (loc) {
+      setVanLocation({ lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude), timestamp: loc.timestamp })
+    }
+  }
+
+  const startLiveTracking = (routeId) => {
+    fetchLiveLocation(routeId)
+    const interval = setInterval(() => fetchLiveLocation(routeId), 15000)
+    setLiveRefreshInterval(interval)
+  }
+
+  const stopLiveTracking = () => {
+    if (liveRefreshInterval) {
+      clearInterval(liveRefreshInterval)
+      setLiveRefreshInterval(null)
+    }
+  }
     const loadTransportData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     const { data: linkedStudents } = await supabase
@@ -586,7 +627,15 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
       total: recs.length
     }
   }
-
+  useEffect(() => {
+    if (activeTab === 'transport' && studentTransportData.length > 0) {
+      const routeId = studentTransportData[0]?.transport_routes?.id || studentTransportData[0]?.route_id
+      if (routeId) startLiveTracking(routeId)
+    } else {
+      stopLiveTracking()
+    }
+    return () => stopLiveTracking()
+  }, [activeTab, studentTransportData])
   const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'children', label: 'My Children', icon: '👶' },
@@ -1657,6 +1706,76 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
                             </div>
                           )
                         })()}      
+                        {/* Live Van Tracking */}
+                        {activeTrip && (
+                          <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <div style={{ fontWeight: '600', fontSize: '15px', color: '#34d399' }}>
+                                🚌 Van is Live!
+                              </div>
+                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: '600' }}>
+                                🟢 Tracking
+                              </span>
+                            </div>
+
+                            {/* Distance & ETA */}
+                            {(() => {
+                              const stop = routeStops.find(s => s.student_id === ct.student_id)
+                              if (vanLocation && stop?.home_latitude && stop?.home_longitude) {
+                                const dist = calculateDistance(
+                                  vanLocation.lat, vanLocation.lng,
+                                  parseFloat(stop.home_latitude), parseFloat(stop.home_longitude)
+                                )
+                                const etaMin = Math.round((dist / 20) * 60)
+                                return (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                                    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                                      <div style={{ color: '#38bdf8', fontWeight: '700', fontSize: '20px' }}>{dist.toFixed(1)} km</div>
+                                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>Distance away</div>
+                                    </div>
+                                    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                                      <div style={{ color: '#a78bfa', fontWeight: '700', fontSize: '20px' }}>~{etaMin} min</div>
+                                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>ETA to home</div>
+                                    </div>
+                                  </div>
+                                )
+                              }
+                              return null
+                            })()}
+
+                            {/* Live Map */}
+                            {vanLocation && (
+                              <>
+                                <LiveMap
+                                  vanLocation={vanLocation}
+                                  homeLocation={(() => {
+                                    const stop = routeStops.find(s => s.student_id === ct.student_id)
+                                    return stop?.home_latitude ? { lat: parseFloat(stop.home_latitude), lng: parseFloat(stop.home_longitude) } : null
+                                  })()}
+                                />
+                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '8px', textAlign: 'center' }}>
+                                  Last updated: {vanLocation.timestamp ? new Date(vanLocation.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now'} · Updates every 15 sec
+                                </div>
+                              </>
+                            )}
+
+                            {!vanLocation && (
+                              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)' }}>
+                                <div style={{ fontSize: '32px', marginBottom: '8px' }}>📡</div>
+                                <div>Waiting for van location...</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* No active trip */}
+                        {!activeTrip && (
+                          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '14px', marginBottom: '16px', textAlign: 'center' }}>
+                            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+                              🚌 No active trip right now · Live tracking will appear when driver starts a trip
+                            </div>
+                          </div>
+                        )}
 
                         {/* Today's Journey Timeline */}
                         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
