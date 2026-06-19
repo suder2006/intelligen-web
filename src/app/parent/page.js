@@ -79,6 +79,11 @@ export default function ParentPortal() {
   const [vanLocation, setVanLocation] = useState(null)
   const [liveRefreshInterval, setLiveRefreshInterval] = useState(null)
   const [nearbyNotified, setNearbyNotified] = useState({})
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordChanged, setPasswordChanged] = useState(false)
   const router = useRouter()
 
  useEffect(() => { 
@@ -645,9 +650,30 @@ export default function ParentPortal() {
     else alert('❌ Could not enable notifications. Please allow notifications in browser settings.')
   }
 
+  const handleChangePassword = async () => {
+    if (!newPassword || !confirmPassword) { alert('Please fill all fields'); return }
+    if (newPassword !== confirmPassword) { alert('Passwords do not match'); return }
+    if (newPassword.length < 6) { alert('Password must be at least 6 characters'); return }
+    setChangingPassword(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) alert('Error: ' + error.message)
+      else {
+        setPasswordChanged(true)
+        setNewPassword('')
+        setConfirmPassword('')
+        setTimeout(() => { setShowChangePassword(false); setPasswordChanged(false) }, 2000)
+      }
+    } catch (e) {
+      alert('Could not change password. Please try again.')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
-const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
+  const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amount) - Number(f.paid_amount || 0)), 0)
   const totalPaid = fees.reduce((sum, f) => sum + Number(f.paid_amount || 0), 0)
   const unpaidFees = fees.filter(f => f.status !== 'paid')
 
@@ -687,7 +713,9 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
     { id: 'diary', label: 'Diary', icon: '📔' },
+    { id: 'profile', label: 'Profile', icon: '👤' },
     { id: 'policies', label: 'Policies', icon: '📋' },
+    
   ]
 
   const inputStyle = { width: '100%', padding: '10px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }
@@ -2148,7 +2176,86 @@ const totalOwed = fees.reduce((sum, f) => sum + Math.max(0, Number(f.total_amoun
     </div>
   </>
 )}
-          
+
+      {activeTab === 'profile' && (
+              <>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '4px' }}>👤 My Profile</div>
+                </div>
+
+                {/* Profile card */}
+                <div className="card" style={{ textAlign: 'center', padding: '32px', marginBottom: '20px' }}>
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', fontWeight: '700', margin: '0 auto 16px' }}>
+                    {profile?.full_name?.[0]?.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', marginBottom: '4px' }}>{profile?.full_name}</div>
+                  <div style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '4px' }}>👪 Parent</div>
+                  {profile?.phone && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>📞 {profile.phone}</div>}
+                </div>
+
+                {/* Children */}
+                <div className="section-title">👶 My Children</div>
+                {students.map(s => (
+                  <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                    <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '18px' }}>
+                      {s.full_name?.[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '15px' }}>{s.full_name}</div>
+                      <div style={{ color: '#a78bfa', fontSize: '13px' }}>{s.program}</div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Change Password */}
+                <button onClick={() => setShowChangePassword(true)}
+                  style={{ width: '100%', padding: '14px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '14px', color: '#38bdf8', fontWeight: '700', fontSize: '15px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", marginTop: '20px', marginBottom: '10px' }}>
+                  🔐 Change Password
+                </button>
+
+                {/* Sign Out */}
+                <button onClick={handleLogout}
+                  style={{ width: '100%', padding: '14px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '14px', color: '#f87171', fontWeight: '700', fontSize: '15px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  🚪 Sign Out
+                </button>
+
+                {/* Change Password Modal */}
+                {showChangePassword && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+                    onClick={() => { setShowChangePassword(false); setNewPassword(''); setConfirmPassword('') }}>
+                    <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', textAlign: 'center' }}
+                      onClick={e => e.stopPropagation()}>
+                      {!passwordChanged ? (
+                        <>
+                          <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔐</div>
+                          <div style={{ fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '24px' }}>Change Password</div>
+                          <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                            placeholder="New Password"
+                            style={{ width: '100%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '14px 16px', color: '#fff', fontSize: '15px', outline: 'none', marginBottom: '12px', fontFamily: "'DM Sans', sans-serif' " }} />
+                          <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                            placeholder="Confirm New Password"
+                            style={{ width: '100%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '14px 16px', color: '#fff', fontSize: '15px', outline: 'none', marginBottom: '20px', fontFamily: "'DM Sans', sans-serif" }} />
+                          <button onClick={handleChangePassword} disabled={changingPassword}
+                            style={{ width: '100%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '12px', padding: '15px', color: '#fff', fontSize: '15px', fontWeight: '600', cursor: 'pointer', marginBottom: '12px', fontFamily: "'DM Sans', sans-serif" }}>
+                            {changingPassword ? '⏳ Updating...' : 'Update Password'}
+                          </button>
+                          <button onClick={() => { setShowChangePassword(false); setNewPassword(''); setConfirmPassword('') }}
+                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+                          <div style={{ fontSize: '20px', fontWeight: '700', color: '#34d399' }}>Password Updated!</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
           </>
         )}
       </div>

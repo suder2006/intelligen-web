@@ -8,6 +8,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -28,7 +32,16 @@ export default function LoginPage() {
     }
     setLoading(false)
   }
-
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) { setError('Please enter your email address'); return }
+    setForgotLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: 'https://intelligenapp.com/reset-password'
+    })
+    if (error) setError(error.message)
+    else setForgotSent(true)
+    setForgotLoading(false)
+  }
   const handleLogin = async () => {
     setLoading(true)
     setError('')
@@ -122,8 +135,56 @@ export default function LoginPage() {
           {loading ? 'Signing in...' : 'Sign In to IntelliGen →'}
         </button>
 
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+          <button onClick={() => setShowForgot(true)}
+            style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600' }}>
+            🔐 Forgot Password?
+          </button>
+        </div>
+
         <hr className="divider" />
         <div style={{color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginBottom: '12px', textAlign: 'center'}}>Platform Roles</div>
+        {/* Forgot Password Modal */}
+        {showForgot && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}
+            onClick={() => { setShowForgot(false); setForgotSent(false); setForgotEmail(''); setError('') }}>
+            <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '32px', width: '100%', maxWidth: '420px', textAlign: 'center' }}
+              onClick={e => e.stopPropagation()}>
+              {!forgotSent ? (
+                <>
+                  <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔐</div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>Forgot Password</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Enter your email and we'll send you a reset link.</div>
+                  <input className="input"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleForgotPassword()}
+                  />
+                  <button className="btn" onClick={handleForgotPassword} disabled={forgotLoading} style={{ marginBottom: '12px' }}>
+                    {forgotLoading ? '⏳ Sending...' : 'Send Reset Link →'}
+                  </button>
+                  <button onClick={() => { setShowForgot(false); setError('') }}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>Email Sent!</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '24px', lineHeight: '1.6' }}>
+                    Check your inbox for the password reset link. Click the link to set a new password.
+                  </div>
+                  <button className="btn" onClick={() => { setShowForgot(false); setForgotSent(false); setForgotEmail('') }}>
+                    Back to Login
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         <div className="roles">
           <div className="role-badge"><span className="role-dot" style={{background:'#f59e0b'}}></span>Super Admin</div>
           <div className="role-badge"><span className="role-dot" style={{background:'#10b981'}}></span>School Admin</div>
