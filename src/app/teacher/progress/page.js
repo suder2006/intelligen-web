@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation'
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+const TERM_MONTHS = {
+  'Term 1': ['June', 'July', 'August', 'September'],
+  'Term 2': ['October', 'November', 'December', 'January'],
+  'Term 3': ['February', 'March', 'April', 'May'],
+}
 const RATINGS = [
   { value: 'emerging', label: '🌱 Emerging', short: '🌱', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)' },
   { value: 'developing', label: '🌿 Developing', short: '🌿', color: '#38bdf8', bg: 'rgba(56,189,248,0.15)', border: 'rgba(56,189,248,0.3)' },
@@ -19,6 +24,9 @@ export default function TeacherProgressPage() {
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [academicYear, setAcademicYear] = useState(CURRENT_AY)
   const [selectedTerm, setSelectedTerm] = useState('Term 1')
+  const [selectedMonth, setSelectedMonth] = useState(
+  TERM_MONTHS['Term 1'][0]
+)
   const [skills, setSkills] = useState([]) // skills with activities for selected program
   const [ratings, setRatings] = useState({}) // activity_id -> rating
   const [reportNotes, setReportNotes] = useState({ observations: '', strengths: '', areas_to_improve: '' })
@@ -33,7 +41,7 @@ export default function TeacherProgressPage() {
 
   useEffect(() => { loadTeacher() }, [])
   useEffect(() => { if (selectedProgram) fetchSkills() }, [selectedProgram, academicYear])
-  useEffect(() => { if (selectedStudent) fetchProgress() }, [selectedStudent, selectedTerm, academicYear])
+  useEffect(() => { if (selectedStudent) fetchProgress() }, [selectedStudent, selectedTerm, selectedMonth, academicYear])
 
   const loadTeacher = async () => {
     setLoading(true)
@@ -70,77 +78,82 @@ export default function TeacherProgressPage() {
     setReportNotes({ observations: '', strengths: '', areas_to_improve: '' })
   }
 
-  const fetchProgress = async () => {
-    if (!selectedStudent) return
-    // Fetch ratings
-    const { data: ratingsData } = await supabase.from('progress_ratings').select('*')
-      .eq('student_id', selectedStudent.id)
-      .eq('academic_year', academicYear)
-      .eq('term', selectedTerm)
-    const ratingsMap = {}
-    ;(ratingsData || []).forEach(r => { ratingsMap[r.activity_id] = r.rating })
-    setRatings(ratingsMap)
+const fetchProgress = async () => {
+  if (!selectedStudent) return
+  // Fetch ratings for term + month
+  const { data: ratingsData } = await supabase.from('progress_ratings').select('*')
+    .eq('student_id', selectedStudent.id)
+    .eq('academic_year', academicYear)
+    .eq('term', selectedTerm)
+    .eq('month', selectedMonth)
+  const ratingsMap = {}
+  ;(ratingsData || []).forEach(r => { ratingsMap[r.activity_id] = r.rating })
+  setRatings(ratingsMap)
 
-    // Fetch report notes
-    const { data: report } = await supabase.from('progress_reports').select('*')
-      .eq('student_id', selectedStudent.id)
-      .eq('academic_year', academicYear)
-      .eq('term', selectedTerm)
-      .single()
-    if (report) {
-      setReportNotes({ observations: report.observations || '', strengths: report.strengths || '', areas_to_improve: report.areas_to_improve || '' })
-      setReportId(report.id)
-      setAlreadySent(report.sent_to_parent || false)
-    } else {
-      setReportNotes({ observations: '', strengths: '', areas_to_improve: '' })
-      setReportId(null)
-      setAlreadySent(false)
-    }
+  // Fetch report notes for term + month
+  const { data: report } = await supabase.from('progress_reports').select('*')
+    .eq('student_id', selectedStudent.id)
+    .eq('academic_year', academicYear)
+    .eq('term', selectedTerm)
+    .eq('month', selectedMonth)
+    .single()
+  if (report) {
+    setReportNotes({ observations: report.observations || '', strengths: report.strengths || '', areas_to_improve: report.areas_to_improve || '' })
+    setReportId(report.id)
+    setAlreadySent(report.sent_to_parent || false)
+  } else {
+    setReportNotes({ observations: '', strengths: '', areas_to_improve: '' })
+    setReportId(null)
+    setAlreadySent(false)
   }
+}
 
   const setRating = (activityId, rating) => {
     setRatings(prev => ({ ...prev, [activityId]: prev[activityId] === rating ? null : rating }))
   }
 
   const saveProgress = async () => {
-    if (!selectedStudent) { alert('Please select a student'); return }
-    setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+  if (!selectedStudent) { alert('Please select a student'); return }
+  setSaving(true)
+  const { data: { user } } = await supabase.auth.getUser()
 
-    // Save ratings using upsert
-    for (const [activityId, rating] of Object.entries(ratings)) {
-      if (!rating) continue
-      await supabase.from('progress_ratings').upsert({
-        student_id: selectedStudent.id,
-        activity_id: activityId,
-        teacher_id: user.id,
-        academic_year: academicYear,
-        term: selectedTerm,
-        rating,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'student_id,activity_id,academic_year,term' })
-    }
-
-    // Save report notes
-    const reportData = {
+  // Save ratings using upsert (term + month)
+  for (const [activityId, rating] of Object.entries(ratings)) {
+    if (!rating) continue
+    await supabase.from('progress_ratings').upsert({
       student_id: selectedStudent.id,
+      activity_id: activityId,
       teacher_id: user.id,
       academic_year: academicYear,
       term: selectedTerm,
-      ...reportNotes,
+      month: selectedMonth,
+      rating,
       updated_at: new Date().toISOString()
-    }
-    if (reportId) {
-      await supabase.from('progress_reports').update(reportData).eq('id', reportId)
-    } else {
-      const { data: newReport } = await supabase.from('progress_reports').insert({ ...reportData, sent_to_parent: false }).select().single()
-      if (newReport) setReportId(newReport.id)
-    }
-
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    }, { onConflict: 'student_id,activity_id,academic_year,term,month' })
   }
+
+  // Save report notes (term + month)
+  const reportData = {
+    student_id: selectedStudent.id,
+    teacher_id: user.id,
+    academic_year: academicYear,
+    term: selectedTerm,
+    month: selectedMonth,
+    ...reportNotes,
+    updated_at: new Date().toISOString()
+  }
+  if (reportId) {
+    await supabase.from('progress_reports').update(reportData).eq('id', reportId)
+  } else {
+    const { data: newReport } = await supabase.from('progress_reports')
+      .insert({ ...reportData, sent_to_parent: false }).select().single()
+    if (newReport) setReportId(newReport.id)
+  }
+
+  setSaving(false)
+  setSaved(true)
+  setTimeout(() => setSaved(false), 3000)
+}
 
   const sendToParent = async () => {
     if (!selectedStudent) return
@@ -160,7 +173,7 @@ export default function TeacherProgressPage() {
         sender_id: profile?.id,
         receiver_id: parent_id,
         sender_name: profile?.full_name || 'Teacher',
-        content: `📊 Progress Report for ${selectedStudent.full_name} — ${selectedTerm} (${academicYear}) is now available. Please check the Progress tab in your portal.`
+        content: `📊 Progress Report for ${selectedStudent.full_name} — ${selectedTerm}, ${selectedMonth} (${academicYear}) is now available. Please check the Progress tab in your portal.`
       })
     }
 
@@ -239,12 +252,25 @@ export default function TeacherProgressPage() {
             </div>
           </div>
 
-          {/* Term Selector */}
+          {/* Term + Month Selector */}
           <div>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Term</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               {TERMS.map(term => (
-                <button key={term} className={`term-btn ${selectedTerm === term ? 'active' : ''}`} onClick={() => setSelectedTerm(term)}>{term}</button>
+                <button key={term} className={`term-btn ${selectedTerm === term ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedTerm(term)
+                    setSelectedMonth(TERM_MONTHS[term][0])
+                  }}>{term}</button>
+              ))}
+            </div>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>Month</label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {TERM_MONTHS[selectedTerm].map(month => (
+                <button key={month} className={`term-btn ${selectedMonth === month ? 'active' : ''}`}
+                  onClick={() => setSelectedMonth(month)}>
+                  {month}
+                </button>
               ))}
             </div>
           </div>
@@ -256,7 +282,7 @@ export default function TeacherProgressPage() {
                 <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{selectedStudent.full_name?.[0]}</div>
                 <div>
                   <div style={{ fontWeight: '700' }}>{selectedStudent.full_name}</div>
-                  <div style={{ color: '#a78bfa', fontSize: '13px' }}>{selectedProgram} · {selectedTerm}</div>
+                  <div style={{ color: '#a78bfa', fontSize: '13px' }}>{selectedProgram} · {selectedTerm} · {selectedMonth}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
