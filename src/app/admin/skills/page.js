@@ -10,6 +10,12 @@ import AdminSidebar from '@/components/AdminSidebar'
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 
+const TERM_MONTHS = {
+  'Term 1': ['June', 'July', 'August', 'September'],
+  'Term 2': ['October', 'November', 'December', 'January'],
+  'Term 3': ['February', 'March', 'April', 'May'],
+}
+
 export default function AdminSkillsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -103,32 +109,43 @@ export default function AdminSkillsPage() {
     await fetchAll()
   }
 
-  const isAssigned = (skillId, program, term) => {
-    return skillMaps.some(m => m.skill_id === skillId && m.program === program && m.term === term)
-  }
+  const isAssigned = (skillId, program, term, month) => {
+  return skillMaps.some(m =>
+    m.skill_id === skillId &&
+    m.program === program &&
+    m.term === term &&
+    m.month === month
+  )
+}
 
-  const toggleAssignment = async (skillId, program, term) => {
-    const assigned = isAssigned(skillId, program, term)
-    if (assigned) {
-      await supabase.from('skill_program_map').delete()
-        .eq('skill_id', skillId).eq('program', program).eq('term', term)
-    } else {
-      await supabase.from('skill_program_map').insert({ skill_id: skillId, program, term })
-    }
-    await fetchAll()
-  }
-
-  const getSkillSummary = (skillId) => {
-    const maps = skillMaps.filter(m => m.skill_id === skillId)
-    if (maps.length === 0) return null
-    // Group by program
-    const grouped = {}
-    maps.forEach(m => {
-      if (!grouped[m.program]) grouped[m.program] = []
-      grouped[m.program].push(m.term)
+const toggleAssignment = async (skillId, program, term, month) => {
+  const assigned = isAssigned(skillId, program, term, month)
+  if (assigned) {
+    await supabase.from('skill_program_map').delete()
+      .eq('skill_id', skillId)
+      .eq('program', program)
+      .eq('term', term)
+      .eq('month', month)
+  } else {
+    await supabase.from('skill_program_map').insert({
+      skill_id: skillId, program, term, month
     })
-    return grouped
   }
+  await fetchAll()
+}
+
+const getSkillSummary = (skillId) => {
+  const maps = skillMaps.filter(m => m.skill_id === skillId)
+  if (maps.length === 0) return null
+  const grouped = {}
+  maps.forEach(m => {
+    const key = m.program
+    if (!grouped[key]) grouped[key] = {}
+    if (!grouped[key][m.term]) grouped[key][m.term] = []
+    grouped[key][m.term].push(m.month)
+  })
+  return grouped
+}
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }
 
@@ -204,10 +221,12 @@ export default function AdminSkillsPage() {
                       {skill.skill_activities?.length || 0} activities
                     </span>
                     {summary ? (
-                      Object.entries(summary).map(([prog, terms]) => (
-                        <span key={prog} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>
-                          {prog}: {terms.join(', ')}
-                        </span>
+                      Object.entries(summary).map(([prog, termMap]) => (
+                        Object.entries(termMap).map(([term, months]) => (
+                          <span key={`${prog}-${term}`} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>
+                            {prog} · {term}: {months.join(', ')}
+                          </span>
+                        ))
                       ))
                     ) : (
                       <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned yet</span>
@@ -255,39 +274,48 @@ export default function AdminSkillsPage() {
                       + Add Activity under "{skill.name}"
                     </button>
 
-                    {/* Program + Term Assignment Grid */}
+                    {/* Program + Term + Month Assignment Grid */}
                     <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.5px' }}>Assign to Program & Term</div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ borderCollapse: 'collapse', minWidth: '400px' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ padding: '8px 12px', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: '600' }}>Program</th>
-                              {TERMS.map(term => (
-                                <th key={term} style={{ padding: '8px 12px', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: '600' }}>{term}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {programs.map(prog => (
-                              <tr key={prog}>
-                                <td style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.7)', fontSize: '14px', fontWeight: '500' }}>{prog}</td>
-                                {TERMS.map(term => {
-                                  const assigned = isAssigned(skill.id, prog, term)
+                      <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '16px', letterSpacing: '0.5px' }}>
+                        Assign to Program, Term & Month
+                      </div>
+
+                      {programs.map(prog => (
+                        <div key={prog} style={{ marginBottom: '20px' }}>
+                          <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
+                            📚 {prog}
+                          </div>
+                          {TERMS.map(term => (
+                            <div key={term} style={{ marginBottom: '10px', paddingLeft: '12px' }}>
+                              <div style={{ color: '#38bdf8', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>
+                                {term}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {TERM_MONTHS[term].map(month => {
+                                  const assigned = isAssigned(skill.id, prog, term, month)
                                   return (
-                                    <td key={term} style={{ padding: '8px 12px', textAlign: 'center' }}>
-                                      <button onClick={() => toggleAssignment(skill.id, prog, term)}
-                                        style={{ padding: '5px 14px', borderRadius: '20px', border: `1px solid ${assigned ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`, background: assigned ? 'rgba(167,139,250,0.2)' : 'transparent', color: assigned ? '#a78bfa' : 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
-                                        {assigned ? '✓ On' : 'Off'}
-                                      </button>
-                                    </td>
+                                    <button key={month}
+                                      onClick={() => toggleAssignment(skill.id, prog, term, month)}
+                                      style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '20px',
+                                        border: `1px solid ${assigned ? '#a78bfa' : 'rgba(255,255,255,0.12)'}`,
+                                        background: assigned ? 'rgba(167,139,250,0.2)' : 'transparent',
+                                        color: assigned ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        fontFamily: "'DM Sans', sans-serif"
+                                      }}>
+                                      {assigned ? '✓ ' : ''}{month}
+                                    </button>
                                   )
                                 })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
