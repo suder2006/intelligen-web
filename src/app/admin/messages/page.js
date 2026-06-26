@@ -28,43 +28,71 @@ export default function MessagesPage() {
   const sendAnnouncement = async () => {
   if (!form.title || !form.content) return
   setSaving(true)
-  
+
   // Save to database
-  await supabase.from('announcements').insert([{ ...form, school_id: schoolId }])
+  await supabase.from('announcements').insert([{ 
+    ...form, school_id: schoolId 
+  }])
 
-  // Send push notifications to parents
+  // Send push notifications
   try {
-      // Get user IDs based on audience
-        let profileQuery = supabase.from('profiles')
-          .select('id').eq('school_id', schoolId)
-        if (form.audience === 'parents') profileQuery = profileQuery.eq('role', 'parent')
-        else if (form.audience === 'teachers') profileQuery = profileQuery.eq('role', 'teacher')
-        else profileQuery = profileQuery.in('role', ['parent', 'teacher'])
+    // Get user IDs based on audience
+    let profileQuery = supabase.from('profiles')
+      .select('id').eq('school_id', schoolId)
+    
+    if (form.audience === 'parents') 
+      profileQuery = profileQuery.eq('role', 'parent')
+    else if (form.audience === 'teachers') 
+      profileQuery = profileQuery.eq('role', 'teacher')
+    else 
+      profileQuery = profileQuery.in('role', ['parent', 'teacher'])
 
-        const { data: profileData } = await profileQuery
-        const userIds = profileData?.map(p => p.id) || []
+    const { data: profileData } = await profileQuery
+    const userIds = profileData?.map(p => p.id) || []
 
-        // Get push tokens from push_subscriptions
-        const { data: subData } = await supabase
-          .from('push_subscriptions')
-          .select('endpoint')
-          .in('user_id', userIds)
-          .not('endpoint', 'is', null)
+    if (userIds.length > 0) {
+      // Get Expo tokens from push_subscriptions
+      const { data: subData } = await supabase
+        .from('push_subscriptions')
+        .select('expo_token')
+        .in('user_id', userIds)
+        .not('expo_token', 'is', null)
 
-        const tokens = subData?.map(s => s.endpoint).filter(Boolean) || []
+      const tokens = subData
+        ?.map(s => s.expo_token)
+        .filter(t => t && t.startsWith('ExponentPushToken')) || []
 
-    if (tokens.length > 0) {
-      await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tokens.map(token => ({
+      console.log('Sending to tokens:', tokens)
+
+      if (tokens.length > 0) {
+        // Send via Expo push API
+        const messages = tokens.map(token => ({
           to: token,
           title: `📢 ${form.title}`,
           body: form.content,
           sound: 'default',
-          data: { type: 'announcement', audience: form.audience }
-        })))
-      })
+          data: { 
+            type: 'announcement', 
+            audience: form.audience 
+          }
+        }))
+
+        const response = await fetch(
+          'https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate'
+          },
+          body: JSON.stringify(messages)
+        })
+
+        const result = await response.json()
+        console.log('Push result:', result)
+      } else {
+        console.log('No Expo tokens found for audience:', form.audience)
+      }
     }
   } catch (e) {
     console.log('Push notification error:', e)
