@@ -34,13 +34,24 @@ export default function MessagesPage() {
 
   // Send push notifications to parents
   try {
-    let query = supabase.from('profiles').select('push_token').eq('school_id', schoolId).not('push_token', 'is', null)
-    if (form.audience === 'parents') query = query.eq('role', 'parent')
-    else if (form.audience === 'teachers') query = query.eq('role', 'teacher')
-    else if (form.audience === 'all') query = query.in('role', ['parent', 'teacher'])
+      // Get user IDs based on audience
+        let profileQuery = supabase.from('profiles')
+          .select('id').eq('school_id', schoolId)
+        if (form.audience === 'parents') profileQuery = profileQuery.eq('role', 'parent')
+        else if (form.audience === 'teachers') profileQuery = profileQuery.eq('role', 'teacher')
+        else profileQuery = profileQuery.in('role', ['parent', 'teacher'])
 
-    const { data: recipients } = await query
-    const tokens = recipients?.map(r => r.push_token).filter(Boolean) || []
+        const { data: profileData } = await profileQuery
+        const userIds = profileData?.map(p => p.id) || []
+
+        // Get push tokens from push_subscriptions
+        const { data: subData } = await supabase
+          .from('push_subscriptions')
+          .select('endpoint')
+          .in('user_id', userIds)
+          .not('endpoint', 'is', null)
+
+        const tokens = subData?.map(s => s.endpoint).filter(Boolean) || []
 
     if (tokens.length > 0) {
       await fetch('https://exp.host/--/api/v2/push/send', {
