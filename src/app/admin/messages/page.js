@@ -40,12 +40,14 @@ export default function MessagesPage() {
     let profileQuery = supabase.from('profiles')
       .select('id').eq('school_id', schoolId)
     
-    if (form.audience === 'parents') 
+    if (form.audience === 'parents')
       profileQuery = profileQuery.eq('role', 'parent')
-    else if (form.audience === 'teachers') 
+    else if (form.audience === 'teachers')
       profileQuery = profileQuery.eq('role', 'teacher')
-    else 
-      profileQuery = profileQuery.in('role', ['parent', 'teacher'])
+    else if (form.audience === 'staff')
+      // Staff = school employees, NOT parents
+      profileQuery = profileQuery.in('role', ['teacher', 'driver', 'school_admin', 'center_head'])
+    // else 'all' -> everyone in the school (no role filter)
 
     const { data: profileData } = await profileQuery
     const userIds = profileData?.map(p => p.id) || []
