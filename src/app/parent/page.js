@@ -340,8 +340,9 @@ export default function ParentPortal() {
           userIds: [selectedTeacher],
           title: '💬 New Message from Parent',
           body: `${profile?.full_name}: ${newMessage.slice(0, 80)}`,
-          url: '/teacher'
-        })
+          url: '/teacher',
+          data: { type: 'message' }
+        })  
       })
     } catch (e) { console.log('Push error:', e) }
     setNewMessage('')
@@ -603,7 +604,8 @@ export default function ParentPortal() {
                 userIds: [user.id],
                 title: '🚌 Van is Almost Here!',
                 body: `Van is ${(dist * 1000).toFixed(0)}m away · ~${Math.round((dist / 20) * 60)} mins`,
-                url: '/parent'
+                url: '/parent',
+                data: { type: 'transport' }
               })
             })
           } catch (e) { console.log('Push error:', e) }

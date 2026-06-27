@@ -283,11 +283,12 @@ const fetchMessages = async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userIds: [replyingTo],
-          title: '💬 New Message from Teacher',
-          body: `${profile?.full_name}: ${replyText.slice(0, 80)}`,
-          url: '/parent'
-        })
+        userIds: [replyingTo],
+        title: '💬 New Message from Teacher',
+        body: `${profile?.full_name}: ${replyText.slice(0, 80)}`,
+        url: '/parent',
+        data: { type: 'message' }
+      })  
       })
     } catch (e) { console.log('Push error:', e) }
     setReplyText('')
@@ -554,7 +555,8 @@ const fetchMessages = async () => {
             userIds: parentIds,
             title: `🚌 Transport Update`,
             body: eventMessages[selectedTransportEvent],
-            url: '/parent'
+            url: '/parent',
+            data: { type: 'transport' }
           })
         })
       } catch (e) { console.log('Push error:', e) }
@@ -621,7 +623,8 @@ const fetchMessages = async () => {
             userIds: [...new Set(parentIds)],
             title: `${noteType?.icon} New Diary Note`,
             body: diaryForm.title || diaryForm.content.slice(0, 80),
-            url: '/parent'
+            url: '/parent',
+            data: { type: 'diary' }
           })
         })
       }

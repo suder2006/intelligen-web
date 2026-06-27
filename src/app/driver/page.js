@@ -134,7 +134,8 @@ export default function DriverPage() {
               userIds: [...new Set(parentIds)],
               title: '🚌 Van has started!',
               body: `${route.name} is on the way. Track live in IntelliGen.`,
-              url: '/parent'
+              url: '/parent',
+              data: { type: 'transport' }
             })
           })
         } catch (e) { console.log('Push error:', e) }
@@ -201,7 +202,8 @@ export default function DriverPage() {
               userIds: ps.map(p => p.parent_id),
               title: tripType === 'morning' ? '🚌 Child Boarded Van' : '🏠 Child Dropped Home',
               body: msgMap[eventType],
-              url: '/parent'
+              url: '/parent',
+              data: { type: 'transport' }
             })
           })
         } catch (e) { console.log('Push error:', e) }

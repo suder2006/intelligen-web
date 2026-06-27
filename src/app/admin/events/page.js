@@ -188,16 +188,17 @@ export default function AdminEventsPage() {
         .select('id').eq('school_id', schoolId).in('role', ['teacher', 'staff', 'center_head'])
       if (staffData && staffData.length > 0) {
         const et = EVENT_TYPE_MAP[form.event_type]
-        await fetch('/api/push/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userIds: staffData.map(s => s.id),
-            title: `${et?.icon || '📅'} ${editingEvent ? 'Event Updated' : 'New Event Added'}`,
-            body: `${form.title} on ${form.event_date}`,
-            url: '/teacher'
+          await fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: staffData.map(s => s.id),
+              title: `${et?.icon || '📅'} ${editingEvent ? 'Event Updated' : 'New Event Added'}`,
+              body: `${form.title} on ${form.event_date}`,
+              url: '/teacher',
+              data: { type: 'event' }
+            })
           })
-        })
       }
     } catch (e) { console.log('Push error:', e) }
     setShowForm(false)

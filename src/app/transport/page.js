@@ -110,7 +110,8 @@ export default function TransportMarkingPage() {
             userIds: parentIds,
             title: `🚌 Transport Update`,
             body: eventMessages[selectedEvent],
-            url: '/parent'
+            url: '/parent',
+            data: { type: 'transport' }
           })
         })
       } catch (e) { console.log('Push error:', e) }

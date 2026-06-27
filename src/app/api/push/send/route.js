@@ -14,7 +14,7 @@ webpush.setVapidDetails(
 
 export async function POST(request) {
   try {
-    const { userIds, title, body, url, icon, tokens } = await request.json()
+    const { userIds, title, body, url, icon, tokens, data } = await request.json()
 
     // ─── Expo push (mobile app) ───────────────────────────────
     if (tokens && tokens.length > 0) {
@@ -23,7 +23,7 @@ export async function POST(request) {
         title,
         body,
         sound: 'default',
-        data: { url: url || '/' }
+        data: { ...(data || {}), url: url || '/' }
       }))
 
       const expoResponse = await fetch(
@@ -86,7 +86,7 @@ export async function POST(request) {
         title,
         body,
         sound: 'default',
-        data: { url: url || '/' }
+        data: { ...(data || {}), url: url || '/' }
       }))
 
       const expoResponse = await fetch(
