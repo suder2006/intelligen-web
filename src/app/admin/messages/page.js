@@ -67,29 +67,20 @@ export default function MessagesPage() {
       console.log('Sending to tokens:', tokens)
 
       if (tokens.length > 0) {
-        // Send via Expo push API
-        const messages = tokens.map(token => ({
-          to: token,
-          title: `📢 ${form.title}`,
-          body: form.content,
-          sound: 'default',
-          data: { 
-            type: 'announcement', 
-            audience: form.audience 
-          }
-        }))
-
-        const response = await fetch(
-          'https://exp.host/--/api/v2/push/send', {
+        // Call API route (fixes CORS!)
+        const response = await fetch('/api/push/send', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Accept-Encoding': 'gzip, deflate'
-          },
-          body: JSON.stringify(messages)
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokens,
+            title: `📢 ${form.title}`,
+            body: form.content,
+            data: {
+              type: 'announcement',
+              audience: form.audience
+            }
+          })
         })
-
         const result = await response.json()
         console.log('Push result:', result)
       } else {
