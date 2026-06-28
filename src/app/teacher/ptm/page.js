@@ -99,6 +99,22 @@ const [slotForm, setSlotForm] = useState({
     }
     // Mark booking as completed
     await supabase.from('ptm_bookings').update({ status: 'completed' }).eq('id', showNoteForm.id)
+
+    // Send push notification to parent
+    try {
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: [showNoteForm.parent_id],
+          title: '🤝 PTM Meeting Notes Ready',
+          body: `Notes from your meeting about ${showNoteForm.students?.full_name} are now available`,
+          url: '/parent',
+          data: { type: 'ptm' }
+        })
+      })
+    } catch (e) { console.log('Push error:', e) }
+
     setShowNoteForm(null)
     resetNoteForm()
     await loadData()

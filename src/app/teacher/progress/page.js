@@ -168,6 +168,7 @@ const fetchProgress = async () => {
 
     // Send notification via chat to parent
     const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', selectedStudent.id)
+    const parentIds = []
     for (const { parent_id } of (ps || [])) {
       await supabase.from('chat_messages').insert({
         sender_id: profile?.id,
@@ -175,6 +176,24 @@ const fetchProgress = async () => {
         sender_name: profile?.full_name || 'Teacher',
         content: `📊 Progress Report for ${selectedStudent.full_name} — ${selectedTerm}, ${selectedMonth} (${academicYear}) is now available. Please check the Progress tab in your portal.`
       })
+      parentIds.push(parent_id)
+    }
+
+    // Send push notification
+    if (parentIds.length > 0) {
+      try {
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: parentIds,
+            title: '📊 Progress Report Ready',
+            body: `${selectedStudent.full_name}'s ${selectedTerm} ${selectedMonth} report is now available`,
+            url: '/parent',
+            data: { type: 'progress' }
+          })
+        })
+      } catch (e) { console.log('Push error:', e) }
     }
 
     setAlreadySent(true)
