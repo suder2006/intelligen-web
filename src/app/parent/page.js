@@ -1957,9 +1957,26 @@ export default function ParentPortal() {
                       parent_id: user.id,
                       student_id: student?.id || null
                     })
-                    const { data: ackData } = await supabase.from('diary_acknowledgements').select('*').eq('parent_id', user.id)
+
+                    // Notify teacher
+                    try {
+                      await fetch('/api/push/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          userIds: [entry.teacher_id],
+                          title: '👍 Diary Note Acknowledged',
+                          body: `${profile?.full_name || 'Parent'} acknowledged: ${entry.title || entry.content?.slice(0, 60)}`,
+                          url: '/teacher',
+                          data: { type: 'diary' }
+                        })
+                      })
+                    } catch (e) { console.log('Push error:', e) }
+
+                    const { data: ackData } = await supabase.from('diary_acknowledgements')
+                      .select('*').eq('parent_id', user.id)
                     setDiaryAcks(ackData || [])
-                  }
+                  }  
 
                   const filtered = diaryEntries.filter(e => {
                     if (diaryFilter !== 'all' && e.note_type !== diaryFilter) return false
