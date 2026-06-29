@@ -199,7 +199,8 @@ const markInstallmentPaid = async (inst, mode) => {
   const sendReminder = async (invoice) => {
     const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', invoice.student_id)
     if (!ps || ps.length === 0) { alert('No parent linked to this student'); return }
-    for (const { parent_id } of ps) {
+    const parentIds = ps.map(p => p.parent_id)
+    for (const parent_id of parentIds) {
       await supabase.from('chat_messages').insert({
         sender_id: schoolId,
         receiver_id: parent_id,
@@ -207,6 +208,20 @@ const markInstallmentPaid = async (inst, mode) => {
         content: `📢 Fee Reminder: ${invoice.fee_type} of ₹${invoice.total_amount} is due on ${invoice.due_date || 'soon'}. Please make the payment at the earliest. Thank you! 🙏`
       })
     }
+    // Send push notification
+    try {
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: parentIds,
+          title: '💳 Fee Payment Reminder',
+          body: `${invoice.fee_type} of ₹${Number(invoice.total_amount).toLocaleString()} is due${invoice.due_date ? ' on ' + invoice.due_date : ' soon'}. Please pay at the earliest.`,
+          url: '/parent',
+          data: { type: 'fees' }
+        })
+      })
+    } catch (e) { console.log('Push error:', e) }
     alert('Reminder sent to parent(s)! ✅')
   }
 
@@ -527,6 +542,65 @@ const markInstallmentPaid = async (inst, mode) => {
             )}
             {view === 'pending' && (
               <>
+                {/* Send All Reminders button */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                  <button onClick={async () => {
+                    const pendingStudents = students.filter(s =>
+                      invoices.filter(i => i.student_id === s.id && i.status !== 'paid' && i.status !== 'refunded')
+                        .reduce((sum, i) => sum + Number(i.total_amount) - Number(i.paid_amount), 0) > 0
+                    )
+                    if (pendingStudents.length === 0) { alert('No pending fees!'); return }
+                    if (!confirm(`Send fee reminder to ${pendingStudents.length} parents?`)) return
+                    
+                    let sent = 0
+                    for (const s of pendingStudents) {
+                      const pendingInvoices = invoices.filter(i =>
+                        i.student_id === s.id && i.status !== 'paid' && i.status !== 'refunded'
+                      )
+                      const pendingAmount = pendingInvoices.reduce((sum, i) =>
+                        sum + Number(i.total_amount) - Number(i.paid_amount), 0
+                      )
+                      const { data: ps } = await supabase.from('parent_students')
+                        .select('parent_id').eq('student_id', s.id)
+                      if (!ps || ps.length === 0) continue
+                      const parentIds = ps.map(p => p.parent_id)
+
+                      // Send chat message
+                      for (const parent_id of parentIds) {
+                        await supabase.from('chat_messages').insert({
+                          sender_id: schoolId,
+                          receiver_id: parent_id,
+                          sender_name: 'School Admin',
+                          content: `📢 Fee Reminder: You have ₹${pendingAmount.toLocaleString()} in pending fees for ${s.full_name}. Please make the payment at the earliest. Thank you! 🙏`
+                        })
+                      }
+
+                      // Send push notification
+                      try {
+                        await fetch('/api/push/send', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            userIds: parentIds,
+                            title: '💳 Fee Payment Reminder',
+                            body: `₹${pendingAmount.toLocaleString()} pending for ${s.full_name}. Please pay at the earliest.`,
+                            url: '/parent',
+                            data: { type: 'fees' }
+                          })
+                        })
+                      } catch (e) { console.log('Push error:', e) }
+                      sent++
+                    }
+                    alert(`✅ Fee reminders sent to ${sent} parent(s)!`)
+                  }}
+                    style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: 'none', borderRadius: '10px', color: '#000', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    📢 Send Fee Reminder to All
+                  </button>
+                </div>
+
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}></div>
+
                 {/* Summary */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
                   {[
