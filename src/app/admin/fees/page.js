@@ -216,7 +216,7 @@ const markInstallmentPaid = async (inst, mode) => {
         body: JSON.stringify({
           userIds: parentIds,
           title: '💳 Fee Payment Reminder',
-          body: `${invoice.fee_type} of ₹${Number(invoice.total_amount).toLocaleString()} is due${invoice.due_date ? ' on ' + invoice.due_date : ' soon'}. Please pay at the earliest.`,
+          body: `${invoice.fee_type} of ₹${(Number(invoice.total_amount) - Number(invoice.paid_amount)).toLocaleString()} is pending${invoice.due_date ? ', due ' + invoice.due_date : ''}. Please pay at the earliest.`,
           url: '/parent',
           data: { type: 'fees' }
         })
