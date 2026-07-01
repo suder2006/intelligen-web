@@ -81,7 +81,7 @@ export default function TasksPage() {
     const { data: staffData } = await supabase.from('profiles')
       .select('id, full_name, role')
       .eq('school_id', schoolId)
-      .in('role', ['teacher', 'admin', 'staff'])
+      .in('role', ['teacher', 'admin', 'staff', 'school_admin'])
       .order('full_name')
     setStaff(staffData || [])
 
@@ -133,37 +133,50 @@ export default function TasksPage() {
   }
 
   const generateRecurringDates = (form) => {
-    const dates = []
-    const start = new Date(form.date_assigned)
-    const end = new Date(form.repeat_until)
+  const dates = []
+  const start = new Date(form.date_assigned + 'T12:00:00')
+  const end = new Date(form.repeat_until + 'T12:00:00')
 
-    if (form.recurrence_type === 'Daily') {
-      let cur = new Date(start)
-      while (cur <= end) {
-        if (cur.getDay() !== 0) dates.push(cur.toISOString().split('T')[0]) // Skip Sunday
-        cur.setDate(cur.getDate() + 1)
-      }
-    } else if (form.recurrence_type === 'Weekly') {
-      const dayMap = { Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 }
-      let cur = new Date(start)
-      while (cur <= end) {
-        const dayName = Object.keys(dayMap).find(k => dayMap[k] === cur.getDay())
-        if (dayName && form.repeat_days.includes(dayName)) {
-          dates.push(cur.toISOString().split('T')[0])
-        }
-        cur.setDate(cur.getDate() + 1)
-      }
-    } else if (form.recurrence_type === 'Monthly') {
-      let cur = new Date(start)
-      while (cur <= end) {
-        if (cur.getDay() !== 0) dates.push(cur.toISOString().split('T')[0])
-        cur.setMonth(cur.getMonth() + 1)
-        // Move to next Monday if Sunday
-        if (cur.getDay() === 0) cur.setDate(cur.getDate() + 1)
-      }
-    }
-    return dates
+  const formatDate = (d) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
   }
+
+  if (form.recurrence_type === 'Daily') {
+    let cur = new Date(start)
+    while (cur <= end) {
+      if (cur.getDay() !== 0) dates.push(formatDate(cur))
+      cur.setDate(cur.getDate() + 1)
+    }
+  } else if (form.recurrence_type === 'Weekly') {
+    const dayMap = { Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 }
+    let cur = new Date(start)
+    while (cur <= end) {
+      const dayNum = cur.getDay()
+      const dayName = Object.keys(dayMap).find(k => dayMap[k] === dayNum)
+      if (dayName && form.repeat_days.includes(dayName)) {
+        dates.push(formatDate(cur))
+      }
+      cur.setDate(cur.getDate() + 1)
+    }
+  } else if (form.recurrence_type === 'Monthly') {
+    let cur = new Date(start)
+    while (cur <= end) {
+      if (cur.getDay() !== 0) {
+        dates.push(formatDate(cur))
+      } else {
+        // Sunday → move to Monday
+        const next = new Date(cur)
+        next.setDate(next.getDate() + 1)
+        dates.push(formatDate(next))
+      }
+      cur.setMonth(cur.getMonth() + 1)
+    }
+  }
+  return dates
+}
 
   const saveTask = async () => {
     if (!form.assigned_to || !form.item || !form.due_date) {
