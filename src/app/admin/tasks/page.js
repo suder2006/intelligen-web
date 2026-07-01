@@ -23,6 +23,7 @@ const PRIORITY_COLORS = {
 }
 
 export default function TasksPage() {
+  const today = new Date()
   const { schoolId } = useSchool()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -49,7 +50,7 @@ export default function TasksPage() {
   })
 
   // Month navigation
-  const today = new Date()
+  
   const [viewMonth, setViewMonth] = useState(today.getMonth())
   const [viewYear, setViewYear] = useState(today.getFullYear())
 
