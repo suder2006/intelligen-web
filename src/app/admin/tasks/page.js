@@ -34,6 +34,19 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState(null)
   const [showCarryForwardModal, setShowCarryForwardModal] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
+  const [downloadForm, setDownloadForm] = useState({
+    type: 'month',
+    month: today.toISOString().slice(0, 7),
+    from_date: today.toISOString().split('T')[0],
+    to_date: today.toISOString().split('T')[0],
+    assigned_to: '',
+    status: '',
+    priority: '',
+    overdue: false,
+    recurring: '',
+    carried_forward: false,
+  })
 
   // Month navigation
   const today = new Date()
@@ -347,6 +360,82 @@ export default function TasksPage() {
     carriedForward: monthTasks.filter(t => t.is_carried_forward).length,
   }
 
+  const exportCSV = (headers, rows, filename) => {
+  const csv = [
+    headers.join(','),
+    ...rows.map(r => r.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const downloadTasks = () => {
+  // Filter by date
+  let filtered = [...tasks]
+
+  if (downloadForm.type === 'month') {
+    filtered = filtered.filter(t =>
+      t.date_assigned?.startsWith(downloadForm.month) ||
+      t.due_date?.startsWith(downloadForm.month)
+    )
+  } else {
+    const from = new Date(downloadForm.from_date + 'T00:00:00')
+    const to = new Date(downloadForm.to_date + 'T23:59:59')
+    // Max 6 months check
+    const diffMonths = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth())
+    if (diffMonths > 6) { alert('Maximum date range is 6 months!'); return }
+    filtered = filtered.filter(t => {
+      const due = new Date(t.due_date + 'T12:00:00')
+      return due >= from && due <= to
+    })
+  }
+
+  // Apply filters
+  if (downloadForm.assigned_to) filtered = filtered.filter(t => t.assigned_to === downloadForm.assigned_to)
+  if (downloadForm.status) filtered = filtered.filter(t => t.status === downloadForm.status)
+  if (downloadForm.priority) filtered = filtered.filter(t => t.priority === downloadForm.priority)
+  if (downloadForm.overdue) filtered = filtered.filter(t => isOverdue(t))
+  if (downloadForm.carried_forward) filtered = filtered.filter(t => t.is_carried_forward)
+  if (downloadForm.recurring === 'recurring') filtered = filtered.filter(t => t.recurrence_type !== 'None')
+  if (downloadForm.recurring === 'non-recurring') filtered = filtered.filter(t => t.recurrence_type === 'None')
+
+  if (filtered.length === 0) { alert('No tasks found for selected filters!'); return }
+
+  const headers = [
+    'Date Assigned', 'Assigned By', 'Assigned To', 'Item', 'Description',
+    'Due Date', 'Date Completed', 'Priority', 'Status', 'Remarks',
+    'Recurrence', 'Carried Forward', 'Carried Forward From', 'Overdue'
+  ]
+
+  const rows = filtered.map(t => [
+    t.date_assigned || '',
+    t.assigned_by_profile?.full_name || '',
+    t.assigned_to_profile?.full_name || '',
+    t.item || '',
+    t.description || '',
+    t.due_date || '',
+    t.date_completed || '',
+    t.priority || '',
+    t.status || '',
+    t.remarks || '',
+    t.recurrence_type || 'None',
+    t.is_carried_forward ? 'Yes' : 'No',
+    t.carried_forward_from || '',
+    isOverdue(t) ? 'Yes' : 'No',
+  ])
+
+  const filename = downloadForm.type === 'month'
+    ? `Tasks_${downloadForm.month}.csv`
+    : `Tasks_${downloadForm.from_date}_to_${downloadForm.to_date}.csv`
+
+  exportCSV(headers, rows, filename)
+  setShowDownloadModal(false)
+}  
   const inputStyle = {
     width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none',
@@ -387,9 +476,15 @@ export default function TasksPage() {
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>✅ Task Management</h1>
             <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Assign and track tasks for staff and admin</p>
           </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setShowDownloadModal(true)}
+            style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', padding: '10px 20px', color: '#34d399', fontSize: '14px', fontWeight: '600', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+            📥 Download
+          </button>
           <button className="btn-primary" onClick={() => { resetForm(); setEditingTask(null); setShowForm(true) }}>
             + New Task
           </button>
+        </div>  
         </div>
 
         {/* View Tabs */}
@@ -790,6 +885,120 @@ export default function TasksPage() {
           </div>
         </div>
       )}
+      {/* Download Modal */}
+      {showDownloadModal && (
+        <div className="modal-overlay" onClick={() => setShowDownloadModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>📥 Download Task Report</h3>
+
+            {/* Type selector */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              {[['month', '📅 By Month'], ['range', '📆 Date Range']].map(([v, l]) => (
+                <button key={v} onClick={() => setDownloadForm({ ...downloadForm, type: v })}
+                  style={{ flex: 1, padding: '9px', borderRadius: '10px', border: `1px solid ${downloadForm.type === v ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: downloadForm.type === v ? 'rgba(56,189,248,0.15)' : 'transparent', color: downloadForm.type === v ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Month or Range */}
+            {downloadForm.type === 'month' ? (
+              <>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Select Month</label>
+                <input type='month' value={downloadForm.month}
+                  onChange={e => setDownloadForm({ ...downloadForm, month: e.target.value })}
+                  style={inputStyle} />
+              </>
+            ) : (
+              <>
+                <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '10px', padding: '10px 14px', marginBottom: '12px', fontSize: '12px', color: '#fbbf24' }}>
+                  ⚠️ Maximum date range is 6 months
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>From Date</label>
+                    <input type='date' value={downloadForm.from_date}
+                      onChange={e => setDownloadForm({ ...downloadForm, from_date: e.target.value })}
+                      style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>To Date</label>
+                    <input type='date' value={downloadForm.to_date}
+                      onChange={e => setDownloadForm({ ...downloadForm, to_date: e.target.value })}
+                      style={inputStyle} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Filters */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px', marginBottom: '14px' }}>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '10px' }}>
+                Filters (optional)
+              </div>
+
+              <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Assigned To</label>
+              <select value={downloadForm.assigned_to}
+                onChange={e => setDownloadForm({ ...downloadForm, assigned_to: e.target.value })}
+                style={inputStyle}>
+                <option value=''>All Staff</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+              </select>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Status</label>
+                  <select value={downloadForm.status}
+                    onChange={e => setDownloadForm({ ...downloadForm, status: e.target.value })}
+                    style={inputStyle}>
+                    <option value=''>All Status</option>
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Priority</label>
+                  <select value={downloadForm.priority}
+                    onChange={e => setDownloadForm({ ...downloadForm, priority: e.target.value })}
+                    style={inputStyle}>
+                    <option value=''>All Priority</option>
+                    {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  ['overdue', '🚨 Overdue Only', downloadForm.overdue],
+                  ['carried_forward', '↩️ Carried Forward Only', downloadForm.carried_forward],
+                ].map(([key, label, val]) => (
+                  <button key={key}
+                    onClick={() => setDownloadForm({ ...downloadForm, [key]: !val })}
+                    style={{ padding: '5px 12px', borderRadius: '20px', border: `1px solid ${val ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: val ? 'rgba(56,189,248,0.15)' : 'transparent', color: val ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    {label}
+                  </button>
+                ))}
+                <select value={downloadForm.recurring}
+                  onChange={e => setDownloadForm({ ...downloadForm, recurring: e.target.value })}
+                  style={{ padding: '5px 12px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
+                  <option value=''>All Types</option>
+                  <option value='recurring'>Recurring Only</option>
+                  <option value='non-recurring'>Non-Recurring Only</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowDownloadModal(false)} className="btn-secondary">Cancel</button>
+              <button onClick={downloadTasks}
+                style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #10b981, #34d399)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+                📥 Download CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   )
 }
