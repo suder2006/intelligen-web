@@ -696,6 +696,7 @@ const fetchMessages = async () => {
     { id: 'payslip', label: 'Payslip', icon: '💰' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
+    { id: 'tasks', label: 'Tasks', icon: '✅' },
     { id: 'birthdays', label: 'Birthdays', icon: '🎂' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
     { id: 'diary', label: 'Diary', icon: '📔' },
@@ -1254,6 +1255,20 @@ const fetchMessages = async () => {
               </div>
             )}
 
+
+              {activeTab === 'tasks' && (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+                <div style={{ fontWeight: '700', fontSize: '18px', marginBottom: '8px' }}>My Tasks</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>
+                  View and update tasks assigned to you
+                </div>
+                <a href='/teacher/tasks'
+                  style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', textDecoration: 'none', display: 'inline-block' }}>
+                  ✅ Open My Tasks
+                </a>
+              </div>
+            )}
             {activeTab === 'homeactivities' && (
               <>
                 <div className="section-title">🏠 Home Activity Completions</div>
