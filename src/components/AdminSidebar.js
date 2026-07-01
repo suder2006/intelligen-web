@@ -10,6 +10,7 @@ const navItems = [
   { href: '/admin/parents', label: 'Parents', icon: '👪' },
   { href: '/admin/staff', label: 'Staff', icon: '👩‍🏫' },
   { href: '/admin/staff-groups', label: 'Staff Groups', icon: '⏰' },
+  { href: '/admin/tasks', label: 'Tasks', icon: '✅' },
   { href: '/admin/admissions', label: 'Admissions', icon: '📋' },
   { href: '/admin/enquiries', label: 'Enquiries CRM', icon: '🎯' },
   { href: '/admin/fees', label: 'Fees', icon: '💳', moduleId: 'fees' },
