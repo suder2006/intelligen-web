@@ -456,14 +456,22 @@ const fetchMessages = async () => {
   const getStatus = (studentId) => attendance.find(a => a.student_id === studentId)?.status || null
 
   const markAttendance = async (studentId, status) => {
-    const existing = attendance.find(a => a.student_id === studentId)
-    if (existing) {
-      await supabase.from('attendance').update({ status }).eq('id', existing.id)
-    } else {
-      await supabase.from('attendance').insert([{ student_id: studentId, date, status, checked_in_at: new Date().toISOString() }])
-    }
-    fetchAttendance()
+  // Query DB directly to avoid stale state causing duplicate inserts
+  const { data: existing } = await supabase.from('attendance')
+    .select('id')
+    .eq('student_id', studentId)
+    .eq('date', date)
+    .maybeSingle()
+  if (existing) {
+    await supabase.from('attendance').update({ status }).eq('id', existing.id)
+  } else {
+    await supabase.from('attendance').insert([{
+      student_id: studentId, date, status,
+      checked_in_at: new Date().toISOString()
+    }])
   }
+  fetchAttendance()
+}
 
   const BDAY_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
