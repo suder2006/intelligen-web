@@ -39,11 +39,18 @@ async function handleBirthdays(results) {
   console.log(`Checking birthdays for ${todayIST} (${monthDay})`)
 
   // Get all active students with today's birthday
-  const { data: students, error } = await supabase
+  const { data: allStudents, error } = await supabase
     .from('students')
     .select('id, full_name, program, school_id, date_of_birth')
     .eq('status', 'active')
-    .like('date_of_birth', `%-${monthDay}`)
+    .not('date_of_birth', 'is', null)
+
+// Filter by month and day in JavaScript
+const students = (allStudents || []).filter(s => {
+  const dob = new Date(s.date_of_birth)
+  return (dob.getUTCMonth() + 1) === parseInt(mm) &&
+         dob.getUTCDate() === parseInt(dd)
+})
 
   if (error) { console.error('Birthday fetch error:', error); return }
 
