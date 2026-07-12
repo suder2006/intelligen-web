@@ -33,6 +33,10 @@ export default function StudentsPage() {
   const [archiveModal, setArchiveModal] = useState(null)
   const [archiveForm, setArchiveForm] = useState({ reason: '', notes: '' })
   const [archiving, setArchiving] = useState(false)
+  const [linkedParents, setLinkedParents] = useState([])
+  const [showAddParent, setShowAddParent] = useState(false)
+  const [addingParent, setAddingParent] = useState(false)
+  const [newParent, setNewParent] = useState({ name: '', email: '', phone: '' })
   const [form, setForm] = useState({
     student_id: '', full_name: '', date_of_birth: '', gender: '',
     program: '', status: 'active', parent_name: '',
@@ -140,7 +144,52 @@ export default function StudentsPage() {
     await fetchStudents()
     alert(`✅ ${archivedName} has been archived successfully!`)
   }
+  async function addParent(studentId) {
+    if (!newParent.email) { alert('Please enter parent email'); return }
+    if (!newParent.name) { alert('Please enter parent name'); return }
+    setAddingParent(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-parent-user', {
+        body: {
+          student_id: studentId,
+          parent_name: newParent.name,
+          parent_email: newParent.email,
+          parent_phone: newParent.phone || ''
+        }
+      })
+      if (error) throw error
+      // Reload linked parents
+      const { data: ps } = await supabase.from('parent_students')
+        .select('parent_id, profiles(id, full_name, email, phone)')
+        .eq('student_id', studentId)
+      setLinkedParents(ps?.map(p => p.profiles).filter(Boolean) || [])
+      setNewParent({ name: '', email: '', phone: '' })
+      setShowAddParent(false)
+      setParentCredentials({
+        student_name: students.find(s => s.id === studentId)?.full_name || '',
+        parent_name: newParent.name,
+        email: newParent.email,
+        password: 'Parent@123456',
+        url: APP_URL,
+        parent2_created: false
+      })
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+    setAddingParent(false)
+  }
 
+  async function removeParent(parentId, studentId) {
+    if (!confirm('Remove this parent from student?')) return
+    await supabase.from('parent_students')
+      .delete()
+      .eq('parent_id', parentId)
+      .eq('student_id', studentId)
+    const { data: ps } = await supabase.from('parent_students')
+      .select('parent_id, profiles(id, full_name, email, phone)')
+      .eq('student_id', studentId)
+    setLinkedParents(ps?.map(p => p.profiles).filter(Boolean) || [])
+  }
   async function restoreStudent(student) {
     if (!confirm(`Restore ${student.full_name} back to active?`)) return
     const { error } = await supabase.from('students').update({
@@ -155,7 +204,7 @@ export default function StudentsPage() {
     await fetchStudents()
   }
 
-  function startEdit(s) {
+  async function startEdit(s) {
     setEditing(s.id)
     setForm({
       student_id: s.student_id || '', full_name: s.full_name, date_of_birth: s.date_of_birth || '',
@@ -168,8 +217,16 @@ export default function StudentsPage() {
       immunization_complete: s.immunization_complete || false,
       medical_alert: s.medical_alert || false, medical_alert_note: s.medical_alert_note || '',
       child_aadhar: s.child_aadhar || '', father_aadhar: s.father_aadhar || '',
-      mother_aadhar: s.mother_aadhar || ''
+      mother_aadhar: s.mother_aadhar || '',
+      parent2_name: '', parent2_phone: '', parent2_email: ''
     })
+    // Load linked parents
+    const { data: ps } = await supabase.from('parent_students')
+      .select('parent_id, profiles(id, full_name, email, phone)')
+      .eq('student_id', s.id)
+    setLinkedParents(ps?.map(p => p.profiles).filter(Boolean) || [])
+    setShowAddParent(false)
+    setNewParent({ name: '', email: '', phone: '' })
     setShowForm(true)
     window.scrollTo(0, 0)
   }
@@ -241,6 +298,69 @@ export default function StudentsPage() {
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Father Aadhar Number</label><input value={form.father_aadhar} onChange={e => setForm({ ...form, father_aadhar: e.target.value })} placeholder='12 digit Aadhar number' style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Mother Aadhar Number</label><input value={form.mother_aadhar} onChange={e => setForm({ ...form, mother_aadhar: e.target.value })} placeholder='12 digit Aadhar number' style={inputStyle} /></div>
             </div>
+            {/* Linked Parents Section - only show when editing */}
+            {editing && (
+              <div style={{ gridColumn: '1 / -1', background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '12px', padding: '16px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ color: '#a78bfa', fontWeight: '700', fontSize: '14px' }}>👪 Linked Parents ({linkedParents.length})</div>
+                  <button onClick={() => setShowAddParent(!showAddParent)}
+                    style={{ padding: '6px 14px', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                    ➕ Add Parent
+                  </button>
+                </div>
+
+                {/* Existing parents */}
+                {linkedParents.length === 0 ? (
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No parents linked yet.</div>
+                ) : linkedParents.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '14px' }}>{p.full_name}</div>
+                      <div style={{ color: '#38bdf8', fontSize: '12px' }}>{p.email}</div>
+                      {p.phone && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{p.phone}</div>}
+                    </div>
+                    <button onClick={() => removeParent(p.id, editing)}
+                      style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>
+                      🗑️ Remove
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add new parent form */}
+                {showAddParent && (
+                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(167,139,250,0.15)' }}>
+                    <div style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>➕ Add New Parent</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                      <div>
+                        <label style={{ color: '#94a3b8', fontSize: '12px' }}>Name *</label>
+                        <input value={newParent.name} onChange={e => setNewParent({ ...newParent, name: e.target.value })}
+                          placeholder='Parent name' style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ color: '#94a3b8', fontSize: '12px' }}>Email *</label>
+                        <input type='email' value={newParent.email} onChange={e => setNewParent({ ...newParent, email: e.target.value })}
+                          placeholder='parent@email.com' style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ color: '#94a3b8', fontSize: '12px' }}>Phone</label>
+                        <input value={newParent.phone} onChange={e => setNewParent({ ...newParent, phone: e.target.value })}
+                          placeholder='+91 98765 43210' style={inputStyle} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => addParent(editing)} disabled={addingParent}
+                        style={{ padding: '8px 18px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+                        {addingParent ? '⏳ Creating...' : '✅ Create Parent Account'}
+                      </button>
+                      <button onClick={() => { setShowAddParent(false); setNewParent({ name: '', email: '', phone: '' }) }}
+                        style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>
                 <input type='checkbox' checked={form.immunization_complete} onChange={e => setForm({ ...form, immunization_complete: e.target.checked })} />
