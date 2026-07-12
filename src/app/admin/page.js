@@ -111,7 +111,8 @@ export default function AdminDashboard() {
       const mm = String(d.getMonth() + 1).padStart(2, '0')
       const dd = String(d.getDate()).padStart(2, '0')
       const bday = students.filter(s => s.date_of_birth && s.date_of_birth.slice(5) === `${mm}-${dd}`)
-      bday.forEach(s => upcoming.push({ ...s, birthdayDate: d.toISOString().split('T')[0] }))
+      const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      bday.forEach(s => upcoming.push({ ...s, birthdayDate: localDate }))
     }
     return upcoming
   }
