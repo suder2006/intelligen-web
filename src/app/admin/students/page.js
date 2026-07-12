@@ -40,7 +40,8 @@ export default function StudentsPage() {
     blood_group: '', emergency_contact: '', admission_date: '',
     authorized_pickup: '', medical_info: '', allergies: '',
     immunization_complete: false, medical_alert: false,
-    medical_alert_note: '', child_aadhar: '', father_aadhar: '', mother_aadhar: ''
+    medical_alert_note: '', child_aadhar: '', father_aadhar: '', mother_aadhar: '',
+    parent2_name: '', parent2_phone: '', parent2_email: ''
   })
 
   useEffect(() => {
@@ -75,7 +76,8 @@ export default function StudentsPage() {
         studentId = data.id
       }
       if (form.parent_email && studentId && !editing) {
-        const { data: parentRes } = await supabase.functions.invoke('create-parent-user', {
+        // Create first parent account
+        await supabase.functions.invoke('create-parent-user', {
           body: {
             student_id: studentId,
             parent_name: form.parent_name || '',
@@ -83,15 +85,33 @@ export default function StudentsPage() {
             parent_phone: form.parent_phone || ''
           }
         })
+
+        // Create second parent account if email provided
+        let parent2Created = false
+        if (form.parent2_email) {
+          await supabase.functions.invoke('create-parent-user', {
+            body: {
+              student_id: studentId,
+              parent_name: form.parent2_name || '',
+              parent_email: form.parent2_email,
+              parent_phone: form.parent2_phone || ''
+            }
+          })
+          parent2Created = true
+        }
+
         setParentCredentials({
           student_name: form.full_name,
           parent_name: form.parent_name || '',
           email: form.parent_email,
           password: 'Parent@123456',
-          url: APP_URL
+          url: APP_URL,
+          parent2_name: form.parent2_name || '',
+          parent2_email: form.parent2_email || '',
+          parent2_created: parent2Created
         })
       }
-      setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '' })
+      setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '', parent2_name: '', parent2_phone: '', parent2_email: '' })
       setEditing(null)
       setShowForm(false)
       await fetchStudents()
@@ -201,6 +221,14 @@ export default function StudentsPage() {
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent Name</label><input value={form.parent_name} onChange={e => setForm({ ...form, parent_name: e.target.value })} placeholder='Parent full name' style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent Phone</label><input value={form.parent_phone} onChange={e => setForm({ ...form, parent_phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent Email</label><input type='email' value={form.parent_email} onChange={e => setForm({ ...form, parent_email: e.target.value })} placeholder='parent@email.com' style={inputStyle} /></div>
+              {/* Second Parent Section */}
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #334155', paddingTop: '16px', marginTop: '4px' }}>
+              <div style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', marginBottom: '12px' }}>👪 Second Parent / Guardian (Optional)</div>
+              </div>
+              <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent 2 Name</label><input value={form.parent2_name} onChange={e => setForm({ ...form, parent2_name: e.target.value })} placeholder='Second parent name' style={inputStyle} /></div>
+              <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent 2 Phone</label><input value={form.parent2_phone} onChange={e => setForm({ ...form, parent2_phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} /></div>
+              <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Parent 2 Email</label><input type='email' value={form.parent2_email} onChange={e => setForm({ ...form, parent2_email: e.target.value })} placeholder='parent2@email.com' style={inputStyle} /></div>
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #334155', paddingTop: '16px', marginTop: '4px' }}></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Address</label><input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder='Home address' style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Admission Date</label><input type='date' value={form.admission_date} onChange={e => setForm({ ...form, admission_date: e.target.value })} style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Blood Group</label><select value={form.blood_group} onChange={e => setForm({ ...form, blood_group: e.target.value })} style={inputStyle}><option value=''>-- Select --</option>{['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}</select></div>
@@ -339,11 +367,29 @@ export default function StudentsPage() {
               <div style={{ marginBottom: '12px' }}><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Parent Name</div><div style={{ fontWeight: '600' }}>{parentCredentials.parent_name || '—'}</div></div>
               <div style={{ marginBottom: '12px' }}><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login Email</div><div style={{ fontWeight: '600', color: '#38bdf8' }}>{parentCredentials.email}</div></div>
               <div style={{ marginBottom: '12px' }}><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Password</div><div style={{ fontWeight: '600', color: '#10b981' }}>{parentCredentials.password}</div></div>
-              <div><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login URL</div><div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>{parentCredentials.url}</div></div>
+              <div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login URL</div>
+                    <div style={{ fontWeight: '600', fontSize: '13px', color: '#f59e0b' }}>{parentCredentials.url}</div>
+                  </div>
+                  {parentCredentials.parent2_created && (
+                  <>
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px', marginTop: '4px', marginBottom: '12px' }}>
+                    <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>👪 Second Parent Account</div>
+                    <div style={{ marginBottom: '8px' }}><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Parent 2 Name</div><div style={{ fontWeight: '600' }}>{parentCredentials.parent2_name || '—'}</div></div>
+                    <div style={{ marginBottom: '8px' }}><div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Login Email</div><div style={{ fontWeight: '600', color: '#38bdf8' }}>{parentCredentials.parent2_email}</div></div>
+                    <div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Password</div>
+                      <div style={{ fontWeight: '600', color: '#10b981' }}>Parent@123456</div>
+                    </div>
+                  </div>
+                  </>
+                  )}
+                </div>
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button onClick={() => {
-                const text = `IntelliGen Parent Login\nStudent: ${parentCredentials.student_name}\nParent: ${parentCredentials.parent_name}\nEmail: ${parentCredentials.email}\nPassword: ${parentCredentials.password}\nURL: ${parentCredentials.url}`
+                const text = `IntelliGen Parent Login\nStudent: ${parentCredentials.student_name}\n\nParent 1: ${parentCredentials.parent_name}\nEmail: ${parentCredentials.email}\nPassword: ${parentCredentials.password}\nURL: ${parentCredentials.url}${parentCredentials.parent2_created ? `\n\nParent 2: ${parentCredentials.parent2_name}\nEmail: ${parentCredentials.parent2_email}\nPassword: Parent@123456\nURL: ${parentCredentials.url}` : ''}`
                 navigator.clipboard.writeText(text)
                 setCopiedCredentials(true)
                 setTimeout(() => setCopiedCredentials(false), 2000)
