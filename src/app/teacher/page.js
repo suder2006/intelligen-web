@@ -456,15 +456,32 @@ const fetchMessages = async () => {
   const getStatus = (studentId) => attendance.find(a => a.student_id === studentId)?.status || null
 
   const markAttendance = async (studentId, status) => {
+  const { data: { user } } = await supabase.auth.getUser()
   // Query DB directly to avoid stale state causing duplicate inserts
   const { data: existing } = await supabase.from('attendance')
-    .select('id')
+    .select('id, status')
     .eq('student_id', studentId)
     .eq('date', date)
     .maybeSingle()
   if (existing) {
+    // Log the change
+    await supabase.from('attendance_logs').insert({
+      student_id: studentId,
+      date,
+      old_status: existing.status,
+      new_status: status,
+      changed_by: user.id
+    })
     await supabase.from('attendance').update({ status }).eq('id', existing.id)
   } else {
+    // Log first time marking
+    await supabase.from('attendance_logs').insert({
+      student_id: studentId,
+      date,
+      old_status: null,
+      new_status: status,
+      changed_by: user.id
+    })
     await supabase.from('attendance').insert([{
       student_id: studentId, date, status,
       checked_in_at: new Date().toISOString()
