@@ -358,7 +358,7 @@ const fetchParentActivity = async () => {
                         <span style={{ color: '#a78bfa', fontSize: '12px', marginLeft: '8px' }}>{s.program}</span>
                       </div>
                       <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                        {new Date(s.birthdayDate).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {new Date(s.birthdayDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   ))}
