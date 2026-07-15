@@ -10,6 +10,7 @@ export default function CurriculumHome() {
     { href: '/admin/curriculum/masters', icon: '📋', title: 'Master Lists', desc: 'Manage Programs, Activities, Categories & Types', color: '#a78bfa' },
     { href: '/admin/curriculum/planner', icon: '📝', title: 'Curriculum Planner', desc: 'Plan weekly activities per program and block', color: '#10b981' },
     { href: '/admin/curriculum/newsletter', icon: '📰', title: 'Newsletter', desc: 'Generate and send weekly newsletters to parents', color: '#f59e0b' },
+    { href: '/admin/curriculum/reports', icon: '📊', title: 'Completion Reports', desc: 'Track daily and weekly curriculum completion by program and teacher', color: '#ef4444' },
   ]
 
   return (
