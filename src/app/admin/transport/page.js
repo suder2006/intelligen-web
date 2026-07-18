@@ -365,7 +365,7 @@ export default function AdminTransportPage() {
     ['stops', '📍 Stops'],
     ['routes', '🗺️ Routes'],
     ['assignments', '👶 Child Assignments'],
-    ['requests', '📋 Requests'],
+    ['trips', '📅 Daily Trips'],
     ['requests', '📋 Requests'],
     ['live', '🟢 Live Tracking'],
   ]
