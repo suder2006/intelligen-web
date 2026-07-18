@@ -4,52 +4,79 @@ import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 import dynamic from 'next/dynamic'
-const AdminLiveMap = dynamic(() => import('@/components/AdminLiveMap'), { ssr: false })
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
 
 export default function AdminTransportPage() {
-  const [routes, setRoutes] = useState([])
-  const [students, setStudents] = useState([])
-  const [studentTransport, setStudentTransport] = useState([])
-  const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [view, setView] = useState('routes') // routes | assign | logs
-  const [showRouteForm, setShowRouteForm] = useState(false)
-  const [editingRoute, setEditingRoute] = useState(null)
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
-  const [filterRoute, setFilterRoute] = useState('all')
-  const [assigningRoute, setAssigningRoute] = useState(null)
-  const [selectedMarkRoute, setSelectedMarkRoute] = useState('')
-  const [selectedMarkEvent, setSelectedMarkEvent] = useState('morning_pickup')
-  const [markSearch, setMarkSearch] = useState('')
-  const [markingStudent, setMarkingStudent] = useState(null)
-  const [lastMarkedStudent, setLastMarkedStudent] = useState(null)
-  const [todayLogs, setTodayLogs] = useState([])
-  const [stops, setStops] = useState([])
-  const [selectedStopsRoute, setSelectedStopsRoute] = useState('')
-  const [savingStop, setSavingStop] = useState(false)
-  const [stopForm, setStopForm] = useState({
-    student_id: '', stop_order: 1,
-    expected_pickup_time: '08:30',
-    drop_time: '12:30',
-    address: ''
-  })
-  const [showStopForm, setShowStopForm] = useState(false)
-  const [editingStop, setEditingStop] = useState(null)
-  const [drivers, setDrivers] = useState([])
-  const [form, setForm] = useState({
-    name: '', vehicle_number: '',
-    caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
-    is_active: true
-  })
-
   const { schoolId } = useSchool()
+  const [view, setView] = useState('vehicles')
+  const [loading, setLoading] = useState(true)
+
+  // Data states
+  const [vehicles, setVehicles] = useState([])
+  const [drivers, setDrivers] = useState([])
+  const [stops, setStops] = useState([])
+  const [routes, setRoutes] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [requests, setRequests] = useState([])
+  const [students, setStudents] = useState([])
   const [liveTrips, setLiveTrips] = useState([])
   const [liveLocations, setLiveLocations] = useState({})
+
+  // Form states
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  // Vehicle form
+  const [vehicleForm, setVehicleForm] = useState({
+    name: '', registration_no: '', capacity: '', phone_number: '', status: 'active'
+  })
+
+  // Driver form
+  const [driverForm, setDriverForm] = useState({
+    name: '', phone: '', licence_number: '', licence_expiry: '', status: 'active', user_id: ''
+  })
+
+  // Stop form
+  const [stopForm, setStopForm] = useState({
+    name: '', address: '', latitude: '', longitude: '', landmark: '', status: 'active'
+  })
+  const [showStopMapPicker, setShowStopMapPicker] = useState(false)
+  const [stopMapSearch, setStopMapSearch] = useState('')
+  const [stopMapSearching, setStopMapSearching] = useState(false)
+  const [stopPickedLocation, setStopPickedLocation] = useState(null)
+
+  // Route form
+  const [routeForm, setRouteForm] = useState({
+    name: '', route_type: 'morning', vehicle_id: '', driver_id: '',
+    departure_time: '07:55', arrival_time: '08:45',
+    operating_days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], status: 'active'
+  })
+  const [routeStops, setRouteStops] = useState([]) // stops added to route
+  const [selectedRouteForStops, setSelectedRouteForStops] = useState(null)
+  const [addingStopToRoute, setAddingStopToRoute] = useState(false)
+  const [stopToAdd, setStopToAdd] = useState('')
+  const [stopETA, setStopETA] = useState('')
+
+  // Assignment form
+  const [assignForm, setAssignForm] = useState({
+    student_id: '', service_type: 'both',
+    morning_route_id: '', morning_stop_id: '',
+    afternoon_route_id: '', afternoon_stop_id: '',
+    start_date: '', end_date: '', status: 'active'
+  })
+
+  // Request review
+  const [reviewingRequest, setReviewingRequest] = useState(null)
+  const [reviewNote, setReviewNote] = useState('')
+  const [reviewAction, setReviewAction] = useState('')
+
   const [liveInterval, setLiveInterval] = useState(null)
 
+  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
+
   useEffect(() => {
-    if (view === 'livemap' && schoolId) {
+    if (view === 'live') {
       fetchLiveData()
       const interval = setInterval(fetchLiveData, 15000)
       setLiveInterval(interval)
@@ -58,304 +85,283 @@ export default function AdminTransportPage() {
     }
     return () => { if (liveInterval) clearInterval(liveInterval) }
   }, [view, schoolId])
-  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
-  useEffect(() => { if (schoolId) fetchLogs() }, [filterDate, filterRoute, schoolId])
-  
-  const fetchLiveData = async () => {
-    // Get all active trips for this school
-    const { data: trips } = await supabase.from('trips')
-      .select('*, transport_routes(name, vehicle_number, profiles:driver_profile_id(full_name))')
-      .eq('school_id', schoolId)
-      .eq('status', 'active')
-    setLiveTrips(trips || [])
 
-    // Get latest location for each active trip
-    const locations = {}
-    for (const trip of (trips || [])) {
-      const { data: loc } = await supabase.from('vehicle_locations')
-        .select('*').eq('trip_id', trip.id)
-        .order('timestamp', { ascending: false }).limit(1).single()
-      if (loc) locations[trip.id] = loc
-    }
-    setLiveLocations(locations)
-  }  
   const fetchAll = async () => {
     setLoading(true)
-    const [routesRes, studentsRes, stRes] = await Promise.all([
-      supabase.from('transport_routes').select('*, profiles:driver_profile_id(full_name, phone)').eq('school_id', schoolId).order('name'),
-      supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name'),
-      supabase.from('student_transport').select('*, transport_routes(name)').eq('school_id', schoolId)
+    const [vRes, dRes, sRes, rRes, aRes, reqRes, stuRes] = await Promise.all([
+      supabase.from('transport_vehicles').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_staff').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_stops').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_routes').select('*, transport_vehicles(name, registration_no), transport_staff(name)').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_assignments').select('*, students(full_name, program), transport_routes!transport_assignments_morning_route_id_fkey(name), transport_stops!transport_assignments_morning_stop_id_fkey(name)').eq('school_id', schoolId).eq('status', 'active'),
+      supabase.from('transport_requests').select('*, students(full_name, program), profiles(full_name, email)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name')
     ])
-    setRoutes(routesRes.data || [])
-    setStudents(studentsRes.data || [])
-    setStudentTransport(stRes.data || [])
-
-    // Load today's logs for marking tab
-    const today = new Date().toISOString().split('T')[0]
-    const { data: tlData } = await supabase.from('transport_logs')
-      .select('*, students(full_name)').eq('school_id', schoolId)
-      .gte('event_time', `${today}T00:00:00`)
-      .lte('event_time', `${today}T23:59:59`)
-      .order('event_time', { ascending: false })
-    setTodayLogs(tlData || [])
-    if (routesRes.data?.length > 0 && !selectedMarkRoute) {
-      setSelectedMarkRoute(routesRes.data[0].id)
-    }
-    await fetchDrivers()
+    setVehicles(vRes.data || [])
+    setDrivers(dRes.data || [])
+    setStops(sRes.data || [])
+    setRoutes(rRes.data || [])
+    setAssignments(aRes.data || [])
+    setRequests(reqRes.data || [])
+    setStudents(stuRes.data || [])
     setLoading(false)
   }
 
-  const fetchLogs = async () => {
-    let query = supabase.from('transport_logs')
-      .select('*, students(full_name, program), transport_routes(name), profiles(full_name)')
-      .eq('school_id', schoolId)
-      .gte('event_time', `${filterDate}T00:00:00`)
-      .lte('event_time', `${filterDate}T23:59:59`)
-      .order('event_time', { ascending: false })
-    if (filterRoute !== 'all') query = query.eq('route_id', filterRoute)
-    const { data } = await query
-    setLogs(data || [])
+  const fetchLiveData = async () => {
+    if (!schoolId) return
+    const { data: trips } = await supabase.from('transport_daily_trips')
+      .select('*, transport_routes(name), transport_vehicles(name, registration_no), transport_staff(name)')
+      .eq('school_id', schoolId).eq('status', 'in_progress')
+      .eq('trip_date', new Date().toISOString().split('T')[0])
+    setLiveTrips(trips || [])
+    const locations = {}
+    for (const trip of (trips || [])) {
+      const { data: loc } = await supabase.from('transport_gps_locations')
+        .select('*').eq('trip_id', trip.id)
+        .order('timestamp', { ascending: false }).limit(1).maybeSingle()
+      if (loc) locations[trip.id] = loc
+    }
+    setLiveLocations(locations)
   }
 
-  const saveRoute = async () => {
-    if (!form.name.trim()) { alert('Please enter route name'); return }
-    setSaving(true)
-    if (editingRoute) {
-      await supabase.from('transport_routes').update(form).eq('id', editingRoute.id)
-    } else {
-      await supabase.from('transport_routes').insert({ ...form, school_id: schoolId })
+  const fetchRouteStops = async (routeId) => {
+    const { data } = await supabase.from('transport_route_stops')
+      .select('*, transport_stops(name, address, latitude, longitude)')
+      .eq('route_id', routeId).order('stop_order')
+    setRouteStops(data || [])
+  }
+
+  // VEHICLE CRUD
+  const saveVehicle = async () => {
+    if (!vehicleForm.name || !vehicleForm.registration_no || !vehicleForm.capacity) {
+      alert('Please fill required fields'); return
     }
-    setShowRouteForm(false)
-    setEditingRoute(null)
-    resetForm()
+    setSaving(true)
+    if (editing) {
+      await supabase.from('transport_vehicles').update(vehicleForm).eq('id', editing)
+    } else {
+      await supabase.from('transport_vehicles').insert({ ...vehicleForm, school_id: schoolId })
+    }
+    setShowForm(false); setEditing(null)
+    setVehicleForm({ name: '', registration_no: '', capacity: '', phone_number: '', status: 'active' })
+    await fetchAll(); setSaving(false)
+  }
+
+  const deleteVehicle = async (id) => {
+    if (!confirm('Delete this vehicle?')) return
+    await supabase.from('transport_vehicles').delete().eq('id', id)
     await fetchAll()
-    setSaving(false)
+  }
+
+  // DRIVER CRUD
+  const saveDriver = async () => {
+    if (!driverForm.name || !driverForm.phone) { alert('Please fill required fields'); return }
+    setSaving(true)
+    if (editing) {
+      await supabase.from('transport_staff').update(driverForm).eq('id', editing)
+    } else {
+      await supabase.from('transport_staff').insert({ ...driverForm, school_id: schoolId, role: 'driver' })
+    }
+    setShowForm(false); setEditing(null)
+    setDriverForm({ name: '', phone: '', licence_number: '', licence_expiry: '', status: 'active', user_id: '' })
+    await fetchAll(); setSaving(false)
+  }
+
+  const deleteDriver = async (id) => {
+    if (!confirm('Delete this driver?')) return
+    await supabase.from('transport_staff').delete().eq('id', id)
+    await fetchAll()
+  }
+
+  // STOP CRUD
+  const searchStopAddress = async () => {
+    if (!stopMapSearch.trim()) return
+    setStopMapSearching(true)
+    try {
+      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(stopMapSearch)}&key=AIzaSyAkK4Tr8r6339Pm4WDJL5e6wQA5h2yZzvI&region=in`)
+      const data = await res.json()
+      if (data.status === 'OK' && data.results.length > 0) {
+        const r = data.results[0]
+        setStopPickedLocation({ lat: r.geometry.location.lat, lng: r.geometry.location.lng, address: r.formatted_address })
+        setStopForm(prev => ({ ...prev, latitude: r.geometry.location.lat, longitude: r.geometry.location.lng, address: r.formatted_address }))
+      } else { alert('Address not found') }
+    } catch (e) { alert('Search failed') }
+    setStopMapSearching(false)
+  }
+
+  const saveStop = async () => {
+    if (!stopForm.name) { alert('Please enter stop name'); return }
+    setSaving(true)
+    if (editing) {
+      await supabase.from('transport_stops').update(stopForm).eq('id', editing)
+    } else {
+      await supabase.from('transport_stops').insert({ ...stopForm, school_id: schoolId })
+    }
+    setShowForm(false); setEditing(null)
+    setStopForm({ name: '', address: '', latitude: '', longitude: '', landmark: '', status: 'active' })
+    setStopPickedLocation(null); setStopMapSearch('')
+    await fetchAll(); setSaving(false)
+  }
+
+  const deleteStop = async (id) => {
+    if (!confirm('Delete this stop?')) return
+    await supabase.from('transport_stops').delete().eq('id', id)
+    await fetchAll()
+  }
+
+  // ROUTE CRUD
+  const saveRoute = async () => {
+    if (!routeForm.name || !routeForm.route_type) { alert('Please fill required fields'); return }
+    setSaving(true)
+    if (editing) {
+      await supabase.from('transport_routes').update(routeForm).eq('id', editing)
+    } else {
+      const { data } = await supabase.from('transport_routes').insert({ ...routeForm, school_id: schoolId }).select().single()
+    }
+    setShowForm(false); setEditing(null)
+    setRouteForm({ name: '', route_type: 'morning', vehicle_id: '', driver_id: '', departure_time: '07:55', arrival_time: '08:45', operating_days: ['Mon','Tue','Wed','Thu','Fri'], status: 'active' })
+    await fetchAll(); setSaving(false)
   }
 
   const deleteRoute = async (id) => {
-    if (!confirm('Delete this route? Students assigned to it will be unassigned.')) return
-    await supabase.from('student_transport').delete().eq('route_id', id)
+    if (!confirm('Delete this route?')) return
+    await supabase.from('transport_route_stops').delete().eq('route_id', id)
     await supabase.from('transport_routes').delete().eq('id', id)
     await fetchAll()
   }
 
-  const assignStudentToRoute = async (studentId, routeId) => {
-    const existing = studentTransport.find(st => st.student_id === studentId)
-    if (existing) {
-      if (!routeId) {
-        await supabase.from('student_transport').delete().eq('id', existing.id)
-      } else {
-        await supabase.from('student_transport').update({ route_id: routeId }).eq('id', existing.id)
+  const addStopToRoute = async () => {
+    if (!stopToAdd || !selectedRouteForStops) return
+    setAddingStopToRoute(true)
+    const maxOrder = routeStops.length > 0 ? Math.max(...routeStops.map(s => s.stop_order)) : 0
+    await supabase.from('transport_route_stops').insert({
+      route_id: selectedRouteForStops,
+      stop_id: stopToAdd,
+      stop_order: maxOrder + 1,
+      estimated_arrival: stopETA || null
+    })
+    setStopToAdd(''); setStopETA('')
+    await fetchRouteStops(selectedRouteForStops)
+    setAddingStopToRoute(false)
+  }
+
+  const removeStopFromRoute = async (id) => {
+    await supabase.from('transport_route_stops').delete().eq('id', id)
+    await fetchRouteStops(selectedRouteForStops)
+  }
+
+  const moveRouteStop = async (stop, direction) => {
+    const sorted = [...routeStops].sort((a, b) => a.stop_order - b.stop_order)
+    const idx = sorted.findIndex(s => s.id === stop.id)
+    const swapIdx = idx + direction
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+    const swap = sorted[swapIdx]
+    await Promise.all([
+      supabase.from('transport_route_stops').update({ stop_order: swap.stop_order }).eq('id', stop.id),
+      supabase.from('transport_route_stops').update({ stop_order: stop.stop_order }).eq('id', swap.id)
+    ])
+    await fetchRouteStops(selectedRouteForStops)
+  }
+
+  const copyRoute = async (route) => {
+    const newName = `${route.name} (Copy)`
+    const { data: newRoute } = await supabase.from('transport_routes').insert({
+      school_id: schoolId, name: newName,
+      route_type: route.route_type === 'morning' ? 'afternoon' : 'morning',
+      vehicle_id: route.vehicle_id, driver_id: route.driver_id,
+      departure_time: route.departure_time, arrival_time: route.arrival_time,
+      operating_days: route.operating_days, status: route.status,
+      copied_from_route_id: route.id
+    }).select().single()
+    if (newRoute) {
+      // Copy stops too
+      const { data: srcStops } = await supabase.from('transport_route_stops').select('*').eq('route_id', route.id).order('stop_order')
+      if (srcStops && srcStops.length > 0) {
+        await supabase.from('transport_route_stops').insert(
+          srcStops.map(s => ({ route_id: newRoute.id, stop_id: s.stop_id, stop_order: s.stop_order, estimated_arrival: s.estimated_arrival }))
+        )
       }
-    } else if (routeId) {
-      await supabase.from('student_transport').insert({
-        school_id: schoolId, student_id: studentId, route_id: routeId, is_active: true
-      })
     }
+    await fetchAll()
+    alert(`✅ Route copied as "${newName}". Edit name and timings as needed.`)
+  }
+
+  // ASSIGNMENT CRUD
+  const saveAssignment = async () => {
+    if (!assignForm.student_id || !assignForm.service_type || !assignForm.start_date) {
+      alert('Please fill required fields'); return
+    }
+    setSaving(true)
+    if (editing) {
+      await supabase.from('transport_assignments').update(assignForm).eq('id', editing)
+    } else {
+      await supabase.from('transport_assignments').insert({ ...assignForm, school_id: schoolId })
+    }
+    setShowForm(false); setEditing(null)
+    setAssignForm({ student_id: '', service_type: 'both', morning_route_id: '', morning_stop_id: '', afternoon_route_id: '', afternoon_stop_id: '', start_date: '', end_date: '', status: 'active' })
+    await fetchAll(); setSaving(false)
+  }
+
+  const deleteAssignment = async (id) => {
+    if (!confirm('End this transport assignment?')) return
+    await supabase.from('transport_assignments').update({ status: 'ended' }).eq('id', id)
     await fetchAll()
   }
 
-  const resetForm = () => setForm({
-    name: '', vehicle_number: '',
-    caretaker_name: '', caretaker_phone: '', morning_pickup_time: '08:00',
-    is_active: true
-  })
-  const fetchDrivers = async () => {
-    const { data } = await supabase.from('profiles')
-      .select('*')
-      .eq('school_id', schoolId).eq('role', 'driver').order('full_name')
-    setDrivers(data || [])
-  }
-
-  const fetchStops = async (routeId) => {
-    const { data } = await supabase.from('route_stops')
-      .select('*, students(full_name, program)')
-      .eq('route_id', routeId)
-      .order('stop_order')
-    setStops(data || [])
-  }
-
-  const saveStop = async () => {
-    if (!stopForm.student_id) { alert('Please select a student'); return }
-    setSavingStop(true)
-    if (editingStop) {
-      await supabase.from('route_stops').update({
-        stop_order: stopForm.stop_order,
-        expected_pickup_time: stopForm.expected_pickup_time,
-        drop_time: stopForm.drop_time,
-        address: stopForm.address
-      }).eq('id', editingStop)
-    } else {
-      // Check for duplicate first
-      const duplicate = stops.find(s => s.student_id === stopForm.student_id)
-      if (duplicate) {
-        alert('This student already has a stop on this route!')
-        setSavingStop(false)
-        return
-      }
-      await supabase.from('route_stops').insert({
-        school_id: schoolId,
-        route_id: selectedStopsRoute,
-        student_id: stopForm.student_id,
-        stop_order: stopForm.stop_order,
-        expected_pickup_time: stopForm.expected_pickup_time,
-        drop_time: stopForm.drop_time,
-        address: stopForm.address
-      })
-    }
-    setShowStopForm(false)
-    setEditingStop(null)
-    setStopForm({ student_id: '', stop_order: stops.length + 2, expected_pickup_time: '08:30', drop_time: '12:30', address: '' })
-    await fetchStops(selectedStopsRoute)
-    setSavingStop(false)
-  }
-
-  const deleteStop = async (id) => {
-    if (!confirm('Remove this stop?')) return
-    await supabase.from('route_stops').delete().eq('id', id)
-    await fetchStops(selectedStopsRoute)
-  }
-
-  const moveStop = async (stop, direction) => {
-    const sortedStops = [...stops].sort((a, b) => a.stop_order - b.stop_order)
-    const idx = sortedStops.findIndex(s => s.id === stop.id)
-    const swapIdx = idx + direction
-    if (swapIdx < 0 || swapIdx >= sortedStops.length) return
-    const swapStop = sortedStops[swapIdx]
-    await Promise.all([
-      supabase.from('route_stops').update({ stop_order: swapStop.stop_order }).eq('id', stop.id),
-      supabase.from('route_stops').update({ stop_order: stop.stop_order }).eq('id', swapStop.id)
-    ])
-    await fetchStops(selectedStopsRoute)
-  }
-
-  // Students already assigned to this route but not yet added as stops
-  const getUnassignedStopStudents = () => {
-    const stopStudentIds = stops.map(s => s.student_id)
-    const routeStudentIds = studentTransport.filter(st => st.route_id === selectedStopsRoute).map(st => st.student_id)
-    return students.filter(s => routeStudentIds.includes(s.id) && !stopStudentIds.includes(s.id))
-  }
-
-  const getMarkRouteStudents = () => {
-    if (!selectedMarkRoute) return []
-    const assignedIds = studentTransport.filter(st => st.route_id === selectedMarkRoute).map(st => st.student_id)
-    return students.filter(s => assignedIds.includes(s.id))
-      .filter(s => !markSearch || s.full_name.toLowerCase().includes(markSearch.toLowerCase()))
-  }
-
-  const isMarkedToday = (studentId, eventType) => {
-    return todayLogs.some(l => l.student_id === studentId && l.event_type === eventType)
-  }
-
-  const refreshTodayLogs = async () => {
-    const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase.from('transport_logs')
-      .select('*, students(full_name)').eq('school_id', schoolId)
-      .gte('event_time', `${today}T00:00:00`)
-      .lte('event_time', `${today}T23:59:59`)
-      .order('event_time', { ascending: false })
-    setTodayLogs(data || [])
-  }
-
-  const markStudentEvent = async (student) => {
-    if (!selectedMarkRoute || !selectedMarkEvent) return
-    if (isMarkedToday(student.id, selectedMarkEvent)) {
-      alert(`${student.full_name} already marked!`); return
-    }
-    setMarkingStudent(student.id)
+  // REQUEST REVIEW
+  const reviewRequest = async (action) => {
+    if (!reviewingRequest) return
     const { data: { user } } = await supabase.auth.getUser()
-    const route = routes.find(r => r.id === selectedMarkRoute)
-    const eventInfo = TRANSPORT_EVENTS.find(e => e.id === selectedMarkEvent)
-    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-
-    await supabase.from('transport_logs').insert({
-      school_id: schoolId, student_id: student.id,
-      route_id: selectedMarkRoute, event_type: selectedMarkEvent,
-      event_time: new Date().toISOString(),
-      marked_by: user.id, method: 'manual', parent_notified: false
-    })
-
-    // Notify parent
-    const msgMap = {
-      morning_pickup: `🌅 ${student.full_name} has boarded the school van.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n👩 Caretaker: ${route?.caretaker_name || '—'}\n⏰ Time: ${time}`,
-      school_drop: `🏫 ${student.full_name} has arrived safely at school.\n⏰ Time: ${time}`,
-      school_pickup: `🎒 ${student.full_name} has boarded the van to come home.\n🚌 Vehicle: ${route?.vehicle_number || '—'}\n👨‍✈️ Driver: ${route?.driver_name || '—'} (${route?.driver_phone || '—'})\n⏰ Time: ${time}`,
-      home_drop: `🏠 ${student.full_name} has been dropped safely at home.\n⏰ Time: ${time}\n✅ Please confirm receipt in the app.`
-    }
-
-    const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', student.id)
-    if (ps && ps.length > 0) {
-      for (const { parent_id } of ps) {
-        await supabase.from('chat_messages').insert({
-          sender_id: schoolId, receiver_id: parent_id,
-          sender_name: route?.name || 'School',
-          content: msgMap[selectedMarkEvent]
-        })
-      }
-    }
-
-    setLastMarkedStudent({ student, event: eventInfo, time })
-    setMarkingStudent(null)
-    await refreshTodayLogs()
+    await supabase.from('transport_requests').update({
+      status: action === 'approve' ? 'approved' : 'rejected',
+      admin_notes: reviewNote,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', reviewingRequest.id)
+    setReviewingRequest(null); setReviewNote('')
+    await fetchAll()
+    alert(action === 'approve' ? '✅ Request approved!' : '❌ Request rejected.')
   }
 
-  const exportLogs = () => {
-    const headers = ['Time', 'Student', 'Program', 'Route', 'Event', 'Method', 'Marked By']
-    const rows = logs.map(l => [
-      new Date(l.event_time).toLocaleString(),
-      l.students?.full_name, l.students?.program,
-      l.transport_routes?.name, l.event_type,
-      l.method, l.profiles?.full_name
-    ])
-    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c || ''}"`).join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `transport-${filterDate}.csv`; a.click()
-  }
-
-  const TRANSPORT_EVENTS = [
-    { id: 'morning_pickup', label: 'Morning Pickup', icon: '🌅', color: '#38bdf8', desc: 'Boarded van from home' },
-    { id: 'school_drop', label: 'Dropped at School', icon: '🏫', color: '#34d399', desc: 'Arrived at school' },
-    { id: 'school_pickup', label: 'Left School', icon: '🎒', color: '#fbbf24', desc: 'Boarded van to go home' },
-    { id: 'home_drop', label: 'Dropped at Home', icon: '🏠', color: '#a78bfa', desc: 'Reached home safely' },
-  ]
-
-  const eventLabel = {
-    morning_pickup: '🌅 Morning Pickup',
-    school_drop: '🏫 Dropped at School',
-    school_pickup: '🎒 Left School',
-    home_drop: '🏠 Dropped at Home'
-  }
-
-  const eventColor = {
-    morning_pickup: { bg: 'rgba(56,189,248,0.15)', color: '#38bdf8' },
-    school_drop: { bg: 'rgba(16,185,129,0.15)', color: '#34d399' },
-    school_pickup: { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24' },
-    home_drop: { bg: 'rgba(167,139,250,0.15)', color: '#a78bfa' }
-  }
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const morningRoutes = routes.filter(r => r.route_type === 'morning')
+  const afternoonRoutes = routes.filter(r => r.route_type === 'afternoon')
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }
+  const labelStyle = { color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }
+
+  const TABS = [
+    ['vehicles', '🚌 Vehicles'],
+    ['drivers', '👨‍✈️ Drivers'],
+    ['stops', '📍 Stops'],
+    ['routes', '🗺️ Routes'],
+    ['assignments', '👶 Child Assignments'],
+    ['requests', '📋 Requests'],
+    ['live', '🟢 Live Tracking'],
+  ]
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .main { margin-left: 240px; flex: 1; padding: 32px; }
         .btn-primary { background: linear-gradient(135deg, #0ea5e9, #38bdf8); border: none; border-radius: 10px; padding: 10px 20px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 6px 12px; color: #f87171; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn-edit { background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2); border-radius: 8px; padding: 6px 12px; color: #38bdf8; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 20px; margin-bottom: 14px; }
-        .view-tab { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+        .view-tab { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
         .view-tab.active { background: rgba(56,189,248,0.15); color: #38bdf8; }
         .view-tab:not(.active) { background: transparent; color: rgba(255,255,255,0.4); }
-        .badge { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; }
+        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
         .table-wrap { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; overflow: auto; }
         table { width: 100%; border-collapse: collapse; }
         th { padding: 11px 14px; text-align: left; font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 600; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.07); white-space: nowrap; }
-        td { padding: 11px 14px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); }
+        td { padding: 11px 14px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
+        .badge { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
         @media (max-width: 768px) { .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
@@ -366,151 +372,133 @@ export default function AdminTransportPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>🚌 Transport Management</h1>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Manage routes, assign students and view logs</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Manage vehicles, drivers, routes and child assignments</p>
           </div>
-          {view === 'routes' && (
-            <button onClick={() => { resetForm(); setEditingRoute(null); setShowRouteForm(true) }} className="btn-primary">+ Add Route</button>
+          {['vehicles','drivers','stops','routes','assignments'].includes(view) && (
+            <button onClick={() => { setShowForm(true); setEditing(null) }} className="btn-primary">
+              + Add {view === 'vehicles' ? 'Vehicle' : view === 'drivers' ? 'Driver' : view === 'stops' ? 'Stop' : view === 'routes' ? 'Route' : 'Assignment'}
+            </button>
           )}
-          {view === 'logs' && (
-            <button onClick={exportLogs} className="btn-secondary">📥 Export</button>
-          )}
-
         </div>
 
-        {/* View Tabs */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['routes', '🚌 Routes'], ['assign', '👶 Assign Students'], ['stops', '🗺️ Manage Stops'], ['drivers', '👨‍✈️ Drivers'], ['mark', '✅ Mark Events'], ['logs', '📋 Daily Logs'], ['livemap', '🗺️ Live Map']].map(([v, l]) => (
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', flexWrap: 'wrap' }}>
+          {TABS.map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
 
         {loading ? <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div> : (
           <>
-            {/* ROUTES VIEW */}
-            {view === 'routes' && (
+            {/* ═══════════════════════════════ VEHICLES ═══════════════════════════════ */}
+            {view === 'vehicles' && (
               <>
-                {routes.length === 0 ? (
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                  {[
+                    { label: 'Total', value: vehicles.length, color: '#38bdf8' },
+                    { label: 'Active', value: vehicles.filter(v => v.status === 'active').length, color: '#10b981' },
+                    { label: 'Maintenance', value: vehicles.filter(v => v.status === 'maintenance').length, color: '#f59e0b' },
+                    { label: 'Inactive', value: vehicles.filter(v => v.status === 'inactive').length, color: '#f87171' },
+                  ].map(s => (
+                    <div key={s.label} className="card" style={{ padding: '14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '24px', fontWeight: '700', color: s.color }}>{s.value}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {vehicles.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚌</div>
-                    <div>No routes yet. Click "+ Add Route" to create one.</div>
+                    <div>No vehicles yet. Click "+ Add Vehicle" to add one.</div>
                   </div>
-                ) : routes.map(route => {
-                  const assigned = studentTransport.filter(st => st.route_id === route.id)
-                  return (
-                    <div key={route.id} className="card">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: '700', fontSize: '17px' }}>{route.name}</span>
-                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: route.is_active ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: route.is_active ? '#34d399' : '#f87171', fontWeight: '600' }}>
-                              {route.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontWeight: '600' }}>
-                              👶 {assigned.length} students
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                            {route.vehicle_number && (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>VEHICLE</div>
-                                <div style={{ fontWeight: '600', color: '#fbbf24' }}>🚌 {route.vehicle_number}</div>
-                              </div>
-                            )}
-                              {route.profiles?.full_name ? (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>DRIVER</div>
-                                <div style={{ fontWeight: '600' }}>👨‍✈️ {route.profiles.full_name}</div>
-                                {route.profiles?.phone && <div style={{ color: '#38bdf8', fontSize: '12px' }}>📞 {route.profiles.phone}</div>}
-                              </div>
-                            ) : (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>DRIVER</div>
-                                <div style={{ color: '#f87171', fontSize: '13px' }}>⚠️ Not assigned</div>
-                              </div>
-                            )}
-                            {route.caretaker_name && (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>CARETAKER</div>
-                                <div style={{ fontWeight: '600' }}>👩 {route.caretaker_name}</div>
-                                {route.caretaker_phone && <div style={{ color: '#38bdf8', fontSize: '12px' }}>📞 {route.caretaker_phone}</div>}
-                              </div>
-                            )}
-                            {route.morning_pickup_time && (
-                              <div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginBottom: '2px' }}>MORNING PICKUP</div>
-                                <div style={{ fontWeight: '600', color: '#38bdf8' }}>🌅 {route.morning_pickup_time}</div>
-                              </div>
-                            )}
-
-                          </div>
-                          {/* Assigned students */}
-                          {assigned.length > 0 && (
-                            <div style={{ marginTop: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                              {assigned.map(st => {
-                                const student = students.find(s => s.id === st.student_id)
-                                return student ? (
-                                  <span key={st.id} style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>
-                                    {student.full_name}
-                                  </span>
-                                ) : null
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => { setEditingRoute(route); setForm({ name: route.name, vehicle_number: route.vehicle_number || '', caretaker_name: route.caretaker_name || '', caretaker_phone: route.caretaker_phone || '', morning_pickup_time: route.morning_pickup_time || '08:00', is_active: route.is_active }); setShowRouteForm(true) }}
-                            style={{ padding: '7px 12px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px' }}>✏️ Edit</button>
-                          <button onClick={() => deleteRoute(route.id)}
-                            style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '13px' }}>🗑️</button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </>
-            )}
-
-            {/* ASSIGN STUDENTS */}
-            {view === 'assign' && (
-              <>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
-                  Assign each student to a transport route. Students without a route won't be tracked.
-                </div>
-                {routes.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No routes yet. Create routes first!</div>
                 ) : (
                   <div className="table-wrap">
                     <table>
-                      <thead>
-                        <tr>
-                          <th>Student</th>
-                          <th>Program</th>
-                          <th>Assigned Route</th>
-                          <th>Change Route</th>
-                        </tr>
-                      </thead>
+                      <thead><tr>
+                        <th>Vehicle</th><th>Registration</th><th>Capacity</th><th>Phone</th><th>Status</th><th>Actions</th>
+                      </tr></thead>
                       <tbody>
-                        {students.map(s => {
-                          const assignment = studentTransport.find(st => st.student_id === s.id)
+                        {vehicles.map(v => (
+                          <tr key={v.id}>
+                            <td><div style={{ fontWeight: '600' }}>🚌 {v.name}</div></td>
+                            <td style={{ color: '#fbbf24' }}>{v.registration_no}</td>
+                            <td><span className="badge" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>👦 {v.capacity} children</span></td>
+                            <td style={{ color: '#38bdf8' }}>{v.phone_number || '—'}</td>
+                            <td>
+                              <span className="badge" style={{
+                                background: v.status === 'active' ? 'rgba(16,185,129,0.15)' : v.status === 'maintenance' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                                color: v.status === 'active' ? '#34d399' : v.status === 'maintenance' ? '#fbbf24' : '#f87171'
+                              }}>{v.status}</span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button className="btn-edit" onClick={() => {
+                                  setEditing(v.id)
+                                  setVehicleForm({ name: v.name, registration_no: v.registration_no, capacity: v.capacity, phone_number: v.phone_number || '', status: v.status })
+                                  setShowForm(true)
+                                }}>✏️ Edit</button>
+                                <button className="btn-danger" onClick={() => deleteVehicle(v.id)}>🗑️</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ═══════════════════════════════ DRIVERS ═══════════════════════════════ */}
+            {view === 'drivers' && (
+              <>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
+                  Add drivers who will operate transport vehicles. Each driver gets a login to the driver app.
+                </div>
+                {drivers.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>👨‍✈️</div>
+                    <div>No drivers yet. Click "+ Add Driver" to add one.</div>
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr>
+                        <th>Driver</th><th>Phone</th><th>Licence</th><th>Expiry</th><th>Status</th><th>Actions</th>
+                      </tr></thead>
+                      <tbody>
+                        {drivers.map(d => {
+                          const isExpiring = d.licence_expiry && new Date(d.licence_expiry) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                          const isExpired = d.licence_expiry && new Date(d.licence_expiry) < new Date()
                           return (
-                            <tr key={s.id}>
-                              <td style={{ fontWeight: '600' }}>{s.full_name}</td>
-                              <td><span style={{ color: '#a78bfa', fontSize: '12px' }}>{s.program || '—'}</span></td>
+                            <tr key={d.id}>
+                              <td><div style={{ fontWeight: '600' }}>👨‍✈️ {d.name}</div></td>
+                              <td style={{ color: '#38bdf8' }}>{d.phone || '—'}</td>
+                              <td style={{ color: 'rgba(255,255,255,0.6)' }}>{d.licence_number || '—'}</td>
                               <td>
-                                {assignment ? (
-                                  <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '12px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: '600' }}>
-                                    🚌 {assignment.transport_routes?.name}
+                                {d.licence_expiry ? (
+                                  <span style={{ color: isExpired ? '#f87171' : isExpiring ? '#fbbf24' : '#34d399', fontSize: '12px' }}>
+                                    {isExpired ? '❌' : isExpiring ? '⚠️' : '✅'} {d.licence_expiry}
                                   </span>
-                                ) : (
-                                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '12px' }}>Not assigned</span>
-                                )}
+                                ) : '—'}
                               </td>
                               <td>
-                                <select value={assignment?.route_id || ''} onChange={e => assignStudentToRoute(s.id, e.target.value || null)}
-                                  style={{ padding: '6px 10px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                                  <option value=''>-- No Transport --</option>
-                                  {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                </select>
+                                <span className="badge" style={{
+                                  background: d.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                  color: d.status === 'active' ? '#34d399' : '#f87171'
+                                }}>{d.status}</span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <button className="btn-edit" onClick={() => {
+                                    setEditing(d.id)
+                                    setDriverForm({ name: d.name, phone: d.phone || '', licence_number: d.licence_number || '', licence_expiry: d.licence_expiry || '', status: d.status, user_id: d.user_id || '' })
+                                    setShowForm(true)
+                                  }}>✏️ Edit</button>
+                                  <button className="btn-danger" onClick={() => deleteDriver(d.id)}>🗑️</button>
+                                </div>
                               </td>
                             </tr>
                           )
@@ -522,440 +510,55 @@ export default function AdminTransportPage() {
               </>
             )}
 
-            {/* MANAGE STOPS VIEW */}
+            {/* ═══════════════════════════════ STOPS ═══════════════════════════════ */}
             {view === 'stops' && (
               <>
                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
-                  Set the pickup stop order and expected times for each student on a route.
+                  Stops are shared pickup/drop locations. Multiple children can share the same stop.
                 </div>
-
-                {/* Route Selector */}
-                <div className="card" style={{ marginBottom: '20px' }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '12px', color: '#38bdf8' }}>Select Route</div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {routes.length === 0 ? (
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No routes yet. Create routes first.</div>
-                    ) : routes.map(r => (
-                      <button key={r.id} onClick={() => { setSelectedStopsRoute(r.id); fetchStops(r.id); setShowStopForm(false) }}
-                        style={{ padding: '9px 16px', borderRadius: '10px', border: `2px solid ${selectedStopsRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedStopsRoute === r.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedStopsRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '13px' }}>
-                        🚌 {r.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {selectedStopsRoute && (
-                  <>
-                    {/* Add Stop Button */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <div style={{ fontWeight: '700', fontSize: '16px' }}>
-                        🗺️ Stop Order
-                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', fontWeight: '400', marginLeft: '8px' }}>{stops.length} stops</span>
-                      </div>
-                      {getUnassignedStopStudents().length > 0 && (
-                        <button onClick={() => {
-                          setShowStopForm(true)
-                          setEditingStop(null)
-                          setStopForm({ student_id: '', stop_order: stops.length + 1, expected_pickup_time: '07:00', expected_dropoff_time: '13:30', address: '' })
-                        }} className="btn-primary">+ Add Stop</button>
-                      )}
-                    </div>
-
-                    {/* Add/Edit Stop Form */}
-                    {showStopForm && (
-                      <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                        <div style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '16px' }}>{editingStop ? '✏️ Edit Stop' : '➕ Add Stop'}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                          {!editingStop && (
-                            <div style={{ gridColumn: '1 / -1' }}>
-                              <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Student *</label>
-                              <select value={stopForm.student_id} onChange={e => setStopForm({ ...stopForm, student_id: e.target.value })} style={inputStyle}>
-                                <option value=''>-- Select Student --</option>
-                                {getUnassignedStopStudents().map(s => (
-                                  <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-                          <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Stop Order</label>
-                            <input type='number' min='1' value={stopForm.stop_order} onChange={e => setStopForm({ ...stopForm, stop_order: parseInt(e.target.value) })} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Address</label>
-                            <input value={stopForm.address} onChange={e => setStopForm({ ...stopForm, address: e.target.value })} placeholder='e.g. 12, Anna Nagar' style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Morning Pickup Time</label>
-                            <input type='time' value={stopForm.expected_pickup_time} onChange={e => setStopForm({ ...stopForm, expected_pickup_time: e.target.value })} style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🏠 Afternoon Drop Time</label>
-                            <select value={stopForm.drop_time} onChange={e => setStopForm({ ...stopForm, drop_time: e.target.value })} style={inputStyle}>
-                              <option value='12:30'>12:30 PM</option>
-                              <option value='14:30'>2:30 PM</option>
-                              <option value='16:30'>4:30 PM</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
-                          <button onClick={() => { setShowStopForm(false); setEditingStop(null) }} className="btn-secondary">Cancel</button>
-                          <button onClick={saveStop} disabled={savingStop} className="btn-primary">{savingStop ? 'Saving...' : editingStop ? 'Update Stop' : 'Add Stop'}</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stops List */}
-                    {stops.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
-                        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🗺️</div>
-                        <div>No stops added yet. Click "+ Add Stop" to begin.</div>
-                        {studentTransport.filter(st => st.route_id === selectedStopsRoute).length === 0 && (
-                          <div style={{ color: '#f87171', fontSize: '13px', marginTop: '8px' }}>⚠️ No students assigned to this route yet. Go to "Assign Students" first.</div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        {/* Legend */}
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '14px', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-                          <span>🌅 Morning pickup time</span>
-                          <span>🏠 Afternoon dropoff time</span>
-                          <span>↕️ Drag to reorder</span>
-                        </div>
-
-                        {[...stops].sort((a, b) => a.stop_order - b.stop_order).map((stop, idx) => (
-                          <div key={stop.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 16px', marginBottom: '10px' }}>
-
-                            {/* Stop Number */}
-                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '16px', flexShrink: 0 }}>
-                              {stop.stop_order}
-                            </div>
-
-                            {/* Student Info */}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '4px' }}>{stop.students?.full_name}</div>
-                              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
-                                <span style={{ color: '#a78bfa' }}>{stop.students?.program}</span>
-                                {stop.address && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📍 {stop.address}</span>}
-                                {stop.expected_pickup_time && <span style={{ color: '#38bdf8' }}>🌅 {stop.expected_pickup_time?.substring(0, 5)}</span>}
-                                {stop.drop_time && (
-                                  <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', fontWeight: '600' }}>
-                                    🏠 Drop: {stop.drop_time?.startsWith('12:30') ? '12:30 PM' : stop.drop_time?.startsWith('14:30') ? '2:30 PM' : '4:30 PM'}
-                                  </span>
-                                )}
-                                {stop.home_latitude && <span style={{ color: '#10b981' }}>📌 Location set</span>}
-                                {!stop.home_latitude && <span style={{ color: '#f59e0b' }}>📌 Location not set (parent will set)</span>}
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                              {/* Move Up */}
-                              <button onClick={() => moveStop(stop, -1)} disabled={idx === 0}
-                                style={{ padding: '6px 10px', background: idx === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: idx === 0 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '12px' }}>
-                                ▲
-                              </button>
-                              {/* Move Down */}
-                              <button onClick={() => moveStop(stop, 1)} disabled={idx === stops.length - 1}
-                                style={{ padding: '6px 10px', background: idx === stops.length - 1 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: idx === stops.length - 1 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === stops.length - 1 ? 'default' : 'pointer', fontSize: '12px' }}>
-                                ▼
-                              </button>
-                              {/* Edit */}
-                              <button onClick={() => {
-                                setEditingStop(stop.id)
-                                const dt = stop.drop_time?.substring(0, 5) || '12:30'
-                                setStopForm({ student_id: stop.student_id, stop_order: stop.stop_order, expected_pickup_time: stop.expected_pickup_time?.substring(0, 5) || '08:30', drop_time: dt, address: stop.address || '' })
-                                setShowStopForm(true)
-                              }}
-                                style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>
-                                ✏️
-                              </button>
-                              {/* Delete */}
-                              <button onClick={() => deleteStop(stop.id)}
-                                style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* School as final stop */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '14px', padding: '14px 16px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
-                            🏫
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: '700', color: '#34d399' }}>School</div>
-                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>Final destination</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}  
-
-            {/* DRIVERS VIEW */}
-            {view === 'drivers' && (
-              <>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
-                  Assign drivers to routes. To add a new driver, go to 
-                  <a href='/admin/staff' style={{ color: '#38bdf8', marginLeft: '4px' }}>
-                    Staff Management
-                  </a> and add staff with role "Driver 🚌".
-                </div>
-
-                {/* Driver list */}
-                {drivers.length === 0 ? (
+                {stops.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>👨‍✈️</div>
-                    <div style={{ marginBottom: '12px' }}>No drivers found.</div>
-                    <a href='/admin/staff'
-                      style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', textDecoration: 'none', display: 'inline-block' }}>
-                      + Add Driver in Staff Management
-                    </a>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📍</div>
+                    <div>No stops yet. Click "+ Add Stop" to create one.</div>
                   </div>
-                ) : drivers.map(driver => {
-                  const assignedRoute = routes.find(r => r.driver_profile_id === driver.id)
-                  return (
-                    <div key={driver.id} className="card">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                          <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
-                            👨‍✈️
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{driver.full_name}</div>
-                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '13px' }}>
-                              {driver.phone && <span style={{ color: '#38bdf8' }}>📞 {driver.phone}</span>}
-                              {assignedRoute ? (
-                                <span style={{ color: '#34d399' }}>🚌 {assignedRoute.name}</span>
-                              ) : (
-                                <span style={{ color: '#f87171' }}>⚠️ No route assigned</span>
-                              )}
-                            </div>
-                            <div style={{ marginTop: '4px' }}>
-                              <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontWeight: '600' }}>
-                                🔑 Login: intelligenapp.com/driver
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Assign Route */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <label style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Assign Route:</label>
-                          <select
-                            value={assignedRoute?.id || ''}
-                            onChange={async e => {
-                              // RLS blocks updating transport_routes.driver_profile_id
-                              // from the client, so route the write through the
-                              // server-side service-role endpoint.
-                              const res = await fetch('/api/admin/assign-driver-route', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  driver_profile_id: driver.id,
-                                  route_id: e.target.value || null,
-                                  school_id: schoolId
-                                })
-                              })
-                              if (!res.ok) {
-                                const { error } = await res.json().catch(() => ({}))
-                                alert(`Could not assign route: ${error || res.statusText}`)
-                                return
-                              }
-                              await fetchAll()
-                              await fetchDrivers()
-                            }}
-                            style={{ padding: '8px 12px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                            <option value=''>-- No Route --</option>
-                            {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </>
-            )}  
-
-            {/* MARK EVENTS VIEW */}
-            {view === 'mark' && (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>✅ Mark Transport Events</div>
-                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Mark student boarding and dropping for today</div>
-                </div>
-
-                {/* Last marked */}
-                {lastMarkedStudent && (
-                  <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '14px', padding: '14px 18px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: '700', color: '#34d399' }}>✅ {lastMarkedStudent.student.full_name} marked!</div>
-                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{lastMarkedStudent.event.icon} {lastMarkedStudent.event.label} · {lastMarkedStudent.time} · Parent notified</div>
-                    </div>
-                    <button onClick={() => setLastMarkedStudent(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '18px' }}>×</button>
-                  </div>
-                )}
-
-                {/* Step 1: Route */}
-                <div className="card" style={{ marginBottom: '14px' }}>
-                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#38bdf8' }}>Step 1: Select Route 🚌</div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {routes.length === 0 ? (
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No routes yet. Create routes first.</div>
-                    ) : routes.map(r => (
-                      <button key={r.id} onClick={() => setSelectedMarkRoute(r.id)}
-                        style={{ padding: '9px 16px', borderRadius: '10px', border: `2px solid ${selectedMarkRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedMarkRoute === r.id ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedMarkRoute === r.id ? '#38bdf8' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: '600', fontSize: '13px' }}>
-                        🚌 {r.name}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedMarkRoute && (() => {
-                    const route = routes.find(r => r.id === selectedMarkRoute)
-                    return route ? (
-                      <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px' }}>
-                        {route.vehicle_number && <span style={{ color: '#fbbf24' }}>🚌 {route.vehicle_number}</span>}
-                        {route.profiles?.full_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {route.profiles.full_name} {route.profiles?.phone && `· 📞 ${route.profiles.phone}`}</span>}
-                        {route.caretaker_name && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👩 {route.caretaker_name}</span>}
-                      </div>
-                    ) : null
-                  })()}
-                </div>
-
-                {/* Step 2: Event */}
-                <div className="card" style={{ marginBottom: '14px' }}>
-                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#a78bfa' }}>Step 2: Select Event 📍</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px' }}>
-                    {TRANSPORT_EVENTS.map(evt => (
-                      <button key={evt.id} onClick={() => setSelectedMarkEvent(evt.id)}
-                        style={{ padding: '12px', borderRadius: '10px', border: `2px solid ${selectedMarkEvent === evt.id ? evt.color : 'rgba(255,255,255,0.08)'}`, background: selectedMarkEvent === evt.id ? `${evt.color}18` : 'transparent', color: selectedMarkEvent === evt.id ? evt.color : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}>
-                        <div style={{ fontSize: '20px', marginBottom: '4px' }}>{evt.icon}</div>
-                        <div style={{ fontWeight: '700', fontSize: '12px' }}>{evt.label}</div>
-                        <div style={{ fontSize: '10px', opacity: 0.7 }}>{evt.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Step 3: Students */}
-                <div className="card" style={{ marginBottom: '14px' }}>
-                  <div style={{ fontWeight: '700', fontSize: '14px', marginBottom: '12px', color: '#10b981' }}>Step 3: Mark Students ✅</div>
-                  <input placeholder='Search student...' value={markSearch} onChange={e => setMarkSearch(e.target.value)}
-                    style={{ width: '100%', padding: '9px 14px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '13px', marginBottom: '12px', outline: 'none', fontFamily: "'DM Sans', sans-serif" }} />
-                  {getMarkRouteStudents().length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
-                      {selectedMarkRoute ? 'No students on this route.' : 'Select a route first.'}
-                    </div>
-                  ) : getMarkRouteStudents().map(student => {
-                    const marked = isMarkedToday(student.id, selectedMarkEvent)
-                    const isMarkingThis = markingStudent === student.id
-                    const eventData = TRANSPORT_EVENTS.find(e => e.id === selectedMarkEvent)
-                    return (
-                      <div key={student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: marked ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)', border: `1px solid ${marked ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '10px', marginBottom: '8px', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: marked ? 'linear-gradient(135deg, #10b981, #34d399)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff', flexShrink: 0 }}>
-                            {student.full_name?.[0]?.toUpperCase()}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: '600', fontSize: '14px' }}>{student.full_name}</div>
-                            <div style={{ color: '#a78bfa', fontSize: '12px' }}>{student.program}</div>
-                          </div>
-                        </div>
-                        <button onClick={() => markStudentEvent(student)} disabled={marked || isMarkingThis}
-                          style={{ padding: '8px 16px', background: marked ? 'rgba(16,185,129,0.15)' : `${eventData?.color}22`, color: marked ? '#34d399' : eventData?.color, border: `1px solid ${marked ? 'rgba(16,185,129,0.3)' : eventData?.color + '44'}`, borderRadius: '8px', cursor: marked ? 'default' : 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
-                          {isMarkingThis ? '⏳...' : marked ? '✅ Done' : `${eventData?.icon} Mark`}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Today's log */}
-                {todayLogs.length > 0 && (
-                  <div className="card">
-                    <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '12px', color: 'rgba(255,255,255,0.6)' }}>📋 Today's Log ({todayLogs.length})</div>
-                    {todayLogs.slice(0, 10).map(log => (
-                      <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '16px' }}>{TRANSPORT_EVENTS.find(e => e.id === log.event_type)?.icon}</span>
-                          <span style={{ fontSize: '13px', fontWeight: '500' }}>{log.students?.full_name}</span>
-                        </div>
-                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
-                          {new Date(log.event_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* LOGS VIEW */}
-            {view === 'logs' && (
-              <>
-                {/* Filters */}
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <input type='date' value={filterDate} onChange={e => setFilterDate(e.target.value)}
-                    style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
-                  <select value={filterRoute} onChange={e => setFilterRoute(e.target.value)}
-                    style={{ padding: '8px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }}>
-                    <option value='all'>All Routes</option>
-                    {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{logs.length} events</span>
-                </div>
-
-                {/* Summary counts */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-                  {Object.entries(eventLabel).map(([type, label]) => (
-                    <div key={type} className="card" style={{ padding: '14px' }}>
-                      <div style={{ fontSize: '20px', fontWeight: '700', color: eventColor[type]?.color }}>
-                        {logs.filter(l => l.event_type === type).length}
-                      </div>
-                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {logs.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No transport events for {filterDate}</div>
                 ) : (
                   <div className="table-wrap">
                     <table>
-                      <thead>
-                        <tr>
-                          <th>Time</th>
-                          <th>Student</th>
-                          <th>Route</th>
-                          <th>Event</th>
-                          <th>Method</th>
-                          <th>Marked By</th>
-                        </tr>
-                      </thead>
+                      <thead><tr>
+                        <th>Stop Name</th><th>Address</th><th>Landmark</th><th>Location</th><th>Status</th><th>Actions</th>
+                      </tr></thead>
                       <tbody>
-                        {logs.map(log => (
-                          <tr key={log.id}>
-                            <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
-                              {new Date(log.event_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        {stops.map(s => (
+                          <tr key={s.id}>
+                            <td><div style={{ fontWeight: '600' }}>📍 {s.name}</div></td>
+                            <td style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '200px' }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.address || '—'}</div>
+                            </td>
+                            <td style={{ color: 'rgba(255,255,255,0.4)' }}>{s.landmark || '—'}</td>
+                            <td>
+                              {s.latitude && s.longitude ? (
+                                <span style={{ color: '#10b981', fontSize: '12px' }}>✅ Set</span>
+                              ) : (
+                                <span style={{ color: '#f87171', fontSize: '12px' }}>❌ Not set</span>
+                              )}
                             </td>
                             <td>
-                              <div style={{ fontWeight: '600' }}>{log.students?.full_name}</div>
-                              <div style={{ color: '#a78bfa', fontSize: '11px' }}>{log.students?.program}</div>
-                            </td>
-                            <td style={{ color: '#fbbf24', fontSize: '12px' }}>{log.transport_routes?.name}</td>
-                            <td>
-                              <span className="badge" style={{ background: eventColor[log.event_type]?.bg, color: eventColor[log.event_type]?.color }}>
-                                {eventLabel[log.event_type]}
-                              </span>
+                              <span className="badge" style={{
+                                background: s.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                color: s.status === 'active' ? '#34d399' : '#f87171'
+                              }}>{s.status}</span>
                             </td>
                             <td>
-                              <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: log.method === 'qr_scan' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.06)', color: log.method === 'qr_scan' ? '#38bdf8' : 'rgba(255,255,255,0.4)' }}>
-                                {log.method === 'qr_scan' ? '📷 QR Scan' : '✋ Manual'}
-                              </span>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button className="btn-edit" onClick={() => {
+                                  setEditing(s.id)
+                                  setStopForm({ name: s.name, address: s.address || '', latitude: s.latitude || '', longitude: s.longitude || '', landmark: s.landmark || '', status: s.status })
+                                  if (s.latitude && s.longitude) setStopPickedLocation({ lat: s.latitude, lng: s.longitude, address: s.address })
+                                  setShowForm(true)
+                                }}>✏️ Edit</button>
+                                <button className="btn-danger" onClick={() => deleteStop(s.id)}>🗑️</button>
+                              </div>
                             </td>
-                            <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>{log.profiles?.full_name}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -965,76 +568,254 @@ export default function AdminTransportPage() {
               </>
             )}
 
-            {/* LIVE MAP VIEW */}
-            {view === 'livemap' && (
+            {/* ═══════════════════════════════ ROUTES ═══════════════════════════════ */}
+            {view === 'routes' && (
+              <>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
+                  Routes define the order of stops for morning pickup and afternoon drop. Morning and afternoon are separate routes.
+                </div>
+
+                {/* Morning Routes */}
+                <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '12px', color: '#38bdf8' }}>🌅 Morning Routes ({morningRoutes.length})</div>
+                {morningRoutes.length === 0 ? (
+                  <div className="card" style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '20px' }}>No morning routes yet.</div>
+                ) : morningRoutes.map(r => (
+                  <RouteCard key={r.id} route={r}
+                    onEdit={() => {
+                      setEditing(r.id)
+                      setRouteForm({ name: r.name, route_type: r.route_type, vehicle_id: r.vehicle_id || '', driver_id: r.driver_id || '', departure_time: r.departure_time || '07:55', arrival_time: r.arrival_time || '08:45', operating_days: r.operating_days || ['Mon','Tue','Wed','Thu','Fri'], status: r.status })
+                      setShowForm(true)
+                    }}
+                    onDelete={() => deleteRoute(r.id)}
+                    onCopy={() => copyRoute(r)}
+                    onManageStops={() => { setSelectedRouteForStops(r.id); fetchRouteStops(r.id) }}
+                    selectedRoute={selectedRouteForStops}
+                    routeStops={routeStops}
+                    stops={stops}
+                    stopToAdd={stopToAdd}
+                    setStopToAdd={setStopToAdd}
+                    stopETA={stopETA}
+                    setStopETA={setStopETA}
+                    addingStopToRoute={addingStopToRoute}
+                    onAddStop={addStopToRoute}
+                    onRemoveStop={removeStopFromRoute}
+                    onMoveStop={moveRouteStop}
+                  />
+                ))}
+
+                {/* Afternoon Routes */}
+                <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '12px', marginTop: '24px', color: '#a78bfa' }}>🏠 Afternoon Routes ({afternoonRoutes.length})</div>
+                {afternoonRoutes.length === 0 ? (
+                  <div className="card" style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '20px' }}>No afternoon routes yet. Use "Copy to Afternoon" on a morning route to create one quickly.</div>
+                ) : afternoonRoutes.map(r => (
+                  <RouteCard key={r.id} route={r}
+                    onEdit={() => {
+                      setEditing(r.id)
+                      setRouteForm({ name: r.name, route_type: r.route_type, vehicle_id: r.vehicle_id || '', driver_id: r.driver_id || '', departure_time: r.departure_time || '12:30', arrival_time: r.arrival_time || '13:30', operating_days: r.operating_days || ['Mon','Tue','Wed','Thu','Fri'], status: r.status })
+                      setShowForm(true)
+                    }}
+                    onDelete={() => deleteRoute(r.id)}
+                    onCopy={() => copyRoute(r)}
+                    onManageStops={() => { setSelectedRouteForStops(r.id); fetchRouteStops(r.id) }}
+                    selectedRoute={selectedRouteForStops}
+                    routeStops={routeStops}
+                    stops={stops}
+                    stopToAdd={stopToAdd}
+                    setStopToAdd={setStopToAdd}
+                    stopETA={stopETA}
+                    setStopETA={setStopETA}
+                    addingStopToRoute={addingStopToRoute}
+                    onAddStop={addStopToRoute}
+                    onRemoveStop={removeStopFromRoute}
+                    onMoveStop={moveRouteStop}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* ═══════════════════════════════ ASSIGNMENTS ═══════════════════════════════ */}
+            {view === 'assignments' && (
+              <>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
+                  Assign children to routes and stops. This determines which trips they appear in automatically.
+                </div>
+
+                {assignments.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>👶</div>
+                    <div>No assignments yet. Click "+ Add Assignment" to assign a child to transport.</div>
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr>
+                        <th>Child</th><th>Service</th><th>Morning Route</th><th>Morning Stop</th><th>Afternoon Route</th><th>Start Date</th><th>Status</th><th>Actions</th>
+                      </tr></thead>
+                      <tbody>
+                        {assignments.map(a => {
+                          const afternoonRoute = routes.find(r => r.id === a.afternoon_route_id)
+                          const afternoonStop = stops.find(s => s.id === a.afternoon_stop_id)
+                          return (
+                            <tr key={a.id}>
+                              <td>
+                                <div style={{ fontWeight: '600' }}>{a.students?.full_name}</div>
+                                <div style={{ color: '#a78bfa', fontSize: '11px' }}>{a.students?.program}</div>
+                              </td>
+                              <td>
+                                <span className="badge" style={{
+                                  background: a.service_type === 'both' ? 'rgba(56,189,248,0.15)' : a.service_type === 'morning' ? 'rgba(245,158,11,0.15)' : 'rgba(167,139,250,0.15)',
+                                  color: a.service_type === 'both' ? '#38bdf8' : a.service_type === 'morning' ? '#fbbf24' : '#a78bfa'
+                                }}>
+                                  {a.service_type === 'both' ? '↕️ Both' : a.service_type === 'morning' ? '🌅 Morning' : '🏠 Afternoon'}
+                                </span>
+                              </td>
+                              <td style={{ color: 'rgba(255,255,255,0.6)' }}>{a.transport_routes?.name || '—'}</td>
+                              <td style={{ color: 'rgba(255,255,255,0.6)' }}>{a.transport_stops?.name || '—'}</td>
+                              <td style={{ color: 'rgba(255,255,255,0.6)' }}>{afternoonRoute?.name || '—'}</td>
+                              <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>{a.start_date}</td>
+                              <td>
+                                <span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>{a.status}</span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <button className="btn-edit" onClick={() => {
+                                    setEditing(a.id)
+                                    setAssignForm({ student_id: a.student_id, service_type: a.service_type, morning_route_id: a.morning_route_id || '', morning_stop_id: a.morning_stop_id || '', afternoon_route_id: a.afternoon_route_id || '', afternoon_stop_id: a.afternoon_stop_id || '', start_date: a.start_date || '', end_date: a.end_date || '', status: a.status })
+                                    setShowForm(true)
+                                  }}>✏️</button>
+                                  <button className="btn-danger" onClick={() => deleteAssignment(a.id)}>🔚 End</button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ═══════════════════════════════ REQUESTS ═══════════════════════════════ */}
+            {view === 'requests' && (
+              <>
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                  {[
+                    { label: 'Pending', value: requests.filter(r => r.status === 'pending').length, color: '#f59e0b' },
+                    { label: 'Approved', value: requests.filter(r => r.status === 'approved').length, color: '#10b981' },
+                    { label: 'Rejected', value: requests.filter(r => r.status === 'rejected').length, color: '#f87171' },
+                    { label: 'Total', value: requests.length, color: '#38bdf8' },
+                  ].map(s => (
+                    <div key={s.label} className="card" style={{ padding: '14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '24px', fontWeight: '700', color: s.color }}>{s.value}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {requests.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+                    <div>No transport requests yet.</div>
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr>
+                        <th>Date</th><th>Child</th><th>Type</th><th>Service</th><th>Pickup Address</th><th>Status</th><th>Actions</th>
+                      </tr></thead>
+                      <tbody>
+                        {requests.map(r => (
+                          <tr key={r.id}>
+                            <td style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                            <td>
+                              <div style={{ fontWeight: '600' }}>{r.students?.full_name}</div>
+                              <div style={{ color: '#a78bfa', fontSize: '11px' }}>{r.students?.program}</div>
+                            </td>
+                            <td>
+                              <span className="badge" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: '11px' }}>
+                                {r.request_type?.replace(/_/g, ' ')}
+                              </span>
+                            </td>
+                            <td style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px' }}>{r.service_type || '—'}</td>
+                            <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', maxWidth: '150px' }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {r.pickup_address || '—'}
+                              </div>
+                            </td>
+                            <td>
+                              <span className="badge" style={{
+                                background: r.status === 'pending' ? 'rgba(245,158,11,0.15)' : r.status === 'approved' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                color: r.status === 'pending' ? '#fbbf24' : r.status === 'approved' ? '#34d399' : '#f87171'
+                              }}>{r.status}</span>
+                            </td>
+                            <td>
+                              <button className="btn-edit" onClick={() => { setReviewingRequest(r); setReviewNote(r.admin_notes || '') }}>
+                                👁️ Review
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ═══════════════════════════════ LIVE TRACKING ═══════════════════════════════ */}
+            {view === 'live' && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <div>
-                    <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🗺️ Live Van Tracking</div>
+                    <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🟢 Live Van Tracking</div>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-                      {liveTrips.length > 0 ? `${liveTrips.length} active trip${liveTrips.length > 1 ? 's' : ''}` : 'No active trips right now'}
-                      · Updates every 15 sec
+                      {liveTrips.length > 0 ? `${liveTrips.length} active trip${liveTrips.length > 1 ? 's' : ''} today` : 'No active trips right now'} · Updates every 15 sec
                     </div>
                   </div>
-                  <button onClick={fetchLiveData}
-                    style={{ padding: '8px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
-                    🔄 Refresh
-                  </button>
+                  <button onClick={fetchLiveData} className="btn-secondary">🔄 Refresh</button>
                 </div>
 
-                {/* Active trips summary */}
-                {liveTrips.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-                    {liveTrips.map(trip => {
-                      const loc = liveLocations[trip.id]
-                      return (
-                        <div key={trip.id} className="card" style={{ borderColor: 'rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.04)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                            <div style={{ fontWeight: '700', color: '#34d399' }}>🚌 {trip.transport_routes?.name}</div>
-                            <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: '600' }}>🟢 Live</span>
-                          </div>
-                          {trip.transport_routes?.vehicle_number && (
-                            <div style={{ color: '#fbbf24', fontSize: '12px', marginBottom: '4px' }}>🚌 {trip.transport_routes.vehicle_number}</div>
-                          )}
-                          {trip.transport_routes?.profiles?.full_name && (
-                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '4px' }}>👨‍✈️ {trip.transport_routes.profiles.full_name}</div>
-                          )}
-                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>
-                            {trip.trip_type === 'morning' ? '🌅 Morning Pickup' : '🏠 Afternoon Drop'}
-                          </div>
-                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
-                            Started: {new Date(trip.started_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                          {loc && (
-                            <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-                              📡 Last: {new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                              {loc.speed > 0 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Live Map */}
-                {liveTrips.length > 0 && Object.keys(liveLocations).length > 0 ? (
-                  <AdminLiveMap
-                    trips={liveTrips}
-                    locations={liveLocations}
-                  />
-                ) : liveTrips.length > 0 ? (
-                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '40px', marginBottom: '12px' }}>📡</div>
-                    <div style={{ color: '#fbbf24', fontWeight: '600', marginBottom: '4px' }}>Waiting for GPS location...</div>
-                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Driver needs to allow GPS on their phone</div>
+                {liveTrips.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚌</div>
+                    <div style={{ fontWeight: '600', marginBottom: '8px' }}>No Active Trips</div>
+                    <div style={{ fontSize: '13px' }}>Live map appears when driver starts a trip</div>
                   </div>
                 ) : (
-                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '60px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚌</div>
-                    <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '8px' }}>No Active Trips</div>
-                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Live map will appear when driver starts a trip</div>
-                  </div>
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                      {liveTrips.map(trip => {
+                        const loc = liveLocations[trip.id]
+                        return (
+                          <div key={trip.id} className="card" style={{ borderColor: 'rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.04)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div style={{ fontWeight: '700', color: '#34d399' }}>🚌 {trip.transport_routes?.name}</div>
+                              <span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>🟢 Live</span>
+                            </div>
+                            <div style={{ color: '#fbbf24', fontSize: '12px', marginBottom: '4px' }}>{trip.transport_vehicles?.name} · {trip.transport_vehicles?.registration_no}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '4px' }}>👨‍✈️ {trip.transport_staff?.name}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>
+                              {trip.trip_type === 'morning' ? '🌅 Morning Pickup' : '🏠 Afternoon Drop'}
+                            </div>
+                            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
+                              Started: {trip.actual_start ? new Date(trip.actual_start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </div>
+                            {loc && (
+                              <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                                📡 {new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                {loc.speed > 0 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>
+                      🗺️ Interactive live map coming soon. GPS coordinates are being tracked.
+                    </div>
+                  </>
                 )}
               </>
             )}
@@ -1042,43 +823,390 @@ export default function AdminTransportPage() {
         )}
       </div>
 
-      {/* Route Form Modal */}
-      {showRouteForm && (
-        <div className="modal-overlay" onClick={() => setShowRouteForm(false)}>
+      {/* ═══════════════════════════════ VEHICLE FORM MODAL ═══════════════════════════════ */}
+      {showForm && view === 'vehicles' && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editingRoute ? '✏️ Edit Route' : '🚌 Add Transport Route'}</h3>
-            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Route Name *</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder='e.g. Anna Nagar Van, Route A' style={inputStyle} autoFocus />
-            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Vehicle Number</label>
-            <input value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} placeholder='e.g. TN01AB1234' style={inputStyle} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Caretaker Name</label>
-                <input value={form.caretaker_name} onChange={e => setForm({ ...form, caretaker_name: e.target.value })} placeholder='Caretaker name' style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Caretaker Phone</label>
-                <input value={form.caretaker_phone} onChange={e => setForm({ ...form, caretaker_phone: e.target.value })} placeholder='+91 98765 43210' style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>🌅 Morning Pickup Time</label>
-                <input type='time' value={form.morning_pickup_time} onChange={e => setForm({ ...form, morning_pickup_time: e.target.value })} style={inputStyle} />
-              </div>
-
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', marginBottom: '20px' }}>
-              <input type='checkbox' checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />
-              Route is Active
-            </label>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowRouteForm(false)} className="btn-secondary">Cancel</button>
-              <button onClick={saveRoute} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingRoute ? 'Update' : 'Add Route'}</button>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Vehicle' : '🚌 Add Vehicle'}</h3>
+            <label style={labelStyle}>Vehicle Name *</label>
+            <input value={vehicleForm.name} onChange={e => setVehicleForm({...vehicleForm, name: e.target.value})} placeholder='e.g. Van 1, School Bus A' style={inputStyle} autoFocus />
+            <label style={labelStyle}>Registration Number *</label>
+            <input value={vehicleForm.registration_no} onChange={e => setVehicleForm({...vehicleForm, registration_no: e.target.value})} placeholder='e.g. TN02AB1234' style={inputStyle} />
+            <label style={labelStyle}>Child Capacity *</label>
+            <input type='number' value={vehicleForm.capacity} onChange={e => setVehicleForm({...vehicleForm, capacity: e.target.value})} placeholder='e.g. 10' style={inputStyle} />
+            <label style={labelStyle}>Van Phone Number</label>
+            <input value={vehicleForm.phone_number} onChange={e => setVehicleForm({...vehicleForm, phone_number: e.target.value})} placeholder='+91 98765 43210' style={inputStyle} />
+            <label style={labelStyle}>Status</label>
+            <select value={vehicleForm.status} onChange={e => setVehicleForm({...vehicleForm, status: e.target.value})} style={inputStyle}>
+              <option value='active'>Active</option>
+              <option value='maintenance'>Under Maintenance</option>
+              <option value='inactive'>Inactive</option>
+            </select>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveVehicle} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Vehicle'}</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ═══════════════════════════════ DRIVER FORM MODAL ═══════════════════════════════ */}
+      {showForm && view === 'drivers' && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Driver' : '👨‍✈️ Add Driver'}</h3>
+            <label style={labelStyle}>Full Name *</label>
+            <input value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} placeholder='Driver full name' style={inputStyle} autoFocus />
+            <label style={labelStyle}>Phone Number *</label>
+            <input value={driverForm.phone} onChange={e => setDriverForm({...driverForm, phone: e.target.value})} placeholder='+91 98765 43210' style={inputStyle} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Licence Number</label>
+                <input value={driverForm.licence_number} onChange={e => setDriverForm({...driverForm, licence_number: e.target.value})} placeholder='TN0120230001234' style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Licence Expiry</label>
+                <input type='date' value={driverForm.licence_expiry} onChange={e => setDriverForm({...driverForm, licence_expiry: e.target.value})} style={inputStyle} />
+              </div>
+            </div>
+            <label style={labelStyle}>Status</label>
+            <select value={driverForm.status} onChange={e => setDriverForm({...driverForm, status: e.target.value})} style={inputStyle}>
+              <option value='active'>Active</option>
+              <option value='inactive'>Inactive</option>
+            </select>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveDriver} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Driver'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════ STOP FORM MODAL ═══════════════════════════════ */}
+      {showForm && view === 'stops' && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Stop' : '📍 Add Stop'}</h3>
+            <label style={labelStyle}>Stop Name *</label>
+            <input value={stopForm.name} onChange={e => setStopForm({...stopForm, name: e.target.value})} placeholder='e.g. Anna Nagar Main Road' style={inputStyle} autoFocus />
+            <label style={labelStyle}>Landmark</label>
+            <input value={stopForm.landmark} onChange={e => setStopForm({...stopForm, landmark: e.target.value})} placeholder='e.g. Near Reliance Fresh' style={inputStyle} />
+
+            {/* Address Search */}
+            <label style={labelStyle}>Search Address & Set Location</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <input value={stopMapSearch} onChange={e => setStopMapSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && searchStopAddress()}
+                placeholder='Search address e.g. Anna Nagar, Chennai' style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+              <button onClick={searchStopAddress} disabled={stopMapSearching}
+                style={{ padding: '10px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '10px', color: '#38bdf8', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans', sans-serif" }}>
+                {stopMapSearching ? '⏳' : '🔍 Search'}
+              </button>
+            </div>
+
+            {stopPickedLocation && (
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px' }}>
+                <div style={{ color: '#34d399', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>📍 Location Set</div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px' }}>{stopPickedLocation.address}</div>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>{parseFloat(stopPickedLocation.lat).toFixed(6)}, {parseFloat(stopPickedLocation.lng).toFixed(6)}</div>
+              </div>
+            )}
+
+            <label style={labelStyle}>Full Address</label>
+            <input value={stopForm.address} onChange={e => setStopForm({...stopForm, address: e.target.value})} placeholder='Full address' style={inputStyle} />
+            <label style={labelStyle}>Status</label>
+            <select value={stopForm.status} onChange={e => setStopForm({...stopForm, status: e.target.value})} style={inputStyle}>
+              <option value='active'>Active</option>
+              <option value='inactive'>Inactive</option>
+            </select>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveStop} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Stop'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════ ROUTE FORM MODAL ═══════════════════════════════ */}
+      {showForm && view === 'routes' && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Route' : '🗺️ Add Route'}</h3>
+            <label style={labelStyle}>Route Name *</label>
+            <input value={routeForm.name} onChange={e => setRouteForm({...routeForm, name: e.target.value})} placeholder='e.g. Anna Nagar Morning Route' style={inputStyle} autoFocus />
+            <label style={labelStyle}>Route Type *</label>
+            <select value={routeForm.route_type} onChange={e => setRouteForm({...routeForm, route_type: e.target.value})} style={inputStyle}>
+              <option value='morning'>🌅 Morning Pickup</option>
+              <option value='afternoon'>🏠 Afternoon Drop</option>
+            </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Vehicle</label>
+                <select value={routeForm.vehicle_id} onChange={e => setRouteForm({...routeForm, vehicle_id: e.target.value})} style={inputStyle}>
+                  <option value=''>-- Select Vehicle --</option>
+                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.name} ({v.registration_no})</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Driver</label>
+                <select value={routeForm.driver_id} onChange={e => setRouteForm({...routeForm, driver_id: e.target.value})} style={inputStyle}>
+                  <option value=''>-- Select Driver --</option>
+                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Departure Time</label>
+                <input type='time' value={routeForm.departure_time} onChange={e => setRouteForm({...routeForm, departure_time: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Expected Arrival</label>
+                <input type='time' value={routeForm.arrival_time} onChange={e => setRouteForm({...routeForm, arrival_time: e.target.value})} style={inputStyle} />
+              </div>
+            </div>
+            <label style={labelStyle}>Operating Days</label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              {days.map(d => (
+                <button key={d} onClick={() => {
+                  const current = routeForm.operating_days || []
+                  setRouteForm({...routeForm, operating_days: current.includes(d) ? current.filter(x => x !== d) : [...current, d]})
+                }} style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${(routeForm.operating_days || []).includes(d) ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: (routeForm.operating_days || []).includes(d) ? 'rgba(56,189,248,0.15)' : 'transparent', color: (routeForm.operating_days || []).includes(d) ? '#38bdf8' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+                  {d}
+                </button>
+              ))}
+            </div>
+            <label style={labelStyle}>Status</label>
+            <select value={routeForm.status} onChange={e => setRouteForm({...routeForm, status: e.target.value})} style={inputStyle}>
+              <option value='active'>Active</option>
+              <option value='inactive'>Inactive</option>
+            </select>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveRoute} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Route'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════ ASSIGNMENT FORM MODAL ═══════════════════════════════ */}
+      {showForm && view === 'assignments' && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Assignment' : '👶 Add Child Assignment'}</h3>
+            <label style={labelStyle}>Child *</label>
+            <select value={assignForm.student_id} onChange={e => setAssignForm({...assignForm, student_id: e.target.value})} style={inputStyle}>
+              <option value=''>-- Select Child --</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.full_name} ({s.program})</option>)}
+            </select>
+            <label style={labelStyle}>Service Type *</label>
+            <select value={assignForm.service_type} onChange={e => setAssignForm({...assignForm, service_type: e.target.value})} style={inputStyle}>
+              <option value='both'>↕️ Morning Pickup + Afternoon Drop</option>
+              <option value='morning'>🌅 Morning Pickup Only</option>
+              <option value='afternoon'>🏠 Afternoon Drop Only</option>
+            </select>
+
+            {(assignForm.service_type === 'both' || assignForm.service_type === 'morning') && (
+              <>
+                <div style={{ fontWeight: '600', color: '#38bdf8', fontSize: '13px', marginBottom: '8px', marginTop: '4px' }}>🌅 Morning Assignment</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Morning Route</label>
+                    <select value={assignForm.morning_route_id} onChange={e => setAssignForm({...assignForm, morning_route_id: e.target.value})} style={inputStyle}>
+                      <option value=''>-- Select Route --</option>
+                      {morningRoutes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Pickup Stop</label>
+                    <select value={assignForm.morning_stop_id} onChange={e => setAssignForm({...assignForm, morning_stop_id: e.target.value})} style={inputStyle}>
+                      <option value=''>-- Select Stop --</option>
+                      {stops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {(assignForm.service_type === 'both' || assignForm.service_type === 'afternoon') && (
+              <>
+                <div style={{ fontWeight: '600', color: '#a78bfa', fontSize: '13px', marginBottom: '8px', marginTop: '4px' }}>🏠 Afternoon Assignment</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Afternoon Route</label>
+                    <select value={assignForm.afternoon_route_id} onChange={e => setAssignForm({...assignForm, afternoon_route_id: e.target.value})} style={inputStyle}>
+                      <option value=''>-- Select Route --</option>
+                      {afternoonRoutes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Drop Stop</label>
+                    <select value={assignForm.afternoon_stop_id} onChange={e => setAssignForm({...assignForm, afternoon_stop_id: e.target.value})} style={inputStyle}>
+                      <option value=''>-- Select Stop --</option>
+                      {stops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Start Date *</label>
+                <input type='date' value={assignForm.start_date} onChange={e => setAssignForm({...assignForm, start_date: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>End Date (optional)</label>
+                <input type='date' value={assignForm.end_date} onChange={e => setAssignForm({...assignForm, end_date: e.target.value})} style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveAssignment} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Assignment'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REQUEST REVIEW MODAL */}
+      {reviewingRequest && (
+        <div className="modal-overlay" onClick={() => setReviewingRequest(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>📋 Review Transport Request</h3>
+            <div style={{ color: '#a78bfa', fontSize: '14px', marginBottom: '20px' }}>{reviewingRequest.students?.full_name} · {reviewingRequest.students?.program}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              {[
+                { label: 'Request Type', value: reviewingRequest.request_type?.replace(/_/g, ' ') },
+                { label: 'Service', value: reviewingRequest.service_type || '—' },
+                { label: 'Start Date', value: reviewingRequest.start_date || '—' },
+                { label: 'Status', value: reviewingRequest.status },
+              ].map(item => (
+                <div key={item.label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 12px' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>{item.label}</div>
+                  <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+            {reviewingRequest.pickup_address && (
+              <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+                <div style={{ color: '#38bdf8', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>🌅 Pickup Address</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>{reviewingRequest.pickup_address}</div>
+                {reviewingRequest.pickup_latitude && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '4px' }}>{reviewingRequest.pickup_latitude}, {reviewingRequest.pickup_longitude}</div>}
+              </div>
+            )}
+            {reviewingRequest.drop_address && (
+              <div style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+                <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>🏠 Drop Address</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>{reviewingRequest.drop_address}</div>
+              </div>
+            )}
+            {reviewingRequest.notes && (
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', marginBottom: '12px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '4px' }}>Parent Notes</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>{reviewingRequest.notes}</div>
+              </div>
+            )}
+            <label style={labelStyle}>Admin Notes</label>
+            <textarea value={reviewNote} onChange={e => setReviewNote(e.target.value)}
+              placeholder='Add notes...' rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            {reviewingRequest.status === 'pending' ? (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                <button onClick={() => setReviewingRequest(null)} className="btn-secondary" style={{ flex: 1 }}>Cancel</button>
+                <button onClick={() => reviewRequest('reject')}
+                  style={{ flex: 1, padding: '10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', color: '#f87171', fontWeight: '600', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  ❌ Reject
+                </button>
+                <button onClick={() => reviewRequest('approve')} className="btn-primary" style={{ flex: 1 }}>✅ Approve</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={() => setReviewingRequest(null)} className="btn-secondary">Close</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Route Card Component
+function RouteCard({ route, onEdit, onDelete, onCopy, onManageStops, selectedRoute, routeStops, stops, stopToAdd, setStopToAdd, stopETA, setStopETA, addingStopToRoute, onAddStop, onRemoveStop, onMoveStop }) {
+  const isSelected = selectedRoute === route.id
+  const vehicle = route.transport_vehicles
+  const driver = route.transport_staff
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '16px', padding: '16px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '8px' }}>
+            {route.route_type === 'morning' ? '🌅' : '🏠'} {route.name}
+            {route.copied_from_route_id && <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>copied</span>}
+          </div>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', marginBottom: '8px' }}>
+            {vehicle && <span style={{ color: '#fbbf24' }}>🚌 {vehicle.name} ({vehicle.registration_no})</span>}
+            {driver && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {driver.name}</span>}
+            {route.departure_time && <span style={{ color: '#38bdf8' }}>⏰ {route.departure_time} → {route.arrival_time}</span>}
+            {route.operating_days && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📅 {route.operating_days.join(', ')}</span>}
+          </div>
+          <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: route.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: route.status === 'active' ? '#34d399' : '#f87171' }}>{route.status}</span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <button onClick={onManageStops} style={{ padding: '6px 12px', background: isSelected ? 'rgba(56,189,248,0.2)' : 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+            📍 {isSelected ? 'Hide' : 'Manage'} Stops
+          </button>
+          <button onClick={onCopy} style={{ padding: '6px 12px', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>📋 Copy</button>
+          <button onClick={onEdit} style={{ padding: '6px 12px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>✏️</button>
+          <button onClick={onDelete} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '12px', fontFamily: "'DM Sans', sans-serif" }}>🗑️</button>
+        </div>
+      </div>
+      {isSelected && (
+        <div style={{ marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '16px' }}>
+          <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '12px', color: '#38bdf8' }}>📍 Stop Order ({routeStops.length} stops)</div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <select value={stopToAdd} onChange={e => setStopToAdd(e.target.value)}
+              style={{ flex: 1, minWidth: '150px', padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none' }}>
+              <option value=''>-- Add Stop --</option>
+              {stops.filter(s => !routeStops.find(rs => rs.stop_id === s.id)).map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <input type='time' value={stopETA} onChange={e => setStopETA(e.target.value)}
+              style={{ width: '110px', padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none' }} />
+            <button onClick={onAddStop} disabled={!stopToAdd || addingStopToRoute}
+              style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+              {addingStopToRoute ? '⏳' : '+ Add'}
+            </button>
+          </div>
+          {routeStops.length === 0 ? (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No stops yet. Add stops above.</div>
+          ) : (
+            <>
+              {[...routeStops].sort((a, b) => a.stop_order - b.stop_order).map((rs, idx) => (
+                <div key={rs.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '10px 12px', marginBottom: '6px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(56,189,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#38bdf8', flexShrink: 0 }}>{rs.stop_order}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', fontSize: '13px' }}>{rs.transport_stops?.name}</div>
+                    {rs.transport_stops?.address && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{rs.transport_stops.address}</div>}
+                  </div>
+                  {rs.estimated_arrival && <span style={{ color: '#38bdf8', fontSize: '12px' }}>⏰ {rs.estimated_arrival}</span>}
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => onMoveStop(rs, -1)} disabled={idx === 0}
+                      style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: idx === 0 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '11px' }}>▲</button>
+                    <button onClick={() => onMoveStop(rs, 1)} disabled={idx === routeStops.length - 1}
+                      style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: idx === routeStops.length - 1 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: idx === routeStops.length - 1 ? 'default' : 'pointer', fontSize: '11px' }}>▼</button>
+                    <button onClick={() => onRemoveStop(rs.id)}
+                      style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>🏫</div>
+                <div style={{ fontWeight: '600', fontSize: '13px', color: '#34d399' }}>School {route.route_type === 'morning' ? '(Destination)' : '(Start)'}</div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
