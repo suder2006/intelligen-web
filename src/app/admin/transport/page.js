@@ -158,9 +158,15 @@ export default function AdminTransportPage() {
     if (!driverForm.name || !driverForm.phone) { alert('Please fill required fields'); return }
     setSaving(true)
     if (editing) {
-      await supabase.from('transport_staff').update(driverForm).eq('id', editing)
+      const updateData = { ...driverForm }
+      if (!updateData.user_id) delete updateData.user_id
+      if (!updateData.licence_expiry) delete updateData.licence_expiry
+      await supabase.from('transport_staff').update(updateData).eq('id', editing)
     } else {
-      await supabase.from('transport_staff').insert({ ...driverForm, school_id: schoolId, role: 'driver' })
+      const driverData = { ...driverForm, school_id: schoolId, role: 'driver' }
+      if (!driverData.user_id) delete driverData.user_id
+      if (!driverData.licence_expiry) delete driverData.licence_expiry
+      await supabase.from('transport_staff').insert(driverData)
     }
     setShowForm(false); setEditing(null)
     setDriverForm({ name: '', phone: '', licence_number: '', licence_expiry: '', status: 'active', user_id: '' })
