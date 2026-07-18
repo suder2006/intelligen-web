@@ -73,6 +73,11 @@ export default function AdminTransportPage() {
 
   const [liveInterval, setLiveInterval] = useState(null)
 
+  const [dailyTrips, setDailyTrips] = useState([])
+  const [tripChildren, setTripChildren] = useState([])
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
+  const [expandedTrip, setExpandedTrip] = useState(null)
+
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   useEffect(() => {
@@ -85,6 +90,10 @@ export default function AdminTransportPage() {
     }
     return () => { if (liveInterval) clearInterval(liveInterval) }
   }, [view, schoolId])
+
+  useEffect(() => {
+  if (schoolId && view === 'trips') fetchDailyTrips(filterDate)
+  }, [view, schoolId, filterDate])
 
   const fetchAll = async () => {
     setLoading(true)
@@ -123,6 +132,20 @@ export default function AdminTransportPage() {
     }
     setLiveLocations(locations)
   }
+
+  const fetchDailyTrips = async (date) => {
+  const [tripsRes, childrenRes] = await Promise.all([
+    supabase.from('transport_daily_trips')
+      .select('*, transport_routes(name, route_type), transport_vehicles(name, registration_no), transport_staff(name)')
+      .eq('school_id', schoolId)
+      .eq('trip_date', date)
+      .order('scheduled_start'),
+    supabase.from('transport_trip_children')
+      .select('*, students(full_name, program), transport_stops(name)')
+      .in('trip_id', [])
+  ])
+  setDailyTrips(tripsRes.data || [])
+}
 
   const fetchRouteStops = async (routeId) => {
     const { data } = await supabase.from('transport_route_stops')
@@ -342,6 +365,7 @@ export default function AdminTransportPage() {
     ['stops', '📍 Stops'],
     ['routes', '🗺️ Routes'],
     ['assignments', '👶 Child Assignments'],
+    ['requests', '📋 Requests'],
     ['requests', '📋 Requests'],
     ['live', '🟢 Live Tracking'],
   ]
@@ -770,6 +794,160 @@ export default function AdminTransportPage() {
               </>
             )}
 
+            {/* ═══════════════════════════════ DAILY TRIPS ═══════════════════════════════ */}
+            {view === 'trips' && (
+              <>
+                {/* Date selector */}
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap' }}>
+                  <input type='date' value={filterDate}
+                    onChange={e => setFilterDate(e.target.value)}
+                    style={{ padding: '9px 14px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #334155', borderRadius: '8px', fontSize: '14px' }} />
+                  <button onClick={() => setFilterDate(new Date().toISOString().split('T')[0])}
+                    style={{ padding: '9px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
+                    Today
+                  </button>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                    {dailyTrips.length} trips found
+                  </span>
+                </div>
+
+                {/* Summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                  {[
+                    { label: 'Total Trips', value: dailyTrips.length, color: '#38bdf8' },
+                    { label: 'Scheduled', value: dailyTrips.filter(t => t.status === 'scheduled').length, color: '#f59e0b' },
+                    { label: 'In Progress', value: dailyTrips.filter(t => t.status === 'in_progress').length, color: '#10b981' },
+                    { label: 'Completed', value: dailyTrips.filter(t => t.status === 'completed').length, color: '#a78bfa' },
+                  ].map(s => (
+                    <div key={s.label} className="card" style={{ padding: '14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '24px', fontWeight: '700', color: s.color }}>{s.value}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {dailyTrips.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📅</div>
+                    <div style={{ fontWeight: '600', marginBottom: '8px' }}>No trips for this date</div>
+                    <div style={{ fontSize: '13px' }}>Trips are auto-generated daily at 6 AM IST</div>
+                  </div>
+                ) : dailyTrips.map(trip => {
+                  const isExpanded = expandedTrip === trip.id
+                  const children = tripChildren.filter(tc => tc.trip_id === trip.id)
+                  const statusColor = {
+                    scheduled: '#f59e0b',
+                    in_progress: '#10b981',
+                    completed: '#a78bfa',
+                    cancelled: '#f87171'
+                  }[trip.status] || '#38bdf8'
+
+                  return (
+                    <div key={trip.id} className="card" style={{ marginBottom: '12px' }}>
+                      {/* Trip Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '700', fontSize: '16px' }}>
+                              {trip.transport_routes?.route_type === 'morning' ? '🌅' : '🏠'} {trip.transport_routes?.name}
+                            </span>
+                            <span className="badge" style={{ background: `${statusColor}22`, color: statusColor }}>
+                              {trip.status === 'scheduled' ? '⏰ Scheduled' :
+                               trip.status === 'in_progress' ? '🟢 In Progress' :
+                               trip.status === 'completed' ? '✅ Completed' : '❌ Cancelled'}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
+                            {trip.transport_vehicles && (
+                              <span style={{ color: '#fbbf24' }}>🚌 {trip.transport_vehicles.name} · {trip.transport_vehicles.registration_no}</span>
+                            )}
+                            {trip.transport_staff && (
+                              <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {trip.transport_staff.name}</span>
+                            )}
+                            {trip.scheduled_start && (
+                              <span style={{ color: '#38bdf8' }}>⏰ {trip.scheduled_start?.substring(0,5)}</span>
+                            )}
+                            {trip.actual_start && (
+                              <span style={{ color: '#10b981' }}>▶️ Started: {new Date(trip.actual_start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                            )}
+                            {trip.actual_end && (
+                              <span style={{ color: '#a78bfa' }}>🏁 Ended: {new Date(trip.actual_end).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (isExpanded) {
+                              setExpandedTrip(null)
+                            } else {
+                              setExpandedTrip(trip.id)
+                              // Fetch children for this trip
+                              const { data } = await supabase
+                                .from('transport_trip_children')
+                                .select('*, students(full_name, program), transport_stops(name)')
+                                .eq('trip_id', trip.id)
+                              setTripChildren(prev => [
+                                ...prev.filter(tc => tc.trip_id !== trip.id),
+                                ...(data || [])
+                              ])
+                            }
+                          }}
+                          style={{ padding: '7px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+                          {isExpanded ? '▲ Hide' : '▼ Children'}
+                        </button>
+                      </div>
+
+                      {/* Children list */}
+                      {isExpanded && (
+                        <div style={{ marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '14px' }}>
+                          <div style={{ fontWeight: '600', fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '10px' }}>
+                            👶 Children ({children.length})
+                          </div>
+                          {children.length === 0 ? (
+                            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No children assigned to this trip.</div>
+                          ) : children.map(tc => {
+                            const childStatusColor = {
+                              waiting: '#f59e0b',
+                              boarded: '#10b981',
+                              dropped: '#a78bfa',
+                              absent: '#f87171',
+                              missed: '#ef4444'
+                            }[tc.status] || '#38bdf8'
+                            return (
+                              <div key={tc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '13px', color: '#fff' }}>
+                                    {tc.students?.full_name?.[0]?.toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: '600', fontSize: '13px' }}>{tc.students?.full_name}</div>
+                                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>
+                                      📍 {tc.transport_stops?.name} · {tc.students?.program}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <span className="badge" style={{ background: `${childStatusColor}22`, color: childStatusColor, display: 'block', marginBottom: '2px' }}>
+                                    {tc.status === 'waiting' ? '⏳ Waiting' :
+                                     tc.status === 'boarded' ? '✅ Boarded' :
+                                     tc.status === 'dropped' ? '🏠 Dropped' :
+                                     tc.status === 'absent' ? '❌ Absent' : tc.status}
+                                  </span>
+                                  {tc.boarded_at && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
+                                    {new Date(tc.boarded_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
             {/* ═══════════════════════════════ LIVE TRACKING ═══════════════════════════════ */}
             {view === 'live' && (
               <>
@@ -825,6 +1003,8 @@ export default function AdminTransportPage() {
                 )}
               </>
             )}
+
+
           </>
         )}
       </div>
