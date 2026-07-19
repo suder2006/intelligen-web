@@ -460,15 +460,21 @@ const cancelTrip = async (trip) => {
   }
 
   // ASSIGNMENT CRUD
-  const saveAssignment = async () => {
+    const saveAssignment = async () => {
     if (!assignForm.student_id || !assignForm.service_type || !assignForm.start_date) {
       alert('Please fill required fields'); return
     }
     setSaving(true)
+    const cleanForm = { ...assignForm }
+    if (!cleanForm.morning_route_id) delete cleanForm.morning_route_id
+    if (!cleanForm.morning_stop_id) delete cleanForm.morning_stop_id
+    if (!cleanForm.afternoon_route_id) delete cleanForm.afternoon_route_id
+    if (!cleanForm.afternoon_stop_id) delete cleanForm.afternoon_stop_id
+    if (!cleanForm.end_date) delete cleanForm.end_date
     if (editing) {
-      await supabase.from('transport_assignments').update(assignForm).eq('id', editing)
+      await supabase.from('transport_assignments').update(cleanForm).eq('id', editing)
     } else {
-      await supabase.from('transport_assignments').insert({ ...assignForm, school_id: schoolId })
+      await supabase.from('transport_assignments').insert({ ...cleanForm, school_id: schoolId })
     }
     setShowForm(false); setEditing(null)
     setAssignForm({ student_id: '', service_type: 'both', morning_route_id: '', morning_stop_id: '', afternoon_route_id: '', afternoon_stop_id: '', start_date: '', end_date: '', status: 'active' })
