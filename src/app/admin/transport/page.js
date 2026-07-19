@@ -515,7 +515,7 @@ const cancelTrip = async (trip) => {
     alert(action === 'approve' ? '✅ Request approved!' : '❌ Request rejected.')
   }
 
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   const morningRoutes = routes.filter(r => r.route_type === 'morning')
   const afternoonRoutes = routes.filter(r => r.route_type === 'afternoon')
 
