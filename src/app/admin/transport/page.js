@@ -105,9 +105,9 @@ export default function AdminTransportPage() {
     setLoading(true)
     const [vRes, dRes, sRes, rRes, aRes, reqRes, stuRes] = await Promise.all([
       supabase.from('transport_vehicles').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('transport_staff').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('profiles').select('*').eq('school_id', schoolId).eq('role', 'driver').order('full_name'),
       supabase.from('transport_stops').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('transport_routes').select('*, transport_vehicles(name, registration_no), transport_staff(name)').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_routes').select('*, transport_vehicles(name, registration_no), profiles(full_name, phone)').eq('school_id', schoolId).order('name'),
       supabase.from('transport_assignments').select('*, students(full_name, program), transport_routes!transport_assignments_morning_route_id_fkey(name), transport_stops!transport_assignments_morning_stop_id_fkey(name)').eq('school_id', schoolId).eq('status', 'active'),
       supabase.from('transport_requests').select('*, students(full_name, program), profiles(full_name, email)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name')
@@ -554,9 +554,9 @@ const cancelTrip = async (trip) => {
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>🚌 Transport Management</h1>
             <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Manage vehicles, drivers, routes and child assignments</p>
           </div>
-          {['vehicles','drivers','stops','routes','assignments'].includes(view) && (
+          {['vehicles','stops','routes','assignments'].includes(view) && (
             <button onClick={() => { setShowForm(true); setEditing(null) }} className="btn-primary">
-              + Add {view === 'vehicles' ? 'Vehicle' : view === 'drivers' ? 'Driver' : view === 'stops' ? 'Stop' : view === 'routes' ? 'Route' : 'Assignment'}
+              + Add {view === 'vehicles' ? 'Vehicle' : view === 'stops' ? 'Stop' : view === 'routes' ? 'Route' : 'Assignment'}
             </button>
           )}
         </div>
@@ -632,63 +632,50 @@ const cancelTrip = async (trip) => {
             )}
 
             {/* ═══════════════════════════════ DRIVERS ═══════════════════════════════ */}
-            {view === 'drivers' && (
+             {view === 'drivers' && (
               <>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>
-                  Add drivers who will operate transport vehicles. Each driver gets a login to the driver app.
+                <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', padding: '14px 18px', marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '20px' }}>ℹ️</span>
+                  <div>
+                    <div style={{ color: '#38bdf8', fontWeight: '600', fontSize: '14px' }}>Drivers are managed in Staff Management</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '2px' }}>Add or edit drivers from Staff Management. Set role as "Driver 🚌".</div>
+                  </div>
+                  <a href='/admin/staff' style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '13px', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                    Go to Staff Management →
+                  </a>
                 </div>
+
                 {drivers.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px' }}>👨‍✈️</div>
-                    <div>No drivers yet. Click "+ Add Driver" to add one.</div>
+                    <div style={{ marginBottom: '12px' }}>No drivers found.</div>
+                    <a href='/admin/staff' style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', textDecoration: 'none', display: 'inline-block' }}>
+                      + Add Driver in Staff Management
+                    </a>
                   </div>
                 ) : (
                   <div className="table-wrap">
                     <table>
                       <thead><tr>
-                        <th>Driver</th><th>Phone</th><th>Licence</th><th>Expiry</th><th>Status</th><th>Actions</th>
+                        <th>Driver</th><th>Email</th><th>Phone</th><th>Status</th>
                       </tr></thead>
                       <tbody>
-                        {drivers.map(d => {
-                          const isExpiring = d.licence_expiry && new Date(d.licence_expiry) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-                          const isExpired = d.licence_expiry && new Date(d.licence_expiry) < new Date()
-                          return (
-                            <tr key={d.id}>
-                              <td><div style={{ fontWeight: '600' }}>👨‍✈️ {d.name}</div></td>
-                              <td style={{ color: '#38bdf8' }}>{d.phone || '—'}</td>
-                              <td style={{ color: 'rgba(255,255,255,0.6)' }}>{d.licence_number || '—'}</td>
-                              <td>
-                                {d.licence_expiry ? (
-                                  <span style={{ color: isExpired ? '#f87171' : isExpiring ? '#fbbf24' : '#34d399', fontSize: '12px' }}>
-                                    {isExpired ? '❌' : isExpiring ? '⚠️' : '✅'} {d.licence_expiry}
-                                  </span>
-                                ) : '—'}
-                              </td>
-                              <td>
-                                <span className="badge" style={{
-                                  background: d.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                                  color: d.status === 'active' ? '#34d399' : '#f87171'
-                                }}>{d.status}</span>
-                              </td>
-                              <td>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                  <button className="btn-edit" onClick={() => {
-                                    setEditing(d.id)
-                                    setDriverForm({ name: d.name, phone: d.phone || '', licence_number: d.licence_number || '', licence_expiry: d.licence_expiry || '', status: d.status, user_id: d.user_id || '' })
-                                    setShowForm(true)
-                                  }}>✏️ Edit</button>
-                                  <button className="btn-danger" onClick={() => deleteDriver(d.id)}>🗑️</button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {drivers.map(d => (
+                          <tr key={d.id}>
+                            <td><div style={{ fontWeight: '600' }}>👨‍✈️ {d.full_name}</div></td>
+                            <td style={{ color: 'rgba(255,255,255,0.5)' }}>{d.email || '—'}</td>
+                            <td style={{ color: '#38bdf8' }}>{d.phone || '—'}</td>
+                            <td>
+                              <span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>Active</span>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 )}
               </>
-            )}
+            )} 
 
             {/* ═══════════════════════════════ STOPS ═══════════════════════════════ */}
             {view === 'stops' && (
@@ -1286,7 +1273,7 @@ const cancelTrip = async (trip) => {
                 <label style={labelStyle}>Driver</label>
                 <select value={routeForm.driver_id} onChange={e => setRouteForm({...routeForm, driver_id: e.target.value})} style={inputStyle}>
                   <option value=''>-- Select Driver --</option>
-                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  {drivers.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
                 </select>
               </div>
               <div>
@@ -1468,7 +1455,7 @@ const cancelTrip = async (trip) => {
 function RouteCard({ route, onEdit, onDelete, onCopy, onManageStops, selectedRoute, routeStops, stops, stopToAdd, setStopToAdd, stopETA, setStopETA, addingStopToRoute, onAddStop, onRemoveStop, onMoveStop }) {
   const isSelected = selectedRoute === route.id
   const vehicle = route.transport_vehicles
-  const driver = route.transport_staff
+  const driver = route.profiles
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '16px', padding: '16px', marginBottom: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
@@ -1479,7 +1466,7 @@ function RouteCard({ route, onEdit, onDelete, onCopy, onManageStops, selectedRou
           </div>
           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', marginBottom: '8px' }}>
             {vehicle && <span style={{ color: '#fbbf24' }}>🚌 {vehicle.name} ({vehicle.registration_no})</span>}
-            {driver && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {driver.name}</span>}
+            {driver && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {driver.full_name}</span>}
             {route.departure_time && <span style={{ color: '#38bdf8' }}>⏰ {route.departure_time} → {route.arrival_time}</span>}
             {route.operating_days && <span style={{ color: 'rgba(255,255,255,0.4)' }}>📅 {route.operating_days.join(', ')}</span>}
           </div>
