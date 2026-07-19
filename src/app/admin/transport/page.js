@@ -107,7 +107,7 @@ export default function AdminTransportPage() {
       supabase.from('transport_vehicles').select('*').eq('school_id', schoolId).order('name'),
       supabase.from('profiles').select('*').eq('school_id', schoolId).eq('role', 'driver').order('full_name'),
       supabase.from('transport_stops').select('*').eq('school_id', schoolId).order('name'),
-      supabase.from('transport_routes').select('*, transport_vehicles(name, registration_no), profiles(full_name, phone)').eq('school_id', schoolId).order('name'),
+      supabase.from('transport_routes').select('*, transport_vehicles(name, registration_no)').eq('school_id', schoolId).order('name'),
       supabase.from('transport_assignments').select('*, students(full_name, program), transport_routes!transport_assignments_morning_route_id_fkey(name), transport_stops!transport_assignments_morning_stop_id_fkey(name)').eq('school_id', schoolId).eq('status', 'active'),
       supabase.from('transport_requests').select('*, students(full_name, program), profiles(full_name, email)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name')
@@ -115,17 +115,30 @@ export default function AdminTransportPage() {
     setVehicles(vRes.data || [])
     setDrivers(dRes.data || [])
     setStops(sRes.data || [])
-    setRoutes(rRes.data || [])
     setAssignments(aRes.data || [])
     setRequests(reqRes.data || [])
     setStudents(stuRes.data || [])
+
+    // Merge driver names into routes
+    const routeData = rRes.data || []
+    const driverIds = [...new Set(routeData.map(r => r.driver_id).filter(Boolean))]
+    if (driverIds.length > 0) {
+      const { data: driverProfiles } = await supabase.from('profiles')
+        .select('id, full_name, phone').in('id', driverIds)
+      setRoutes(routeData.map(r => ({
+        ...r,
+        profiles: driverProfiles?.find(d => d.id === r.driver_id) || null
+      })))
+    } else {
+      setRoutes(routeData)
+    }
     setLoading(false)
   }
 
   const fetchLiveData = async () => {
     if (!schoolId) return
     const { data: trips } = await supabase.from('transport_daily_trips')
-      .select('*, transport_routes(name), transport_vehicles(name, registration_no), transport_staff(name)')
+      .select('*, transport_routes(name), transport_vehicles(name, registration_no)')
       .eq('school_id', schoolId).eq('status', 'in_progress')
       .eq('trip_date', new Date().toISOString().split('T')[0])
     setLiveTrips(trips || [])
@@ -141,7 +154,7 @@ export default function AdminTransportPage() {
 
   const fetchDailyTrips = async (date) => {
   const { data } = await supabase.from('transport_daily_trips')
-    .select('*, transport_routes(name, route_type), transport_vehicles(name, registration_no), transport_staff(name)')
+    .select('*, transport_routes(name, route_type), transport_vehicles(name, registration_no)')
     .eq('school_id', schoolId)
     .eq('trip_date', date)
     .order('scheduled_start')
@@ -168,7 +181,7 @@ const generateTrips = async () => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const dayName = dayNames[date.getDay()]
     const { data: routes } = await supabase.from('transport_routes')
-      .select('*, transport_vehicles(*), transport_staff(*)')
+    .select('*, transport_vehicles(*)')
       .eq('school_id', schoolId).eq('status', 'active')
     if (!routes || routes.length === 0) { alert('No active routes found!'); setGeneratingTrips(false); return }
     const eligibleRoutes = routes.filter(r => r.operating_days?.includes(dayName))
@@ -987,7 +1000,7 @@ const cancelTrip = async (trip) => {
                           </div>
                           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
                             {trip.transport_vehicles && <span style={{ color: '#fbbf24' }}>🚌 {trip.transport_vehicles.name} · {trip.transport_vehicles.registration_no}</span>}
-                            {trip.transport_staff && <span style={{ color: 'rgba(255,255,255,0.5)' }}>👨‍✈️ {trip.transport_staff.name}</span>}
+                            
                             {trip.scheduled_start && <span style={{ color: '#38bdf8' }}>⏰ {trip.scheduled_start?.substring(0,5)}</span>}
                             {trip.actual_start && <span style={{ color: '#10b981' }}>▶️ {new Date(trip.actual_start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
                             {trip.actual_end && <span style={{ color: '#a78bfa' }}>🏁 {new Date(trip.actual_end).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
@@ -1115,7 +1128,7 @@ const cancelTrip = async (trip) => {
                               <span className="badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>🟢 Live</span>
                             </div>
                             <div style={{ color: '#fbbf24', fontSize: '12px', marginBottom: '4px' }}>{trip.transport_vehicles?.name} · {trip.transport_vehicles?.registration_no}</div>
-                            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '4px' }}>👨‍✈️ {trip.transport_staff?.name}</div>
+                            
                             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginBottom: '4px' }}>
                               {trip.trip_type === 'morning' ? '🌅 Morning Pickup' : '🏠 Afternoon Drop'}
                             </div>
@@ -1172,37 +1185,6 @@ const cancelTrip = async (trip) => {
         </div>
       )}
 
-      {/* ═══════════════════════════════ DRIVER FORM MODAL ═══════════════════════════════ */}
-      {showForm && view === 'drivers' && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>{editing ? '✏️ Edit Driver' : '👨‍✈️ Add Driver'}</h3>
-            <label style={labelStyle}>Full Name *</label>
-            <input value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} placeholder='Driver full name' style={inputStyle} autoFocus />
-            <label style={labelStyle}>Phone Number *</label>
-            <input value={driverForm.phone} onChange={e => setDriverForm({...driverForm, phone: e.target.value})} placeholder='+91 98765 43210' style={inputStyle} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>Licence Number</label>
-                <input value={driverForm.licence_number} onChange={e => setDriverForm({...driverForm, licence_number: e.target.value})} placeholder='TN0120230001234' style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Licence Expiry</label>
-                <input type='date' value={driverForm.licence_expiry} onChange={e => setDriverForm({...driverForm, licence_expiry: e.target.value})} style={inputStyle} />
-              </div>
-            </div>
-            <label style={labelStyle}>Status</label>
-            <select value={driverForm.status} onChange={e => setDriverForm({...driverForm, status: e.target.value})} style={inputStyle}>
-              <option value='active'>Active</option>
-              <option value='inactive'>Inactive</option>
-            </select>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-              <button onClick={saveDriver} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editing ? 'Update' : 'Add Driver'}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ═══════════════════════════════ STOP FORM MODAL ═══════════════════════════════ */}
       {showForm && view === 'stops' && (
