@@ -60,7 +60,7 @@ async function handleTransportTrips(results) {
   // Get all active routes that operate today
   const { data: routes, error: routesError } = await supabase
     .from('transport_routes')
-    .select('*, transport_vehicles(*), profiles(full_name, phone)')
+    .select('*, transport_vehicles(*)')
     .eq('status', 'active')
     .contains('operating_days', [todayDayName])
 
