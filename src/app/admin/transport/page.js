@@ -390,9 +390,11 @@ const cancelTrip = async (trip) => {
   }
 
   const deleteStop = async (id) => {
-    if (!confirm('Delete this stop?')) return
-    await supabase.from('transport_stops').delete().eq('id', id)
-    await fetchAll()
+  if (!confirm('Delete this stop?')) return
+  // Delete child records first
+  await supabase.from('transport_route_stops').delete().eq('stop_id', id)
+  await supabase.from('transport_stops').delete().eq('id', id)
+  await fetchAll()
   }
 
   // ROUTE CRUD
@@ -410,11 +412,23 @@ const cancelTrip = async (trip) => {
   }
 
   const deleteRoute = async (id) => {
-    if (!confirm('Delete this route?')) return
-    await supabase.from('transport_route_stops').delete().eq('route_id', id)
-    await supabase.from('transport_routes').delete().eq('id', id)
-    await fetchAll()
+  if (!confirm('Delete this route?')) return
+  // Delete all child records first
+  const { data: trips } = await supabase
+    .from('transport_daily_trips')
+    .select('id').eq('route_id', id)
+  if (trips && trips.length > 0) {
+    const tripIds = trips.map(t => t.id)
+    await supabase.from('transport_gps_locations').delete().in('trip_id', tripIds)
+    await supabase.from('transport_trip_children').delete().in('trip_id', tripIds)
   }
+  await supabase.from('transport_daily_trips').delete().eq('route_id', id)
+  await supabase.from('transport_assignments').delete().eq('morning_route_id', id)
+  await supabase.from('transport_assignments').delete().eq('afternoon_route_id', id)
+  await supabase.from('transport_route_stops').delete().eq('route_id', id)
+  await supabase.from('transport_routes').delete().eq('id', id)
+  await fetchAll()
+}
 
   const addStopToRoute = async () => {
     if (!stopToAdd || !selectedRouteForStops) return
