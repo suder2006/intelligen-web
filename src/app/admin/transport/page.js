@@ -1136,18 +1136,72 @@ const cancelTrip = async (trip) => {
                               Started: {trip.actual_start ? new Date(trip.actual_start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
                             </div>
                             {loc && (
-                              <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-                                📡 {new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                {loc.speed > 0 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
-                              </div>
+                              <>
+                                <div style={{ marginTop: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginBottom: '6px' }}>
+                                  📡 {new Date(loc.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                  {loc.speed > 0 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
+                                </div>
+                                <a href={`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}&z=16`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  style={{ display: 'block', textAlign: 'center', padding: '6px', background: 'rgba(56,189,248,0.15)', borderRadius: '8px', color: '#38bdf8', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
+                                  🗺️ Open in Google Maps
+                                </a>
+                              </>
                             )}
+                            {!loc && (
+                              <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: '11px', textAlign: 'center', marginTop: '8px' }}>
+                                ⏳ Waiting for GPS signal...
+                              </div>
+                            )} 
                           </div>
                         )
                       })}
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>
-                      🗺️ Interactive live map coming soon. GPS coordinates are being tracked.
-                    </div>
+                    {/* Live Google Map */}
+                    {Object.keys(liveLocations).length > 0 && (
+                      <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <div style={{ background: 'rgba(16,185,129,0.06)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ color: '#34d399', fontWeight: '700', fontSize: '14px' }}>🗺️ Live Map — All Active Vans</div>
+                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>Auto-refreshes every 15 sec</div>
+                        </div>
+                        <iframe
+                          key={JSON.stringify(liveLocations)}
+                          width="100%"
+                          height="480"
+                          style={{ border: 'none', display: 'block' }}
+                          loading="lazy"
+                          allowFullScreen
+                          referrerPolicy="no-referrer-when-downgrade"
+                          src={(() => {
+                            const locs = Object.entries(liveLocations)
+                            const [tripId, loc] = locs[0]
+                            return `https://www.google.com/maps/embed/v1/place?key=AIzaSyAkK4Tr8r6339Pm4WDJL5e6wQA5h2yZzvI&q=${loc.latitude},${loc.longitude}&zoom=15`
+                          })()}
+                        />
+                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                          {Object.entries(liveLocations).map(([tripId, loc]) => {
+                            const trip = liveTrips.find(t => t.id === tripId)
+                            return (
+                              <div key={tripId} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '18px' }}>🚌</span>
+                                <div>
+                                  <div style={{ color: '#34d399', fontSize: '12px', fontWeight: '600' }}>{trip?.transport_routes?.name}</div>
+                                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
+                                    {parseFloat(loc.latitude).toFixed(5)}, {parseFloat(loc.longitude).toFixed(5)}
+                                    {loc.speed > 0.5 && ` · ${(loc.speed * 3.6).toFixed(0)} km/h`}
+                                  </div>
+                                </div>
+                                <a href={`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}&z=16`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  style={{ padding: '4px 10px', background: 'rgba(56,189,248,0.15)', borderRadius: '6px', color: '#38bdf8', fontSize: '11px', fontWeight: '600', textDecoration: 'none' }}>
+                                  Open ↗
+                                </a>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}  
                   </>
                 )}
               </>
