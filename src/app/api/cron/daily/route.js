@@ -14,6 +14,7 @@ export async function GET(request) {
   const results = {
     birthdays: { checked: 0, sent: 0, announcement: false },
     transport: { trips_created: 0, children_added: 0, skipped: 0 },
+    nutrition: { generated: 0, skipped: 0 },
     errors: []
   }
 
@@ -29,6 +30,13 @@ export async function GET(request) {
   } catch (e) {
     results.errors.push(`Transport error: ${e.message}`)
     console.error('Transport cron error:', e)
+  }
+
+  try {
+    await handleNutritionPlans(results)
+  } catch (e) {
+    results.errors.push(`Nutrition error: ${e.message}`)
+    console.error('Nutrition cron error:', e)
   }
 
   return Response.json({ success: true, results })
@@ -337,4 +345,166 @@ async function handleBirthdays(results) {
 
     console.log(`School ${schoolId}: birthday cron complete ✅`)
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// WEEKLY NUTRITION PLAN GENERATION
+// ═══════════════════════════════════════════════════════════
+async function handleNutritionPlans(results) {
+  // Only run on Mondays IST
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60 * 1000
+  const istDate = new Date(now.getTime() + istOffset)
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const todayDayName = dayNames[istDate.getUTCDay()]
+
+  if (todayDayName !== 'Sun') {
+    console.log(`Not Sunday (${todayDayName}) - skipping nutrition plan generation`)
+    results.nutrition.skipped++
+    return
+  }
+
+  // Generate for NEXT week (Monday) since we run on Sunday
+  const nextDay = new Date(istDate)
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  const weekStart = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`
+  console.log(`Generating nutrition plan for week starting ${weekStart} (generated on Sunday)`)
+
+  // Get all active schools
+  const { data: schools } = await supabase
+    .from('schools')
+    .select('id, name')
+    .eq('status', 'active')
+
+  if (!schools || schools.length === 0) {
+    console.log('No active schools found')
+    return
+  }
+
+  for (const school of schools) {
+    // Check if plan already exists for this week
+    const { data: existing } = await supabase
+      .from('nutrition_plans')
+      .select('id')
+      .eq('school_id', school.id)
+      .eq('week_start_date', weekStart)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`Nutrition plan already exists for ${school.name} week ${weekStart}`)
+      results.nutrition.skipped++
+      continue
+    }
+
+    try {
+      // Call Claude API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: `Generate a healthy Indian nutrition meal plan for preschool children aged 2-6 years for a full week (Monday to Friday).
+
+Requirements:
+- South Indian / Tamil Nadu style meals preferred
+- Age appropriate portions for 2-6 year olds
+- Balanced nutrition each day
+- Variety across the week (no repetition)
+- Include breakfast, morning snack, lunch, evening snack, dinner
+- Include key nutrients and child benefits
+
+Return ONLY valid JSON, no other text:
+{
+  "monday": {
+    "breakfast": "meal description",
+    "morning_snack": "snack description",
+    "lunch": "meal description",
+    "evening_snack": "snack description",
+    "dinner": "meal description",
+    "nutrients": ["Protein: dal and curd", "Calcium: milk"],
+    "benefits": ["💪 Protein supports muscle growth", "🦴 Calcium builds strong bones"]
+  },
+  "tuesday": { "same structure" },
+  "wednesday": { "same structure" },
+  "thursday": { "same structure" },
+  "friday": { "same structure" }
+}`
+          }]
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.content || !data.content[0]) {
+        console.error('Invalid Claude API response:', data)
+        results.errors.push(`Invalid API response for ${school.name}`)
+        continue
+      }
+
+      const content = data.content[0].text
+      const plan = JSON.parse(content)
+
+      // Save to database
+      const { error: insertError } = await supabase
+        .from('nutrition_plans')
+        .insert({
+          school_id: school.id,
+          week_start_date: weekStart,
+          monday: plan.monday,
+          tuesday: plan.tuesday,
+          wednesday: plan.wednesday,
+          thursday: plan.thursday,
+          friday: plan.friday,
+          generated_by_ai: true,
+          edited_by_admin: false
+        })
+
+      if (insertError) {
+        console.error(`Nutrition insert error for ${school.name}:`, insertError)
+        results.errors.push(`Nutrition insert failed for ${school.name}`)
+        continue
+      }
+
+      results.nutrition.generated++
+      console.log(`✅ Nutrition plan generated for ${school.name}`)
+
+      // Send push notification to all parents
+      const { data: parents } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', school.id)
+        .eq('role', 'parent')
+
+      if (parents && parents.length > 0) {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: parents.map(p => p.id),
+              title: '🥗 Next Week\'s Nutrition Plan is Ready!',
+              body: 'Plan ahead! Check intelliGen for healthy Indian meal ideas for your child next week! 🍛',
+              url: '/parent',
+              data: { type: 'nutrition' }
+            })
+          })
+        } catch (e) {
+          console.error('Nutrition push notification error:', e)
+        }
+      }
+
+    } catch (e) {
+      console.error(`Nutrition generation error for ${school.name}:`, e)
+      results.errors.push(`Nutrition generation failed: ${e.message}`)
+    }
+  }
+
+  console.log(`Nutrition cron complete: ${results.nutrition.generated} plans generated ✅`)
 }
