@@ -29,6 +29,7 @@ const navItems = [
   { href: '/admin/ptm', label: 'PTM', icon: '🤝' },
   { href: '/admin/birthdays', label: 'Birthdays', icon: '🎂' },
   { href: '/admin/transport', label: 'Transport', icon: '🚌' },
+  { href: '/admin/nutrition', label: 'Nutrition', icon: '🥗' },
   { href: '/admin/events', label: 'Events', icon: '📅' },
   { href: '/admin/diary', label: 'Diary', icon: '📔' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
