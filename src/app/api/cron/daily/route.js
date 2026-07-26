@@ -383,12 +383,14 @@ async function handleNutritionPlans(results) {
 
   for (const school of schools) {
     // Check if plan already exists for this week
-    const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
       .from('nutrition_plans')
       .select('id')
       .eq('school_id', school.id)
       .eq('week_start_date', weekStart)
       .maybeSingle()
+
+    console.log(`Existing plan check: ${JSON.stringify(existing)}, error: ${JSON.stringify(existingError)}`)
 
     if (existing) {
       console.log(`Nutrition plan already exists for ${school.name} week ${weekStart}`)
