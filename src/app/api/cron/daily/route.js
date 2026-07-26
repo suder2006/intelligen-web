@@ -449,7 +449,12 @@ Return ONLY valid JSON, no other text:
       }
 
       const content = data.content[0].text
-      const plan = JSON.parse(content)
+      // Strip markdown code blocks if present
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim()
+      const plan = JSON.parse(cleanContent)
 
       // Save to database
       const { error: insertError } = await supabase
