@@ -37,6 +37,9 @@ export default function StudentsPage() {
   const [showAddParent, setShowAddParent] = useState(false)
   const [addingParent, setAddingParent] = useState(false)
   const [newParent, setNewParent] = useState({ name: '', email: '', phone: '' })
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [form, setForm] = useState({
     student_id: '', full_name: '', date_of_birth: '', gender: '',
     program: '', status: 'active', parent_name: '',
@@ -65,19 +68,30 @@ export default function StudentsPage() {
     setLoading(false)
   }
 
-  async function save() {
+    async function save() {
     if (!form.full_name) { alert('Please enter student name'); return }
     setSaving(true)
     const SCHOOL_ID = schoolId
     try {
       let studentId = editing
       if (editing) {
-        const { error } = await supabase.from('students').update(form).eq('id', editing)
+        let updateForm = { ...form }
+        if (photoFile) {
+          const photoUrl = await uploadPhoto(editing)
+          if (photoUrl) updateForm.photo_url = photoUrl
+        }
+        const { error } = await supabase.from('students').update(updateForm).eq('id', editing)
         if (error) throw error
       } else {
         const { data, error } = await supabase.from('students').insert({ ...form, school_id: SCHOOL_ID }).select().single()
         if (error) throw error
         studentId = data.id
+        if (photoFile) {
+          const photoUrl = await uploadPhoto(studentId)
+          if (photoUrl) {
+            await supabase.from('students').update({ photo_url: photoUrl }).eq('id', studentId)
+          }
+        }
       }
       if (form.parent_email && studentId && !editing) {
         // Create first parent account
@@ -116,6 +130,8 @@ export default function StudentsPage() {
         })
       }
       setForm({ student_id: '', full_name: '', date_of_birth: '', gender: '', program: '', status: 'active', parent_name: '', parent_phone: '', parent_email: '', address: '', parent2_name: '', parent2_phone: '', parent2_email: '' })
+      setPhotoFile(null)
+      setPhotoPreview(null)
       setEditing(null)
       setShowForm(false)
       await fetchStudents()
@@ -204,8 +220,38 @@ export default function StudentsPage() {
     await fetchStudents()
   }
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+
+  const uploadPhoto = async (studentId) => {
+    if (!photoFile) return null
+    setUploadingPhoto(true)
+    try {
+      const ext = photoFile.name.split('.').pop()
+      const path = `${studentId}/photo.${ext}`
+      const { error } = await supabase.storage
+        .from('student-photos')
+        .upload(path, photoFile, { upsert: true })
+      if (error) throw error
+      const { data } = supabase.storage
+        .from('student-photos')
+        .getPublicUrl(path)
+      return data.publicUrl
+    } catch (e) {
+      console.error('Photo upload error:', e)
+      return null
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
   async function startEdit(s) {
     setEditing(s.id)
+    setPhotoFile(null)
+    setPhotoPreview(null)
     setForm({
       student_id: s.student_id || '', full_name: s.full_name, date_of_birth: s.date_of_birth || '',
       gender: s.gender || '', program: s.program || '', status: s.status || 'active',
@@ -268,6 +314,32 @@ export default function StudentsPage() {
         {showForm && !showArchived && (
           <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '24px', border: '1px solid #38bdf8', marginBottom: '24px' }}>
             <h3 style={{ color: '#38bdf8', marginBottom: '20px' }}>{editing ? '✏️ Edit Student' : '➕ New Student'}</h3>
+            {/* Photo Upload */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '20px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {photoPreview || (editing && students.find(s => s.id === editing)?.photo_url) ? (
+                  <img src={photoPreview || students.find(s => s.id === editing)?.photo_url}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ color: '#fff', fontWeight: '700', fontSize: '28px' }}>
+                    {form.full_name?.[0]?.toUpperCase() || '👶'}
+                  </span>
+                )}
+              </div>
+              <div>
+                <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '4px' }}>
+                  Student Photo
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '10px' }}>
+                  Upload a clear photo of the student
+                </div>
+                <label style={{ padding: '8px 16px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                  📷 {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                  <input type='file' accept='image/*' onChange={handlePhotoChange} style={{ display: 'none' }} />
+                </label>
+                {uploadingPhoto && <span style={{ marginLeft: '10px', color: '#38bdf8', fontSize: '12px' }}>⏳ Uploading...</span>}
+              </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Student ID *</label><input value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} placeholder='e.g. TK-001' style={inputStyle} /></div>
               <div><label style={{ color: '#94a3b8', fontSize: '13px' }}>Full Name *</label><input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder='Student full name' style={inputStyle} /></div>
@@ -425,9 +497,13 @@ export default function StudentsPage() {
                 <tr key={s.id} style={{ borderBottom: '1px solid #1e293b' }}>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: showArchived ? 'linear-gradient(135deg, #475569, #64748b)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: '#fff', flexShrink: 0 }}>
-                        {s.full_name?.[0]?.toUpperCase()}
-                      </div>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', background: showArchived ? 'linear-gradient(135deg, #475569, #64748b)' : 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', color: '#fff', flexShrink: 0 }}>
+                        {s.photo_url ? (
+                          <img src={s.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          s.full_name?.[0]?.toUpperCase()
+                        )}
+                      </div> 
                       <span style={{ fontWeight: '500' }}>{s.full_name}</span>
                     </div>
                   </td>
