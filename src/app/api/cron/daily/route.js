@@ -16,6 +16,7 @@ export async function GET(request) {
     transport: { trips_created: 0, children_added: 0, skipped: 0 },
     nutrition: { generated: 0, skipped: 0 },
     yoga: { generated: 0, skipped: 0 },
+    stories: { generated: 0, skipped: 0 },
     errors: []
   }
 
@@ -46,6 +47,14 @@ export async function GET(request) {
     results.errors.push(`Yoga error: ${e.message}`)
     console.error('Yoga cron error:', e)
   }
+
+  try {
+    await handleStoryPlans(results)
+  } catch (e) {
+    results.errors.push(`Stories error: ${e.message}`)
+    console.error('Stories cron error:', e)
+  }
+
   return Response.json({ success: true, results })
 }
 
@@ -721,4 +730,185 @@ Return ONLY valid JSON, no other text:
   }
 
   console.log(`Yoga cron complete: ${results.yoga.generated} plans generated ✅`)
+}
+
+// ═══════════════════════════════════════════════════════════
+// WEEKLY STORY PLAN GENERATION
+// ═══════════════════════════════════════════════════════════
+async function handleStoryPlans(results) {
+  // Only run on Sundays IST
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60 * 1000
+  const istDate = new Date(now.getTime() + istOffset)
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const todayDayName = dayNames[istDate.getUTCDay()]
+
+  if (todayDayName !== 'Sun') {
+    console.log(`Not Sunday (${todayDayName}) - skipping story plan generation`)
+    results.stories.skipped++
+    return
+  }
+
+  // Next Monday = week start
+  const nextDay = new Date(istDate)
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  const weekStart = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`
+
+  console.log(`Generating story plan for week starting ${weekStart}`)
+
+  // Get all active schools
+  const { data: schools } = await supabase
+    .from('schools')
+    .select('id, name')
+    .eq('status', 'active')
+
+  if (!schools || schools.length === 0) return
+
+  for (const school of schools) {
+    // Check if plan already exists
+    const { data: existing } = await supabase
+      .from('story_plans')
+      .select('id')
+      .eq('school_id', school.id)
+      .eq('week_start_date', weekStart)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`Story plan already exists for ${school.name} week ${weekStart}`)
+      results.stories.skipped++
+      continue
+    }
+
+    try {
+      // Call Claude API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 6000,
+          messages: [{
+            role: 'user',
+            content: `Generate 5 short Indian children's stories for preschool children aged 2-6 years for Monday to Friday.
+
+Requirements:
+- Indian themes, characters, settings
+- Animal stories, moral stories, nature stories, festival stories
+- Age appropriate language (simple words)
+- Warm, positive, no scary content, no monsters, no violence
+- Medium length (~300-400 words each)
+- Include 3 simple questions for parents to ask child
+- Include one fun activity suggestion
+- Strong moral value in each story
+
+Return ONLY valid JSON, no other text:
+{
+  "monday": {
+    "title": "The Kind Elephant",
+    "category": "Animal Story",
+    "emoji": "🐘",
+    "story": "Full story text here (300-400 words)...",
+    "moral": "Kindness makes the world a better place",
+    "questions": [
+      "What was the elephant's name?",
+      "How did the elephant help his friends?",
+      "How did helping others make the elephant feel?"
+    ],
+    "activity": {
+      "title": "Draw and Share!",
+      "description": "Draw your favourite animal from the story and share it with someone you love!"
+    }
+  },
+  "tuesday": { "same structure" },
+  "wednesday": { "same structure" },
+  "thursday": { "same structure" },
+  "friday": { "same structure" }
+}`
+          }]
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.content || !data.content[0]) {
+        console.error('Invalid Claude API response:', data)
+        results.errors.push(`Invalid story API response for ${school.name}`)
+        continue
+      }
+
+      const content = data.content[0].text
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim()
+      const plan = JSON.parse(cleanContent)
+
+      // Save to database
+      const { error: insertError } = await supabase
+        .from('story_plans')
+        .insert({
+          school_id: school.id,
+          week_start_date: weekStart,
+          monday: plan.monday,
+          tuesday: plan.tuesday,
+          wednesday: plan.wednesday,
+          thursday: plan.thursday,
+          friday: plan.friday,
+          generated_by_ai: true,
+          edited_by_admin: false
+        })
+
+      if (insertError) {
+        console.error(`Story insert error for ${school.name}:`, insertError)
+        results.errors.push(`Story insert failed for ${school.name}`)
+        continue
+      }
+
+      results.stories.generated++
+      console.log(`✅ Story plan generated for ${school.name}`)
+
+      // Create announcement
+      await supabase.from('announcements').insert({
+        school_id: school.id,
+        title: '📚 This Week\'s Stories are Ready!',
+        content: `This week's bedtime stories for your little ones are ready! Open the intelliGen app and tap 📚 Story Time to read fun Indian stories with your child.\n\n🌟 Each story has a moral value, questions to ask your child and a fun activity!\n\n Happy reading! 📖`,
+        created_at: new Date().toISOString()
+      })
+
+      // Send push notification to all parents
+      const { data: parents } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', school.id)
+        .eq('role', 'parent')
+
+      if (parents && parents.length > 0) {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: parents.map(p => p.id),
+              title: '📚 This Week\'s Stories are Ready!',
+              body: 'New bedtime stories for your child are ready! Read together tonight! 🌙',
+              url: '/parent',
+              data: { type: 'announcement' }
+            })
+          })
+        } catch (e) {
+          console.error('Story push notification error:', e)
+        }
+      }
+
+    } catch (e) {
+      console.error(`Story generation error for ${school.name}:`, e)
+      results.errors.push(`Story generation failed: ${e.message}`)
+    }
+  }
+
+  console.log(`Story cron complete: ${results.stories.generated} plans generated ✅`)
 }

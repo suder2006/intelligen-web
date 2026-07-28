@@ -213,6 +213,7 @@ const fetchParentActivity = async () => {
     { href: '/admin/transport', label: 'Transport', icon: '🚌' },
     { href: '/admin/nutrition', label: 'Nutrition', icon: '🥗' },
     { href: '/admin/yoga', label: 'Yoga', icon: '🧘' },
+    { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/events', label: 'Events', icon: '📅' },
     { href: '/admin/diary', label: 'Diary', icon: '📔' },
     { href: '/admin/reports', label: 'Reports', icon: '📈' },
