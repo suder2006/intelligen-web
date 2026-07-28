@@ -15,6 +15,7 @@ export async function GET(request) {
     birthdays: { checked: 0, sent: 0, announcement: false },
     transport: { trips_created: 0, children_added: 0, skipped: 0 },
     nutrition: { generated: 0, skipped: 0 },
+    yoga: { generated: 0, skipped: 0 },
     errors: []
   }
 
@@ -39,6 +40,12 @@ export async function GET(request) {
     console.error('Nutrition cron error:', e)
   }
 
+    try {
+    await handleYogaPlans(results)
+  } catch (e) {
+    results.errors.push(`Yoga error: ${e.message}`)
+    console.error('Yoga cron error:', e)
+  }
   return Response.json({ success: true, results })
 }
 
@@ -514,4 +521,204 @@ Return ONLY valid JSON, no other text:
   }
 
   console.log(`Nutrition cron complete: ${results.nutrition.generated} plans generated ✅`)
+}
+
+// ═══════════════════════════════════════════════════════════
+// WEEKLY YOGA PLAN GENERATION
+// ═══════════════════════════════════════════════════════════
+async function handleYogaPlans(results) {
+  // Only run on Sundays IST
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60 * 1000
+  const istDate = new Date(now.getTime() + istOffset)
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const todayDayName = dayNames[istDate.getUTCDay()]
+
+  if (todayDayName !== 'Sun') {
+    console.log(`Not Sunday (${todayDayName}) - skipping yoga plan generation`)
+    results.yoga.skipped++
+    return
+  }
+
+  // Next Monday = week start
+  const nextDay = new Date(istDate)
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  const weekStart = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`
+
+  console.log(`Generating yoga plan for week starting ${weekStart}`)
+
+  // Get all active schools
+  const { data: schools } = await supabase
+    .from('schools')
+    .select('id, name')
+    .eq('status', 'active')
+
+  if (!schools || schools.length === 0) return
+
+  for (const school of schools) {
+    // Check if plan already exists
+    const { data: existing } = await supabase
+      .from('yoga_plans')
+      .select('id')
+      .eq('school_id', school.id)
+      .eq('week_start_date', weekStart)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`Yoga plan already exists for ${school.name} week ${weekStart}`)
+      results.yoga.skipped++
+      continue
+    }
+
+    try {
+      // Call Claude API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: `Generate a fun weekly kids yoga plan for preschool children aged 2-6 years for Monday to Friday.
+
+Requirements:
+- Simple, fun and playful poses
+- Age appropriate for 2-6 year olds
+- Animal and nature themed poses
+- Include breathing exercises
+- Each day has 4 activities
+- Include YouTube search terms for each pose
+- Indian context preferred
+
+Return ONLY valid JSON, no other text:
+{
+  "monday": {
+    "morning_pose": {
+      "name": "Cat-Cow Stretch",
+      "emoji": "🐱",
+      "instructions": ["Get on hands and knees", "Breathe in arch your back", "Breathe out round your back", "Repeat 5 times"],
+      "duration": "2 minutes",
+      "benefit": "Warms up the spine",
+      "youtube_search": "cat cow stretch for kids yoga"
+    },
+    "main_pose": {
+      "name": "Tree Pose",
+      "emoji": "🌳",
+      "instructions": ["Stand tall", "Place one foot on ankle", "Raise arms like branches", "Hold 10 seconds each side"],
+      "duration": "3 minutes",
+      "benefit": "Builds balance and focus",
+      "youtube_search": "tree pose kids yoga"
+    },
+    "breathing": {
+      "name": "Bunny Breathing",
+      "emoji": "🐰",
+      "instructions": ["Take 3 quick sniffs in", "One long breath out", "Repeat 5 times"],
+      "duration": "2 minutes",
+      "benefit": "Calms the mind",
+      "youtube_search": "bunny breathing kids yoga"
+    },
+    "relaxation": {
+      "name": "Sleeping Star",
+      "emoji": "⭐",
+      "instructions": ["Lie on your back", "Spread arms and legs wide", "Close your eyes", "Take 5 deep breaths"],
+      "duration": "3 minutes",
+      "benefit": "Relaxes the body",
+      "youtube_search": "relaxation kids yoga savasana"
+    },
+    "theme": "Forest Adventure",
+    "overall_benefit": "Energy and focus for the day"
+  },
+  "tuesday": { "same structure" },
+  "wednesday": { "same structure" },
+  "thursday": { "same structure" },
+  "friday": { "same structure" }
+}`
+          }]
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.content || !data.content[0]) {
+        console.error('Invalid Claude API response:', data)
+        results.errors.push(`Invalid yoga API response for ${school.name}`)
+        continue
+      }
+
+      const content = data.content[0].text
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim()
+      const plan = JSON.parse(cleanContent)
+
+      // Save to database
+      const { error: insertError } = await supabase
+        .from('yoga_plans')
+        .insert({
+          school_id: school.id,
+          week_start_date: weekStart,
+          monday: plan.monday,
+          tuesday: plan.tuesday,
+          wednesday: plan.wednesday,
+          thursday: plan.thursday,
+          friday: plan.friday,
+          generated_by_ai: true,
+          edited_by_admin: false
+        })
+
+      if (insertError) {
+        console.error(`Yoga insert error for ${school.name}:`, insertError)
+        results.errors.push(`Yoga insert failed for ${school.name}`)
+        continue
+      }
+
+      results.yoga.generated++
+      console.log(`✅ Yoga plan generated for ${school.name}`)
+
+      // Create announcement
+      await supabase.from('announcements').insert({
+        school_id: school.id,
+        title: '🧘 This Week\'s Kids Yoga Plan is Ready!',
+        content: `This week's fun yoga routines for your little ones are ready! Open the intelliGen app and tap the 🧘 Yoga tab to explore daily poses, breathing exercises and relaxation routines designed for children aged 2-6 years.\n\n💪 Regular yoga helps children with focus, flexibility, strength and better sleep!\n\n⚠️ Please supervise your child during yoga activities.`,
+        created_at: new Date().toISOString()
+      })
+
+      // Send push notification to all parents
+      const { data: parents } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', school.id)
+        .eq('role', 'parent')
+
+      if (parents && parents.length > 0) {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/push/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userIds: parents.map(p => p.id),
+              title: '🧘 Kids Yoga Plan Ready!',
+              body: 'This week\'s fun yoga routines for your child are ready! Check intelliGen! 🌟',
+              url: '/parent',
+              data: { type: 'announcement' }
+            })
+          })
+        } catch (e) {
+          console.error('Yoga push notification error:', e)
+        }
+      }
+
+    } catch (e) {
+      console.error(`Yoga generation error for ${school.name}:`, e)
+      results.errors.push(`Yoga generation failed: ${e.message}`)
+    }
+  }
+
+  console.log(`Yoga cron complete: ${results.yoga.generated} plans generated ✅`)
 }
