@@ -227,15 +227,42 @@ export default function StudentsPage() {
     setPhotoPreview(URL.createObjectURL(file))
   }
 
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new window.Image()
+      img.onload = () => {
+        // Resize to max 400x400
+        const MAX = 400
+        let { width, height } = img
+        if (width > height) {
+          if (width > MAX) { height = (height * MAX) / width; width = MAX }
+        } else {
+          if (height > MAX) { width = (width * MAX) / height; height = MAX }
+        }
+        canvas.width = width
+        canvas.height = height
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(resolve, 'image/jpeg', 0.8)
+      }
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   const uploadPhoto = async (studentId) => {
     if (!photoFile) return null
     setUploadingPhoto(true)
     try {
-      const ext = photoFile.name.split('.').pop()
-      const path = `${studentId}/photo.${ext}`
+      // Compress before upload
+      const compressed = await compressImage(photoFile)
+      const path = `${studentId}/photo.jpg`
       const { error } = await supabase.storage
         .from('student-photos')
-        .upload(path, photoFile, { upsert: true })
+        .upload(path, compressed, { 
+          upsert: true,
+          contentType: 'image/jpeg'
+        })
       if (error) throw error
       const { data } = supabase.storage
         .from('student-photos')
