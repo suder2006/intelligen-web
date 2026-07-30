@@ -17,6 +17,7 @@ export async function GET(request) {
     nutrition: { generated: 0, skipped: 0 },
     yoga: { generated: 0, skipped: 0 },
     stories: { generated: 0, skipped: 0 },
+    tips: { generated: 0, skipped: 0 },
     errors: []
   }
 
@@ -53,6 +54,13 @@ export async function GET(request) {
   } catch (e) {
     results.errors.push(`Stories error: ${e.message}`)
     console.error('Stories cron error:', e)
+  }
+
+  try {
+    await handleDailyTips(results)
+  } catch (e) {
+    results.errors.push(`Tips error: ${e.message}`)
+    console.error('Tips cron error:', e)
   }
 
   return Response.json({ success: true, results })
@@ -911,4 +919,175 @@ Return ONLY valid JSON, no other text:
   }
 
   console.log(`Story cron complete: ${results.stories.generated} plans generated ✅`)
+}
+
+// ═══════════════════════════════════════════════════════════
+// WEEKLY DAILY TIPS GENERATION
+// ═══════════════════════════════════════════════════════════
+async function handleDailyTips(results) {
+  // Only run on Sundays IST
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60 * 1000
+  const istDate = new Date(now.getTime() + istOffset)
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const todayDayName = dayNames[istDate.getUTCDay()]
+
+  if (todayDayName !== 'Sun') {
+    console.log(`Not Sunday (${todayDayName}) - skipping daily tips generation`)
+    results.tips.skipped++
+    return
+  }
+
+  // Next Monday = week start
+  const nextDay = new Date(istDate)
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+  const weekStart = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`
+
+  console.log(`Generating daily tips for week starting ${weekStart}`)
+
+  // Get all active schools
+  const { data: schools } = await supabase
+    .from('schools')
+    .select('id, name')
+    .eq('status', 'active')
+
+  if (!schools || schools.length === 0) return
+
+  for (const school of schools) {
+    // Check if tips already exist for this week
+    const { data: existing } = await supabase
+      .from('daily_tips')
+      .select('id')
+      .eq('school_id', school.id)
+      .eq('week_start_date', weekStart)
+      .maybeSingle()
+
+    if (existing) {
+      console.log(`Daily tips already exist for ${school.name} week ${weekStart}`)
+      results.tips.skipped++
+      continue
+    }
+
+    try {
+      // Call Claude API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          messages: [{
+            role: 'user',
+            content: `Generate 7 daily parenting tips for parents of preschool children aged 2-6 years in India for each day of the week.
+
+Requirements:
+- Practical and actionable tips
+- Indian context and culture
+- Age appropriate for 2-6 year olds
+- Short and easy to read (2-3 sentences max)
+- Rotate categories: Parenting, Nutrition, Activity, Child Development, Health, School Readiness, Family Fun
+- Warm and encouraging tone
+- No scary or negative content
+
+Return ONLY valid JSON, no other text:
+{
+  "monday": {
+    "tip": "Reading just 10 minutes daily with your child before bedtime improves vocabulary by 3x before age 6. Try reading a short story together tonight!",
+    "category": "Child Development",
+    "emoji": "📚",
+    "share_text": "💡 Parenting Tip from intelliGen:\n\nReading just 10 minutes daily with your child before bedtime improves vocabulary by 3x before age 6. Try reading a short story together tonight!\n\n📲 intelliGen School App"
+  },
+  "tuesday": {
+    "tip": "...",
+    "category": "Nutrition",
+    "emoji": "🥗",
+    "share_text": "..."
+  },
+  "wednesday": {
+    "tip": "...",
+    "category": "Activity",
+    "emoji": "🎨",
+    "share_text": "..."
+  },
+  "thursday": {
+    "tip": "...",
+    "category": "Health",
+    "emoji": "🏥",
+    "share_text": "..."
+  },
+  "friday": {
+    "tip": "...",
+    "category": "School Readiness",
+    "emoji": "📖",
+    "share_text": "..."
+  },
+  "saturday": {
+    "tip": "...",
+    "category": "Family Fun",
+    "emoji": "👨‍👩‍👧",
+    "share_text": "..."
+  },
+  "sunday": {
+    "tip": "...",
+    "category": "Parenting",
+    "emoji": "💝",
+    "share_text": "..."
+  }
+}`
+          }]
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.content || !data.content[0]) {
+        console.error('Invalid Claude API response:', data)
+        results.errors.push(`Invalid tips API response for ${school.name}`)
+        continue
+      }
+
+      const content = data.content[0].text
+      const cleanContent = content
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim()
+      const tips = JSON.parse(cleanContent)
+
+      // Save to database
+      const { error: insertError } = await supabase
+        .from('daily_tips')
+        .insert({
+          school_id: school.id,
+          week_start_date: weekStart,
+          monday: tips.monday,
+          tuesday: tips.tuesday,
+          wednesday: tips.wednesday,
+          thursday: tips.thursday,
+          friday: tips.friday,
+          saturday: tips.saturday,
+          sunday: tips.sunday,
+          generated_by_ai: true,
+          edited_by_admin: false
+        })
+
+      if (insertError) {
+        console.error(`Tips insert error for ${school.name}:`, insertError)
+        results.errors.push(`Tips insert failed for ${school.name}`)
+        continue
+      }
+
+      results.tips.generated++
+      console.log(`✅ Daily tips generated for ${school.name}`)
+
+    } catch (e) {
+      console.error(`Tips generation error for ${school.name}:`, e)
+      results.errors.push(`Tips generation failed: ${e.message}`)
+    }
+  }
+
+  console.log(`Tips cron complete: ${results.tips.generated} sets generated ✅`)
 }
