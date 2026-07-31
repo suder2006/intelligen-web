@@ -76,15 +76,32 @@ export async function POST(request) {
     }))
     console.log('GetePay URL:', config.GetepayUrl)
     
-    const response = await fetch(config.GetepayUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mid: data.mid,
-        terminalId: data.terminalId,
-        req: newCipher,
-      }),
-    })
+    const fixieUrl = process.env.FIXIE_URL
+    let response
+    if (fixieUrl) {
+      const { HttpsProxyAgent } = await import('https-proxy-agent')
+      const agent = new HttpsProxyAgent(fixieUrl)
+      response = await fetch(config.GetepayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mid: data.mid,
+          terminalId: data.terminalId,
+          req: newCipher,
+        }),
+        agent
+      })
+    } else {
+      response = await fetch(config.GetepayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mid: data.mid,
+          terminalId: data.terminalId,
+          req: newCipher,
+        }),
+      })
+    }
     const result = await response.text()
     console.log('GetePay raw response:', result)
     let resultobj
