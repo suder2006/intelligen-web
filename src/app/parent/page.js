@@ -137,7 +137,9 @@ export default function ParentPortal() {
     const effectiveSid = sid || s.data?.[0]?.school_id
     setSchoolId(effectiveSid)
     if (effectiveSid) {
-    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description, getepay_mid, getepay_terminal_id, getepay_key, getepay_iv, getepay_url, policy_privacy, policy_terms, policy_refund').eq('id', effectiveSid).single()
+    // Never select getepay_key / getepay_iv / getepay_url here — this runs in the
+    // browser. Only getepay_mid is needed, to decide whether to show the pay button.
+    const { data: schoolData } = await supabase.from('schools').select('name, upi_id, upi_name, upi_description, getepay_mid, policy_privacy, policy_terms, policy_refund').eq('id', effectiveSid).single()
     setSchoolPolicies({
       policy_privacy: schoolData?.policy_privacy || '',
       policy_terms: schoolData?.policy_terms || '',

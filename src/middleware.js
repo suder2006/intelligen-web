@@ -69,7 +69,7 @@ export async function middleware(request) {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ response: encryptedResponse })
+              body: JSON.stringify({ response: encryptedResponse, mid, terminalId })
             }
           )
           const resultText = await decryptRes.text()

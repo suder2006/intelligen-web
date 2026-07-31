@@ -8,22 +8,34 @@ export async function POST(request) {
         process.env.NEXT_PUBLIC_SUPABASE_URL || '',
         process.env.SUPABASE_SERVICE_ROLE_KEY || ''
       )
-    const { response } = await request.json()
+    const { response, mid, terminalId } = await request.json()
 
-    // Get school credentials
-    const { data: schools } = await supabase
+    // Resolve the paying school from the MID GetePay posted back. Never fall back to
+    // "first school with credentials" — that decrypts with another tenant's key.
+    if (!mid) {
+      return NextResponse.json({ error: 'Missing mid in callback' })
+    }
+
+    let query = supabase
       .from('schools')
-      .select('getepay_key, getepay_iv')
+      .select('id, getepay_key, getepay_iv')
+      .eq('getepay_mid', mid)
       .not('getepay_key', 'is', null)
-      .limit(1)
 
-    if (!schools?.[0]) {
+    if (terminalId) {
+      query = query.eq('getepay_terminal_id', terminalId)
+    }
+
+    const { data: schools } = await query.limit(1)
+
+    const school = schools?.[0]
+    if (!school) {
       return NextResponse.json({ error: 'No credentials found' })
     }
 
     const decryptEas = (await import('@/lib/getepay/decryptEas')).default
-    const decrypted = decryptEas(response, schools[0].getepay_key, schools[0].getepay_iv)
-    
+    const decrypted = decryptEas(response, school.getepay_key, school.getepay_iv)
+
     let data = decrypted
       if (typeof data === 'string') {
         data = JSON.parse(data)
@@ -38,10 +50,13 @@ export async function POST(request) {
 const invoiceId = (data.udf1 || '').trim()
 
 if (invoiceId) {
+  // Scope to the paying school so a callback for one tenant can never settle
+  // another tenant's invoice.
   const { data: invoice, error: fetchError } = await supabase
     .from('fee_invoices')
     .select('total_amount')
     .eq('id', invoiceId)
+    .eq('school_id', school.id)
     .single()
 
   
@@ -58,6 +73,7 @@ if (invoiceId) {
         getepay_transaction_id: data.getepayTxnId || ''
       })
       .eq('id', invoiceId)
+      .eq('school_id', school.id)
       .select()
 
     
