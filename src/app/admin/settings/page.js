@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
@@ -28,10 +29,13 @@ export default function SchoolSettingsPage() {
     razorpay_key_id: '', razorpay_key_secret: '',
     payu_merchant_key: '', payu_merchant_salt: '',
     getepay_mid: '', getepay_terminal_id: '',
-    getepay_key: '', getepay_key: '',
+    getepay_key: '', getepay_iv: '',
     getepay_url: ''
 
   })
+  // getepay_key / getepay_iv are write-only in this form: the API never sends the
+  // stored values back, it only reports whether they are set.
+  const [getepaySaved, setGetepaySaved] = useState({ has_key: false, has_iv: false })
   // Sub-admin management
   const [subAdmins, setSubAdmins] = useState([])
   const [showSubAdminForm, setShowSubAdminForm] = useState(false)
@@ -55,10 +59,27 @@ export default function SchoolSettingsPage() {
       useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins() } }, [schoolId])
 
 
+  const authHeader = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return { Authorization: `Bearer ${session?.access_token || ''}` }
+  }
+
   const fetchSchool = async () => {
     setLoading(true)
-    const { data } = await supabase.from('schools').select('*').eq('id', schoolId).single()
+    const { data } = await supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', schoolId).single()
     setSchool(data)
+
+    // GetePay credentials come from the service-role route, not the client.
+    let getepay = { getepay_mid: '', getepay_terminal_id: '', getepay_url: '', has_key: false, has_iv: false }
+    try {
+      const res = await fetch(`/api/admin/getepay-settings?school_id=${schoolId}`, { headers: await authHeader() })
+      if (res.ok) getepay = await res.json()
+    } catch (e) {
+      // Leave the GetePay fields blank if the lookup fails; the rest of the
+      // settings page still works.
+    }
+    setGetepaySaved({ has_key: getepay.has_key, has_iv: getepay.has_iv })
+
     if (data) {
       setModulePassword(data.module_access_password || '')
     setForm({
@@ -76,11 +97,11 @@ export default function SchoolSettingsPage() {
         razorpay_key_secret: data.razorpay_key_secret || '',
         payu_merchant_key: data.payu_merchant_key || '',
         payu_merchant_salt: data.payu_merchant_salt || '',
-        getepay_mid: data.getepay_mid || '',
-        getepay_terminal_id: data.getepay_terminal_id || '',
-        getepay_key: data.getepay_key || '',
-        getepay_iv: data.getepay_iv || '',
-        getepay_url: data.getepay_url || ''
+        getepay_mid: getepay.getepay_mid,
+        getepay_terminal_id: getepay.getepay_terminal_id,
+        getepay_key: '',
+        getepay_iv: '',
+        getepay_url: getepay.getepay_url
 
       })
       setPolicies({
@@ -94,7 +115,21 @@ export default function SchoolSettingsPage() {
 
   const saveSettings = async () => {
     setSaving(true)
-    await supabase.from('schools').update(form).eq('id', schoolId)
+
+    // GetePay fields go through the service-role route; everything else is a
+    // normal client update.
+    const { getepay_mid, getepay_terminal_id, getepay_key, getepay_iv, getepay_url, ...rest } = form
+    await supabase.from('schools').update(rest).eq('id', schoolId)
+    await fetch('/api/admin/getepay-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify({
+        school_id: schoolId,
+        getepay_mid, getepay_terminal_id, getepay_url,
+        getepay_key, getepay_iv,
+      }),
+    })
+
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
     await fetchSchool()
@@ -610,6 +645,7 @@ const startEditSubAdmin = (sa) => {
   <div className="section-title">💳 GetePay Payment Gateway</div>
   <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
     ℹ️ Configure GetePay to accept online payments from parents. Get credentials from GetePay dashboard.
+    The Key and IV are stored securely and never shown again — leave them blank to keep the saved values.
   </div>
   <div className="grid-2">
     <div>
@@ -623,14 +659,14 @@ const startEditSubAdmin = (sa) => {
         placeholder='e.g. Getepay.merchant@icici' style={inputStyle} />
     </div>
     <div>
-      <label>GetePay Key</label>
+      <label>GetePay Key {getepaySaved.has_key && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
       <input type='password' value={form.getepay_key} onChange={e => setForm({ ...form, getepay_key: e.target.value })}
-        placeholder='Your encryption key' style={inputStyle} />
+        placeholder={getepaySaved.has_key ? 'Leave blank to keep current key' : 'Your encryption key'} style={inputStyle} />
     </div>
     <div>
-      <label>GetePay IV</label>
+      <label>GetePay IV {getepaySaved.has_iv && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
       <input type='password' value={form.getepay_iv} onChange={e => setForm({ ...form, getepay_iv: e.target.value })}
-        placeholder='Your IV key' style={inputStyle} />
+        placeholder={getepaySaved.has_iv ? 'Leave blank to keep current IV' : 'Your IV key'} style={inputStyle} />
     </div>
     <div style={{ gridColumn: '1 / -1' }}>
       <label>GetePay URL</label>

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 
@@ -27,7 +28,7 @@ export default function BirthdayCalendarPage() {
     setLoading(true)
     const [stuRes, schRes, progRes, notifRes] = await Promise.all([
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name'),
-      supabase.from('schools').select('*').eq('id', schoolId).single(),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', schoolId).single(),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value'),
       supabase.from('birthday_notifications').select('student_id, notification_date').eq('school_id', schoolId)
     ])

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useSchool } from '@/hooks/useSchool'
 import { APP_URL } from '@/lib/config'
 import Link from 'next/link'
@@ -21,7 +22,7 @@ export default function IDCardPage() {
     setLoading(true)
     const [stuRes, schRes, progRes] = await Promise.all([
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name'),
-      supabase.from('schools').select('*').eq('id', schoolId).single(),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', schoolId).single(),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     setStudents(stuRes.data || [])

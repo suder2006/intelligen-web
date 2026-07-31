@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -20,7 +21,7 @@ export default function SuperAdminDashboard() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
     const [sc, st, sf, ad] = await Promise.all([
-      supabase.from('schools').select('*').order('created_at', { ascending: false }),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).order('created_at', { ascending: false }),
       supabase.from('students').select('id', { count: 'exact' }),
       supabase.from('profiles').select('id', { count: 'exact' }).in('role', ['teacher', 'staff']),
       supabase.from('admissions').select('id', { count: 'exact' }).eq('status', 'pending'),

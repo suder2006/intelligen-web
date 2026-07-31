@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useRouter } from 'next/navigation'
 import { registerPushNotifications } from '@/lib/pushNotifications'
 import dynamic from 'next/dynamic'
@@ -199,7 +200,7 @@ export default function TeacherPortal() {
 
     // Load birthdays for teacher's programs
     const [schRes, notifRes] = await Promise.all([
-      supabase.from('schools').select('*').eq('id', prof.school_id).single(),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', prof.school_id).single(),
       supabase.from('birthday_notifications').select('student_id, notification_date').eq('school_id', prof.school_id)
     ])
     setSchoolForBirthday(schRes.data)

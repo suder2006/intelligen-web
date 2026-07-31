@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useSearchParams } from 'next/navigation'
 
 const VISIT_SLOTS = ['12:30 PM', '1:30 PM', '2:30 PM', '3:30 PM', '4:30 PM']
@@ -60,7 +61,7 @@ function EnquiryContent() {
     const init = async () => {
       setLoading(true)
       if (schoolParam) {
-        const { data: schoolData } = await supabase.from('schools').select('*').eq('id', schoolParam).single()
+        const { data: schoolData } = await supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', schoolParam).single()
         setSchool(schoolData)
         const { data: progsData } = await supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolParam).order('value')
         setPrograms(progsData?.map(p => p.value) || [])

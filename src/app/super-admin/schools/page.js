@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useRouter } from 'next/navigation'
 import { APP_URL } from '@/lib/config'
 
@@ -33,7 +34,7 @@ export default function SuperAdminSchools() {
   const fetchAll = async () => {
     setLoading(true)
     const [schRes, regRes] = await Promise.all([
-      supabase.from('schools').select('*').order('created_at', { ascending: false }),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).order('created_at', { ascending: false }),
       supabase.from('school_registrations').select('*').order('created_at', { ascending: false })
     ])
     const schoolsWithStats = await Promise.all((schRes.data || []).map(async school => {

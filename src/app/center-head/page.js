@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useRouter } from 'next/navigation'
 
 const LEAD_STATUSES = ['new', 'contacted', 'visit_booked', 'visit_completed', 'enrolled', 'closed']
@@ -90,7 +91,7 @@ export default function CenterHeadPortal() {
     setVisits(visRes.data || [])
     // Load birthdays
     const [schRes, stuRes] = await Promise.all([
-      supabase.from('schools').select('*').eq('id', prof.school_id).single(),
+      supabase.from('schools').select(SCHOOL_SAFE_COLUMNS).eq('id', prof.school_id).single(),
       supabase.from('students').select('*').eq('school_id', prof.school_id).eq('status', 'active').order('full_name')
     ])
       setSchoolForBirthday(schRes.data)
