@@ -204,9 +204,9 @@ export default function AdminGrowthPage() {
                         <div style={{ color: '#a78bfa', fontSize: '13px' }}>{selectedStudent.program}</div>
                         {selectedStudent.date_of_birth && (
                           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>
-                            DOB: {new Date(selectedStudent.date_of_birth).toLocaleDateString('en-IN')}
+                            DOB: {new Date(selectedStudent.date_of_birth + 'T12:00:00').toLocaleDateString('en-IN')}
                           </div>
-                        )}
+                        )}  
                       </div>
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
                         <span style={{ padding: '4px 12px', background: 'rgba(245,158,11,0.15)', borderRadius: '20px', color: '#f59e0b', fontSize: '12px' }}>
