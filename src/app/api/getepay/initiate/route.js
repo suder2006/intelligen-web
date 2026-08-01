@@ -78,12 +78,12 @@ export async function POST(request) {
     
     const fixieUrl = process.env.FIXIE_URL
     console.log('FIXIE_URL present:', !!fixieUrl)
-    console.log('FIXIE_URL value:', fixieUrl ? 'SET' : 'NOT SET')
     let response
     if (fixieUrl) {
+      const nodeFetch = (await import('node-fetch')).default
       const { HttpsProxyAgent } = await import('https-proxy-agent')
       const agent = new HttpsProxyAgent(fixieUrl)
-      response = await fetch(config.GetepayUrl, {
+      response = await nodeFetch(config.GetepayUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
