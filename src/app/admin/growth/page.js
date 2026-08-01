@@ -36,9 +36,11 @@ export default function AdminGrowthPage() {
     setLoading(true)
     const [studRes, measRes, progRes] = await Promise.all([
       supabase.from('students').select('*').eq('school_id', schoolId).eq('status', 'active').order('full_name'),
-      supabase.from('physical_growth').select('*, students(full_name, program, date_of_birth, photo_url), profiles(full_name)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabase.from('physical_growth').select('*, students(full_name, program, date_of_birth, photo_url)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('curriculum_masters').select('value').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
+    console.log('Students:', studRes.data?.length, studRes.error)
+    console.log('Measurements:', measRes.data?.length, measRes.error)
     setStudents(studRes.data || [])
     setMeasurements(measRes.data || [])
     setPrograms(progRes.data?.map(p => p.value) || [])
