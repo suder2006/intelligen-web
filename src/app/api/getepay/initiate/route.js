@@ -77,6 +77,8 @@ export async function POST(request) {
     console.log('GetePay URL:', config.GetepayUrl)
     
     const fixieUrl = process.env.FIXIE_URL
+    console.log('FIXIE_URL present:', !!fixieUrl)
+    console.log('FIXIE_URL value:', fixieUrl ? 'SET' : 'NOT SET')
     let response
     if (fixieUrl) {
       const { HttpsProxyAgent } = await import('https-proxy-agent')
