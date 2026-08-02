@@ -326,7 +326,7 @@ export default function AdminGrowthPage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                               <div>
                                 <div style={{ color: '#34d399', fontWeight: '700', fontSize: '14px', marginBottom: '2px' }}>
-                                  ✅ {new Date(m.measurement_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                  ✅ {new Date(m.measurement_date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
                                 </div>
                                 {m.profiles?.full_name && (
                                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>By: {m.profiles.full_name}</div>
@@ -402,7 +402,7 @@ export default function AdminGrowthPage() {
                                   return (
                                     <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                       <td style={{ padding: '10px 12px', color: '#94a3b8' }}>
-                                        {new Date(m.measurement_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        {new Date(m.measurement_date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                       </td>
                                       <td style={{ padding: '10px 12px', color: '#38bdf8', fontWeight: '600' }}>
                                         {m.height_cm}
