@@ -39,8 +39,7 @@ export default function AdminGrowthPage() {
       supabase.from('physical_growth').select('*, students(full_name, program, date_of_birth, photo_url)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('curriculum_masters').select('value').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
-    console.log('Students:', studRes.data?.length, studRes.error)
-    console.log('Measurements:', measRes.data?.length, measRes.error)
+
     setStudents(studRes.data || [])
     setMeasurements(measRes.data || [])
     setPrograms(progRes.data?.map(p => p.value) || [])
@@ -253,7 +252,7 @@ export default function AdminGrowthPage() {
                                   ⏳ Pending Approval
                                 </div>
                                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                                  Measured: {new Date(m.measurement_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                  Measured: {new Date(m.measurement_date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
                                 </div>
                                 {m.profiles?.full_name && (
                                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>
