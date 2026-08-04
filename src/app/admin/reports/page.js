@@ -31,7 +31,7 @@ export default function ReportsPage() {
       supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
       supabase.from('fee_invoices').select('*, students(full_name, program)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('fee_installments').select('*').order('due_date'),
-      supabase.from('attendance').select('*, students(full_name, program)').order('date', { ascending: false }),
+      supabase.from('attendance').select('*, students(full_name, program)').eq('school_id', schoolId).order('date', { ascending: false }),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     setStudents(s.data || [])
