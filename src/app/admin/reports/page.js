@@ -19,7 +19,7 @@ export default function ReportsPage() {
   const [filterProgram, setFilterProgram] = useState('all')
   const [programs, setPrograms] = useState([])
   const [filterStudent, setFilterStudent] = useState('all')
-  const [studentReportView, setStudentReportView] = useState('summary')
+  const [studentReportView, setStudentReportView] = useState('detail')
   
   const { schoolId } = useSchool()
 
@@ -80,33 +80,46 @@ export default function ReportsPage() {
 
   // Export student daily attendance CSV
   const exportStudentDailyCSV = () => {
-    const dates = getMonthDates(filterMonth)
-    const studentsToExport = filterStudent === 'all' 
-      ? filteredStudents 
+    const dates = getMonthDates(filterMonth).filter(d => !d.isSunday)
+    const studentsToExport = filterStudent === 'all'
+      ? filteredStudents
       : filteredStudents.filter(s => s.id === filterStudent)
-    
-    if (filterStudent !== 'all' && studentsToExport.length === 1) {
-      // Single student — day by day
-      const s = studentsToExport[0]
-      exportCSV(
-        ['Date', 'Day', 'Status'],
-        dates.filter(d => !d.isSunday).map(({ date, dayName }) => {
-          const rec = attendance.find(a => a.student_id === s.id && a.date === date)
-          return [date, dayName, rec?.status || 'absent']
-        }),
-        `${s.full_name}-attendance-${filterMonth}.csv`
-      )
-    } else {
-      // All students summary
-      exportCSV(
-        ['Student', 'Program', 'Present', 'Absent', 'Late', 'Total Days', 'Attendance %'],
-        studentsToExport.map(s => {
-          const stats = getStudentAttendance(s.id, filterMonth)
-          return [s.full_name, s.program || '', stats.present, stats.absent, stats.late, stats.total, `${stats.pct}%`]
-        }),
-        `student-attendance-${filterMonth}.csv`
-      )
-    }
+
+    // Always export day-wise format
+    const headers = [
+      'Student Name',
+      'Program',
+      ...dates.map(({ date }) => {
+        const d = new Date(date + 'T12:00:00')
+        return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+      }),
+      'Present Days',
+      'Absent Days',
+      'Attendance %'
+    ]
+
+    const rows = studentsToExport.map(s => {
+      const dayStatuses = dates.map(({ date }) => {
+        const rec = attendance.find(a => a.student_id === s.id && a.date === date)
+        if (!rec) return 'Absent'
+        return rec.status === 'present' ? 'Present' : rec.status === 'late' ? 'Late' : 'Absent'
+      })
+      const stats = getStudentAttendance(s.id, filterMonth)
+      return [
+        s.full_name,
+        s.program || '',
+        ...dayStatuses,
+        stats.present,
+        stats.absent,
+        `${stats.pct}%`
+      ]
+    })
+
+    exportCSV(
+      headers,
+      rows,
+      `attendance-${filterMonth}-${filterProgram === 'all' ? 'all-programs' : filterProgram}.csv`
+    )
   }
 
 
@@ -870,8 +883,10 @@ export default function ReportsPage() {
                                   const status = rec?.status || 'absent'
                                   return (
                                     <td key={date} style={{ textAlign: 'center', padding: '8px 4px' }}>
-                                      <span style={{
-                                        display: 'inline-block', width: '28px', height: '28px', borderRadius: '50%', lineHeight: '28px', fontSize: '12px', fontWeight: '700',
+                                      <span 
+                                        title={status === 'present' ? 'Present' : status === 'late' ? 'Late' : 'Absent'}
+                                        style={{
+                                        display: 'inline-block', width: '28px', height: '28px', borderRadius: '50%', lineHeight: '28px', fontSize: '11px', fontWeight: '700', cursor: 'default',
                                         background: status === 'present' ? 'rgba(16,185,129,0.2)' : status === 'late' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
                                         color: status === 'present' ? '#34d399' : status === 'late' ? '#fbbf24' : '#f87171'
                                       }}>
