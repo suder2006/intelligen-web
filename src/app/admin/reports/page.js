@@ -38,6 +38,8 @@ export default function ReportsPage() {
     setInvoices(inv.data || [])
     setInstallments(inst.data || [])
     setAttendance(att.data || [])
+    console.log('Attendance records:', att.data?.length, att.error)
+    console.log('Sample attendance:', att.data?.[0])
     setPrograms(progs?.data?.map(p => p.value) || [])
     setLoading(false)
   }
