@@ -39,7 +39,7 @@ export default function AttendancePage() {
     if (existing) {
       await supabase.from('attendance').update({ status }).eq('id', existing.id)
     } else {
-      await supabase.from('attendance').insert([{ student_id: studentId, date, status, checked_in_at: new Date().toISOString() }])
+      await supabase.from('attendance').insert([{ student_id: studentId, school_id: schoolId, date, status, checked_in_at: new Date().toISOString() }])
     }
     fetchData()
   }

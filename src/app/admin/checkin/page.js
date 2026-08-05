@@ -74,7 +74,7 @@ const fetchAll = async () => {
       })
       const { data: attExisting } = await supabase.from('attendance').select('id').eq('student_id', studentId).eq('date', date).single()
       if (!attExisting) {
-        await supabase.from('attendance').insert({ student_id: studentId, date, status: 'present', checked_in_at: now.toISOString() })
+        await supabase.from('attendance').insert({ student_id: studentId, school_id: schoolId, date, status: 'present', checked_in_at: now.toISOString() })
       }
     } else if (!existing.checkout_time) {
       await supabase.from('student_checkins').update({ checkout_time: now.toISOString(), checkout_method: 'manual' }).eq('id', existing.id)

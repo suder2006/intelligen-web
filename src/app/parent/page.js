@@ -369,7 +369,8 @@ export default function ParentPortal() {
     // Also mark attendance as absent
     const existing = await supabase.from('attendance').select('id').eq('student_id', absenceForm.student_id).eq('date', absenceForm.absence_date).single()
     if (!existing.data) {
-      await supabase.from('attendance').insert({ student_id: absenceForm.student_id, date: absenceForm.absence_date, status: 'absent', checked_in_at: new Date().toISOString() })
+      const absenceStudent = students.find(s => s.id === absenceForm.student_id)
+      await supabase.from('attendance').insert({ student_id: absenceForm.student_id, school_id: absenceStudent?.school_id, date: absenceForm.absence_date, status: 'absent', checked_in_at: new Date().toISOString() })
     }
     setAbsenceForm({ student_id: '', absence_date: new Date().toISOString().split('T')[0], reason: '' })
     await loadData()
@@ -447,7 +448,7 @@ export default function ParentPortal() {
       })
       const { data: attExisting } = await supabase.from('attendance').select('id').eq('student_id', studentId).eq('date', today).single()
       if (!attExisting) {
-        await supabase.from('attendance').insert({ student_id: studentId, date: today, status: 'present', checked_in_at: now.toISOString() })
+        await supabase.from('attendance').insert({ student_id: studentId, school_id: student.school_id, date: today, status: 'present', checked_in_at: now.toISOString() })
       }
       setParentScanResult({ type: 'success', action: 'checkin', message: `✅ ${student.full_name} checked in at ${now.toLocaleTimeString()}`, name: student.full_name })
     } else if (!existing.checkout_time) {

@@ -484,7 +484,7 @@ const fetchMessages = async () => {
       changed_by: user.id
     })
     await supabase.from('attendance').insert([{
-      student_id: studentId, date, status,
+      student_id: studentId, school_id: profile?.school_id, date, status,
       checked_in_at: new Date().toISOString()
     }])
   }
