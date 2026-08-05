@@ -21,9 +21,29 @@ export default function ReportsPage() {
   const [filterStudent, setFilterStudent] = useState('all')
   const [studentReportView, setStudentReportView] = useState('detail')
   
-  const { schoolId } = useSchool()
+  const { schoolId, loading: schoolLoading } = useSchool()
 
-  useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
+  useEffect(() => {
+    if (schoolId) fetchAll()
+    else if (!schoolLoading) setLoading(false) // no school on the profile — don't spin forever
+  }, [schoolId, schoolLoading])
+
+  // PostgREST caps every response at 1000 rows, so a plain .select() silently
+  // truncates attendance once a school passes that. Page through with .range().
+  // The ORDER BY must end in a unique column: dozens of rows share each date,
+  // and rows with equal sort keys are not stably ordered between requests, so
+  // without a tiebreaker pagination can repeat some rows and drop others.
+  const fetchAllRows = async (buildQuery, pageSize = 1000) => {
+    const rows = []
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+      if (error) return { data: rows, error }
+      if (!data?.length) break
+      rows.push(...data)
+      if (data.length < pageSize) break
+    }
+    return { data: rows, error: null }
+  }
 
   const fetchAll = async () => {
     setLoading(true)
@@ -31,15 +51,16 @@ export default function ReportsPage() {
       supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
       supabase.from('fee_invoices').select('*, students(full_name, program)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('fee_installments').select('*').order('due_date'),
-      supabase.from('attendance').select('*, students(full_name, program)').eq('school_id', schoolId).order('date', { ascending: false }),
+      fetchAllRows(() => supabase.from('attendance').select('*, students(full_name, program)')
+        .eq('school_id', schoolId)
+        .order('date', { ascending: false }).order('id')),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value')
     ])
     setStudents(s.data || [])
     setInvoices(inv.data || [])
     setInstallments(inst.data || [])
     setAttendance(att.data || [])
-    console.log('Attendance records:', att.data?.length, att.error)
-    console.log('Sample attendance:', att.data?.[0])
+    if (att.error) console.error('Attendance fetch failed:', att.error)
     setPrograms(progs?.data?.map(p => p.value) || [])
     setLoading(false)
   }
@@ -103,7 +124,7 @@ export default function ReportsPage() {
     const rows = studentsToExport.map(s => {
       const dayStatuses = dates.map(({ date }) => {
         const rec = attendance.find(a => a.student_id === s.id && a.date === date)
-        if (!rec) return 'Absent'
+        if (!rec) return '—'
         return rec.status === 'present' ? 'Present' : rec.status === 'late' ? 'Late' : 'Absent'
       })
       const stats = getStudentAttendance(s.id, filterMonth)
@@ -770,7 +791,9 @@ export default function ReportsPage() {
                           <tbody>
                             {dates.map(({ date, dayName, isSunday }) => {
                               const rec = attendance.find(a => a.student_id === student.id && a.date === date)
-                              const status = rec?.status || (isSunday ? 'sunday' : 'absent')
+                              // No row in the table means nobody marked this day — that is not the
+                              // same as being marked absent, so render it as "no data".
+                              const status = rec?.status || (isSunday ? 'sunday' : 'nodata')
                               return (
                                 <tr key={date} style={{ opacity: isSunday ? 0.4 : 1, background: status === 'absent' && !isSunday ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
                                   <td style={{ fontWeight: '500' }}>{date}</td>
@@ -778,6 +801,9 @@ export default function ReportsPage() {
                                   <td>
                                     {isSunday ? (
                                       <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>Sunday</span>
+                                    ) : status === 'nodata' ? (
+                                      <span className="badge" title="No attendance record for this day"
+                                        style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>—</span>
                                     ) : (
                                       <span className="badge" style={{
                                         background: status === 'present' ? 'rgba(16,185,129,0.15)' : status === 'late' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
@@ -882,17 +908,19 @@ export default function ReportsPage() {
                                 <td style={{ color: '#a78bfa', fontSize: '12px', position: 'sticky', left: '120px', background: '#0f172a', zIndex: 1 }}>{s.program}</td>
                                 {dates.map(({ date }) => {
                                   const rec = attendance.find(a => a.student_id === s.id && a.date === date)
-                                  const status = rec?.status || 'absent'
+                                  // Missing row = nobody marked this day, which is distinct from
+                                  // an explicit 'absent' record.
+                                  const status = rec?.status || 'nodata'
                                   return (
                                     <td key={date} style={{ textAlign: 'center', padding: '8px 4px' }}>
-                                      <span 
-                                        title={status === 'present' ? 'Present' : status === 'late' ? 'Late' : 'Absent'}
+                                      <span
+                                        title={status === 'present' ? 'Present' : status === 'late' ? 'Late' : status === 'absent' ? 'Absent' : 'No attendance record'}
                                         style={{
                                         display: 'inline-block', width: '28px', height: '28px', borderRadius: '50%', lineHeight: '28px', fontSize: '11px', fontWeight: '700', cursor: 'default',
-                                        background: status === 'present' ? 'rgba(16,185,129,0.2)' : status === 'late' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
-                                        color: status === 'present' ? '#34d399' : status === 'late' ? '#fbbf24' : '#f87171'
+                                        background: status === 'present' ? 'rgba(16,185,129,0.2)' : status === 'late' ? 'rgba(245,158,11,0.2)' : status === 'absent' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
+                                        color: status === 'present' ? '#34d399' : status === 'late' ? '#fbbf24' : status === 'absent' ? '#f87171' : 'rgba(255,255,255,0.3)'
                                       }}>
-                                        {status === 'present' ? 'P' : status === 'late' ? 'L' : 'A'}
+                                        {status === 'present' ? 'P' : status === 'late' ? 'L' : status === 'absent' ? 'A' : '—'}
                                       </span>
                                     </td>
                                   )
