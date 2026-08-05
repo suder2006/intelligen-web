@@ -78,7 +78,13 @@ export default function ReportsPage() {
   const filteredStudents = filterProgram === 'all' ? students : students.filter(s => s.program === filterProgram)
 
   const getStudentAttendance = (studentId, monthFilter) => {
-    const recs = attendance.filter(a => a.student_id === studentId && (!monthFilter || a.date?.startsWith(monthFilter)))
+    const recs = attendance.filter(a => {
+      if (a.student_id !== studentId) return false
+      if (monthFilter && !a.date?.startsWith(monthFilter)) return false
+      // Exclude weekends
+      const dayOfWeek = new Date(a.date + 'T12:00:00').getDay()
+      return dayOfWeek !== 0 && dayOfWeek !== 6
+    })
     return {
       present: recs.filter(a => a.status === 'present').length,
       absent: recs.filter(a => a.status === 'absent').length,
@@ -87,8 +93,7 @@ export default function ReportsPage() {
       pct: recs.length > 0 ? Math.round((recs.filter(a => a.status === 'present').length / recs.length) * 100) : 0
     }
   }
-  // Get all working days in a month
-  const getMonthDates = (month) => {
+    const getMonthDates = (month) => {
     const [year, mo] = month.split('-').map(Number)
     const daysInMonth = new Date(year, mo, 0).getDate()
     const dates = []
@@ -96,14 +101,20 @@ export default function ReportsPage() {
       const dateStr = `${month}-${String(d).padStart(2, '0')}`
       const dayOfWeek = new Date(year, mo - 1, d).getDay()
       const dayName = new Date(year, mo - 1, d).toLocaleDateString('en-IN', { weekday: 'short' })
-      dates.push({ date: dateStr, dayName, isSunday: dayOfWeek === 0 })
+      dates.push({ 
+        date: dateStr, 
+        dayName, 
+        isSunday: dayOfWeek === 0,
+        isSaturday: dayOfWeek === 6,
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6
+      })
     }
     return dates
   }
 
   // Export student daily attendance CSV
   const exportStudentDailyCSV = () => {
-    const dates = getMonthDates(filterMonth).filter(d => !d.isSunday)
+    const dates = getMonthDates(filterMonth).filter(d => !d.isWeekend)
     const studentsToExport = filterStudent === 'all'
       ? filteredStudents
       : filteredStudents.filter(s => s.id === filterStudent)
@@ -751,7 +762,7 @@ export default function ReportsPage() {
                 {filterStudent !== 'all' && (() => {
                   const student = students.find(s => s.id === filterStudent)
                   if (!student) return null
-                  const dates = getMonthDates(filterMonth)
+                  const dates = getMonthDates(filterMonth).filter(d => !d.isWeekend)
                   const stats = getStudentAttendance(student.id, filterMonth)
                   return (
                     <>
@@ -882,7 +893,7 @@ export default function ReportsPage() {
 
                 {/* ALL STUDENTS — Day-wise view */}
                 {filterStudent === 'all' && studentReportView === 'detail' && (() => {
-                  const dates = getMonthDates(filterMonth).filter(d => !d.isSunday)
+                  const dates = getMonthDates(filterMonth).filter(d => !d.isWeekend)
                   return (
                     <div className="table-wrap">
                       <table style={{ minWidth: `${200 + dates.length * 60}px` }}>
