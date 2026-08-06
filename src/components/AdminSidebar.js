@@ -34,6 +34,7 @@ const navItems = [
   { href: '/admin/stories', label: 'Stories', icon: '📚' },
   { href: '/admin/tips', label: 'Daily Tips', icon: '💡' },
   { href: '/admin/growth', label: 'Physical Growth', icon: '📏' },
+  { href: '/admin/routines', label: 'Routine Builder', icon: '🔄' },
   { href: '/admin/events', label: 'Events', icon: '📅' },
   { href: '/admin/diary', label: 'Diary', icon: '📔' },
   { href: '/admin/reports', label: 'Reports', icon: '📈' },
