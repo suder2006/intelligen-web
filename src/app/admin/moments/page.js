@@ -66,19 +66,32 @@ async function fetchMoments() {
   }
 
   async function downloadAllPhotos(date, items) {
-    // Download each photo one by one
+    alert(`⏳ Downloading ${items.length} photos. Please wait...`)
     for (const item of items) {
-      const link = document.createElement('a')
-      link.href = item.photo_url
-      link.download = `moment-${date}-${item.class_name}-${item.id}.jpg`
-      link.target = '_blank'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      // Small delay between downloads
-      await new Promise(resolve => setTimeout(resolve, 500))
+      try {
+        // Fetch image as blob
+        const response = await fetch(item.photo_url)
+        const blob = await response.blob()
+        
+        // Create download link
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `moment-${date}-${item.class_name}.jpg`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        // Cleanup
+        URL.revokeObjectURL(url)
+        
+        // Delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 800))
+      } catch (e) {
+        console.error('Download error:', e)
+      }
     }
-    alert(`✅ Downloading ${items.length} photos!`)
+    alert(`✅ ${items.length} photos downloaded!`)
   }
 
   async function deleteAllPhotos(date, items) {
@@ -211,8 +224,23 @@ async function fetchMoments() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#64748b', fontSize: '12px' }}>📚 {m.class_name}</span>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <a href={m.photo_url} download target='_blank'
-                          style={{ padding: '4px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', borderRadius: '6px', fontSize: '12px', textDecoration: 'none' }}>⬇️</a>
+                        <button onClick={async () => {
+                          try {
+                            const response = await fetch(m.photo_url)
+                            const blob = await response.blob()
+                            const url = URL.createObjectURL(blob)
+                            const link = document.createElement('a')
+                            link.href = url
+                            link.download = `moment-${m.moment_date}-${m.class_name}.jpg`
+                            document.body.appendChild(link)
+                            link.click()
+                            document.body.removeChild(link)
+                            URL.revokeObjectURL(url)
+                          } catch(e) {
+                            alert('Download failed: ' + e.message)
+                          }
+                        }}
+                          style={{ padding: '4px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>⬇️</button>
                         <button onClick={() => deleteMoment(m.id, m.storage_path)}
                           style={{ padding: '4px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                       </div>
