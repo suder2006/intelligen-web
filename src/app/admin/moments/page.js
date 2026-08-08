@@ -65,6 +65,51 @@ async function fetchMoments() {
     setUploading(false)
   }
 
+  async function downloadAllPhotos(date, items) {
+    // Download each photo one by one
+    for (const item of items) {
+      const link = document.createElement('a')
+      link.href = item.photo_url
+      link.download = `moment-${date}-${item.class_name}-${item.id}.jpg`
+      link.target = '_blank'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      // Small delay between downloads
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    alert(`✅ Downloading ${items.length} photos!`)
+  }
+
+  async function deleteAllPhotos(date, items) {
+    if (!confirm(`Delete ALL ${items.length} photos from ${date}?\nThis cannot be undone!`)) return
+    
+    try {
+      // Delete from storage
+      const storagePaths = items
+        .filter(m => m.storage_path)
+        .map(m => m.storage_path)
+      
+      if (storagePaths.length > 0) {
+        await supabase.storage
+          .from('classroom-moments')
+          .remove(storagePaths)
+      }
+
+      // Delete from database
+      const ids = items.map(m => m.id)
+      await supabase
+        .from('classroom_moments')
+        .delete()
+        .in('id', ids)
+
+      await fetchMoments()
+      alert(`✅ Deleted ${items.length} photos from ${date}!`)
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+  }
+
   async function deleteMoment(id, storagePath) {
     if (!confirm('Delete this photo?')) return
     await supabase.storage.from('classroom-moments').remove([storagePath])
@@ -145,7 +190,17 @@ async function fetchMoments() {
           <div key={date} style={{ marginBottom: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ color: '#38bdf8' }}>📅 {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
-              <span style={{ color: '#64748b', fontSize: '13px' }}>{items.length} photo{items.length > 1 ? 's' : ''}</span>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>{items.length} photo{items.length > 1 ? 's' : ''}</span>
+                <button onClick={() => downloadAllPhotos(date, items)}
+                  style={{ padding: '6px 12px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                  ⬇️ Download All
+                </button>
+                <button onClick={() => deleteAllPhotos(date, items)}
+                  style={{ padding: '6px 12px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                  🗑️ Delete All
+                </button>
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
               {items.map(m => (
