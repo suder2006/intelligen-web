@@ -24,8 +24,12 @@ useEffect(() => {
     supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value').then(({ data }) => setClasses(data?.map(d => ({ id: d.id, name: d.value })) || []))
   }, [schoolId])
 
-async function fetchMoments() {
-    const { data } = await supabase.from('classroom_moments').select('*').eq('school_id', schoolId).order('created_at', { ascending: false })
+  async function fetchMoments() {
+    const { data } = await supabase.from('classroom_moments')
+      .select('*')
+      .eq('school_id', schoolId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
     setMoments(data || [])
   }
 
@@ -109,11 +113,11 @@ async function fetchMoments() {
           .remove(storagePaths)
       }
 
-      // Delete from database
+      // Soft delete from database
       const ids = items.map(m => m.id)
       await supabase
         .from('classroom_moments')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .in('id', ids)
 
       await fetchMoments()
@@ -126,7 +130,9 @@ async function fetchMoments() {
   async function deleteMoment(id, storagePath) {
     if (!confirm('Delete this photo?')) return
     await supabase.storage.from('classroom-moments').remove([storagePath])
-    await supabase.from('classroom_moments').delete().eq('id', id)
+    await supabase.from('classroom_moments')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
     fetchMoments()
   }
 
