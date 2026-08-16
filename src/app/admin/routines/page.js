@@ -14,18 +14,19 @@ const ROUTINE_TYPES = [
 ]
 
 const DEFAULT_STEPS = {
-  morning: [
+morning: [
     { title: 'Wake Up', emoji: '🌞', order_index: 1 },
     { title: 'Wash Face', emoji: '🚿', order_index: 2 },
     { title: 'Brush Teeth', emoji: '🪥', order_index: 3 },
-    { title: 'Bath Time', emoji: '🛁', order_index: 4 },
-    { title: 'Get Dressed', emoji: '👕', order_index: 5 },
-    { title: 'Prayer', emoji: '🙏', order_index: 6 },
-    { title: 'Breakfast', emoji: '🍳', order_index: 7 },
-    { title: 'Drink Water', emoji: '💧', order_index: 8 },
-    { title: 'Pack School Bag', emoji: '🎒', order_index: 9 },
-    { title: 'Wear Shoes', emoji: '👟', order_index: 10 },
-    { title: 'Go to School', emoji: '🚌', order_index: 11 },
+    { title: 'Potty Time', emoji: '🚽', order_index: 4 },
+    { title: 'Bath Time', emoji: '🛁', order_index: 5 },
+    { title: 'Get Dressed', emoji: '👕', order_index: 6 },
+    { title: 'Prayer', emoji: '🙏', order_index: 7 },
+    { title: 'Breakfast', emoji: '🍳', order_index: 8 },
+    { title: 'Drink Water', emoji: '💧', order_index: 9 },
+    { title: 'Pack School Bag', emoji: '🎒', order_index: 10 },
+    { title: 'Wear Shoes', emoji: '👟', order_index: 11 },
+    { title: 'Go to School', emoji: '🚌', order_index: 12 },
   ],
   evening: [
     { title: 'Reach Home', emoji: '🏠', order_index: 1 },
