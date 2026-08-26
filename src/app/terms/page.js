@@ -7,7 +7,7 @@ export default function TermsOfService() {
             Intelli<span style={{ color: '#38bdf8' }}>Gen</span>
           </div>
           <h1 style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px' }}>Terms of Service</h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Last updated: June 2025</p>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Last updated: August 2026</p>
         </div>
 
         {[
@@ -36,6 +36,10 @@ Core Features
 • Push notifications and announcements
 • Parent-Teacher Meeting (PTM) scheduling
 • Holiday and event calendar management
+• Daily routine builder for children
+• Age-wise wellness guide
+• Parent feedback management
+• Physical growth tracking
 
 The platform is provided on a Software-as-a-Service (SaaS) basis, accessible via web browsers and mobile applications. Features may vary based on your subscription plan.`
           },
@@ -103,7 +107,21 @@ Content Standards
 Violation of this policy may result in immediate account suspension without refund.`
           },
           {
-            title: '6. Data Ownership and Privacy',
+            title: '6. Prohibited Content',
+            content: `The following content is strictly prohibited on intelliGen platform:
+
+• Content that exploits or harms children in any way
+• Inappropriate photos or videos of students
+• Defamatory content about teachers, staff or school management
+• Spam or unsolicited messages
+• Content that violates any applicable Indian law
+• Political or religious propaganda
+• Any form of harassment or bullying
+
+Violation will result in immediate account termination without refund and may be reported to relevant authorities.`
+          },
+          {
+            title: '7. Data Ownership and Privacy',
             content: `Your Data
 • Schools retain full ownership of all data they input into IntelliGen
 • We do not claim any ownership rights over school, student, or parent data
@@ -124,7 +142,7 @@ Export and Deletion
 • Upon account termination, you have 30 days to export data before deletion`
           },
           {
-            title: '7. Intellectual Property',
+            title: '8. Intellectual Property',
             content: `Platform IP
 • IntelliGen, its logo, design, features, and software are owned by IntelliGen Technologies
 • You are granted a limited, non-exclusive, non-transferable license to use the platform
@@ -139,7 +157,7 @@ Feedback
 • Any feedback, suggestions, or ideas you provide about IntelliGen may be used by us without compensation or attribution to you`
           },
           {
-            title: '8. Service Availability and Support',
+            title: '9. Service Availability and Support',
             content: `Uptime Commitment
 • We target 99.5% platform uptime, excluding scheduled maintenance
 • Scheduled maintenance will be announced 24 hours in advance where possible
@@ -156,7 +174,40 @@ Platform Updates
 • We reserve the right to modify the platform to comply with legal requirements`
           },
           {
-            title: '9. Limitation of Liability',
+            title: '10. Third Party Services',
+            content: `IntelliGen integrates with third party services to provide core functionality:
+
+Payment Processing:
+• GetePay processes all payments
+• We do not store card details
+• Subject to GetePay's terms and privacy policy
+
+Infrastructure:
+• Supabase for database hosting
+• Vercel for application hosting
+• Google Maps for transport tracking
+
+These third party services have their own terms and privacy policies. We are not responsible for their practices or content.
+
+By using intelliGen you acknowledge and agree to the use of these third party services.`
+          },
+          {
+            title: '11. SMS and Communications Consent',
+            content: `By using intelliGen you consent to receive communications from us including:
+
+• Push notifications for attendance, transport, fees and announcements
+• SMS messages for critical alerts and authentication
+• Email communications for receipts, invoices and important updates
+
+To opt out:
+• Push notifications: Manage through device notification settings
+• SMS: Reply STOP to any SMS message
+• Email: Use unsubscribe link in any email
+
+Note: Opting out of critical safety notifications (transport, emergency) is not recommended as these are essential for child safety.`
+          },
+          {
+            title: '12. Limitation of Liability',
             content: `To the maximum extent permitted by applicable law:
 
 • IntelliGen is provided "as is" without warranties of any kind
@@ -172,7 +223,7 @@ Schools are responsible for:
 • Ensuring appropriate parental consents are obtained`
           },
           {
-            title: '10. Indemnification',
+            title: '13. Indemnification',
             content: `You agree to indemnify, defend, and hold harmless IntelliGen Technologies and its officers, directors, employees, and agents from any claims, damages, losses, or expenses (including legal fees) arising from:
 
 • Your use of the platform in violation of these Terms
@@ -182,7 +233,20 @@ Schools are responsible for:
 • Your negligence or willful misconduct`
           },
           {
-            title: '11. Termination',
+            title: '14. Force Majeure',
+            content: `IntelliGen shall not be liable for any failure or delay in performance due to circumstances beyond our reasonable control including:
+
+• Natural disasters or acts of God
+• Power or internet outages
+• Government actions or restrictions
+• Pandemic or public health emergency
+• Cyber attacks or security incidents beyond our reasonable control
+• Third party service provider failures
+
+We will make reasonable efforts to restore service as quickly as possible and communicate updates to affected schools during such events.`
+          },
+          {
+            title: '15. Termination',
             content: `By You
 • You may cancel your subscription at any time through the admin settings or by contacting us
 • Cancellation takes effect at the end of the current billing period
@@ -199,7 +263,7 @@ Effect of Termination
 • After 30 days, all data will be permanently deleted`
           },
           {
-            title: '12. Governing Law and Disputes',
+            title: '16. Governing Law and Disputes',
             content: `These Terms are governed by the laws of India. Any disputes arising from these Terms or your use of IntelliGen shall be:
 
 • First attempted to be resolved through good-faith negotiation
@@ -210,7 +274,7 @@ Effect of Termination
 For disputes involving amounts less than ₹50,000, either party may initiate proceedings in a small claims court.`
           },
           {
-            title: '13. Changes to Terms',
+            title: '17. Changes to Terms',
             content: `We may modify these Terms at any time. We will provide notice of material changes by:
 
 • Sending an email to the registered administrator
@@ -220,7 +284,7 @@ For disputes involving amounts less than ₹50,000, either party may initiate pr
 Continued use of IntelliGen after changes become effective constitutes acceptance of the new Terms. If you do not agree to the modified Terms, you must stop using the platform.`
           },
           {
-            title: '14. Contact Information',
+            title: '18. Contact Information',
             content: `For questions about these Terms, please contact:
 
 IntelliGen Technologies
@@ -243,7 +307,7 @@ Business Hours: Monday – Saturday, 9:00 AM – 6:00 PM IST`
 
         <div style={{ marginTop: '48px', padding: '20px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', textAlign: 'center' }}>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
-            © 2025 IntelliGen Technologies. All rights reserved.
+            © 2026 IntelliGen Technologies. All rights reserved.
           </p>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
             <a href='/privacy-policy' style={{ color: '#38bdf8', fontSize: '13px' }}>Privacy Policy</a>

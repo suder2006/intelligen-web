@@ -90,6 +90,7 @@ Service Providers
 • Supabase (database and authentication infrastructure)
 • Vercel (cloud hosting and deployment)
 • GetePay (payment processing — see their privacy policy for payment data handling)
+• Google Maps (transport route and location tracking)
 • QR code generation services (no personal data transmitted)
 
 Legal Requirements
@@ -100,7 +101,91 @@ Legal Requirements
 We ensure all third-party service providers maintain appropriate data protection standards.`
           },
           {
-            title: '5. Children\'s Privacy',
+            title: '5. Location Data',
+            content: `IntelliGen collects and uses location data for the following purposes:
+
+Transport Tracking
+• School bus drivers share their real-time GPS location during active school trips
+• Parents can view live bus location to track their child's transport for safety
+• Location data is collected only during active school trips
+
+Background Location
+• The driver app collects location in the background while an active school trip is in progress
+• Background location is required to continuously update bus position for parent tracking
+• Location collection stops automatically when the trip ends
+
+How We Use Location Data
+• Location is used exclusively for school transport safety and monitoring
+• Location data is displayed to parents of students assigned to that transport route
+• Location data is never shared with unauthorized third parties
+• Location data is never used for advertising purposes
+
+Data Retention
+• Real-time location data is updated continuously during trips
+• Historical location data is automatically deleted after each trip ends
+• No permanent location history is maintained
+
+Driver Consent
+• Drivers are informed about location collection before starting a trip
+• Drivers must explicitly start a trip to enable location sharing
+• Location sharing stops when trip is ended by the driver`
+          },
+          {
+            title: '6. Camera',
+            content: `IntelliGen uses camera access for the following purposes:
+
+• Teachers can take photos directly within the app to share classroom moments with parents
+• QR code scanning for student check-in and check-out at school entrance
+
+Camera access is:
+• Only activated when teacher explicitly taps the camera button
+• Never used for background recording or surveillance
+• Never used for facial recognition or biometric data collection
+• Photos taken are shared only with authorized parents of students in that class`
+          },
+          {
+            title: '7. Push Notifications',
+            content: `IntelliGen sends push notifications for the following purposes:
+
+• Attendance alerts when child is marked present or absent
+• Transport updates when child boards or exits school bus
+• Diary entries from teachers
+• Fee payment reminders
+• School announcements and events
+• Birthday wishes
+• Feedback responses from school management
+
+You can control notifications:
+• Through your device notification settings
+• By contacting your school administrator
+
+We do not send promotional or advertising notifications.`
+          },
+          {
+            title: '8. Payment Data',
+            content: `IntelliGen processes payments through GetePay payment gateway.
+
+• We do not store credit card or debit card numbers
+• We do not store UPI IDs or bank account details
+• Payment data is processed directly by GetePay
+• We only store payment status and transaction reference numbers
+• Please refer to GetePay's privacy policy for details on payment data handling
+
+Payment records including amount, date and status are retained for 7 years as required by financial regulations in India.`
+          },
+          {
+            title: '9. Biometric Data',
+            content: `IntelliGen does not collect or store any biometric data including:
+
+• Facial recognition data
+• Fingerprints
+• Voice recordings
+• Any other biometric identifiers
+
+The app does not use any biometric authentication or identification features.`
+          },
+          {
+            title: '10. Children\'s Privacy',
             content: `IntelliGen handles student data with the highest level of care. We acknowledge that our platform processes data relating to children under 13 years of age on behalf of educational institutions.
 
 • Schools and parents are responsible for obtaining appropriate consents for student data
@@ -110,10 +195,10 @@ We ensure all third-party service providers maintain appropriate data protection
 • Schools retain ownership of all student data entered into the platform
 • Parents may request access to or deletion of their child's data through their school administrator
 
-We comply with applicable children's data protection laws in India including provisions under the Information Technology Act, 2000 and its rules.`
+We comply with applicable children's data protection laws in India including provisions under the Information Technology Act, 2000, its rules, and the Digital Personal Data Protection Act 2023.`
           },
           {
-            title: '6. Data Security',
+            title: '11. Data Security',
             content: `We implement industry-standard security measures to protect your data:
 
 Technical Safeguards
@@ -132,19 +217,62 @@ Operational Safeguards
 While we employ these safeguards, no method of transmission or storage is 100% secure. We encourage users to use strong passwords and report any suspected security incidents to getintelligen@gmail.com.`
           },
           {
-            title: '7. Data Retention',
+            title: '12. Data Breach Notification',
+            content: `In the event of a data security breach that affects your personal information:
+
+• We will notify affected school administrators within 72 hours of becoming aware
+• Notification will be sent via email and in-app notification
+• We will provide details of:
+  - What data was affected
+  - When the breach occurred
+  - Steps we are taking to address it
+  - Steps you can take to protect yourself
+• We will report to relevant authorities as required by applicable Indian law
+• We maintain an incident response plan to handle security breaches promptly`
+          },
+          {
+            title: '13. Data Ownership',
+            content: `Schools retain full ownership of all data entered into the intelliGen platform:
+
+• Student records belong to the school
+• Parent information belongs to the school
+• Attendance and academic data belongs to the school
+• intelliGen acts as a data processor only
+• We process data on behalf of schools as per their instructions
+• Schools can export all their data at any time through admin portal
+• Upon termination we provide 30 days to export data before deletion
+• We do not claim ownership of any school or student data`
+          },
+          {
+            title: '14. Data Retention',
             content: `We retain personal data for as long as necessary to provide our services and comply with legal obligations:
 
 • Active account data: Retained for the duration of your subscription
 • Student records: Retained for the academic year plus 3 years after last activity
 • Payment records: Retained for 7 years as required by financial regulations
 • Communication logs: Retained for 2 years
+• GPS location data: Deleted after each trip ends
 • Deleted account data: Purged within 90 days of account termination
 
 Schools may export their data at any time through the platform's reporting features. Upon subscription termination, we provide a 30-day window to export all data before deletion.`
           },
           {
-            title: '8. Your Rights',
+            title: '15. Anonymous and Aggregate Data',
+            content: `We may collect and use anonymized, non-identifiable data for:
+
+• Improving platform performance
+• Developing new features
+• Statistical analysis
+• Quality testing
+
+This data:
+• Cannot identify individual users
+• Cannot identify individual schools
+• Is never sold to third parties
+• Is used only to improve intelliGen`
+          },
+          {
+            title: '16. Your Rights',
             content: `Depending on your location, you may have the following rights regarding your personal data:
 
 • Access: Request a copy of the personal data we hold about you
@@ -157,7 +285,49 @@ Schools may export their data at any time through the platform's reporting featu
 To exercise any of these rights, please contact us at getintelligen@gmail.com. We will respond to all requests within 30 days. School administrators can exercise these rights on behalf of their school data through the admin portal.`
           },
           {
-            title: '9. Cookies and Tracking',
+            title: '17. Account Deletion',
+            content: `You have the right to request deletion of your account and associated data:
+
+Parents:
+• Contact your school administrator to request data deletion
+• School admin can remove parent account through admin portal
+
+Schools:
+• Contact us at getintelligen@gmail.com
+• We will process deletion within 30 days
+• You will have 30 days to export data first
+• After deletion all data is permanently removed
+
+Note: Some data may be retained for legal compliance purposes such as financial records as required by Indian tax laws.`
+          },
+          {
+            title: '18. Opt-Out Rights',
+            content: `You have the right to opt out of:
+
+Communications:
+• Marketing emails: Unsubscribe link in every email
+• Push notifications: Manage through device notification settings
+• In-app notifications: Contact school admin
+
+Note: You cannot opt out of:
+• Essential service notifications (attendance, fees, transport safety)
+• These are core to the service
+
+To opt out contact:
+getintelligen@gmail.com`
+          },
+          {
+            title: '19. Data Localisation',
+            content: `IntelliGen stores all data on secure cloud servers.
+
+• Database hosted on Supabase infrastructure
+• Application hosted on Vercel cloud platform
+• Data may be processed on servers located outside India
+• We ensure appropriate safeguards are in place for cross-border data transfers
+• We comply with applicable Indian data protection laws including the Digital Personal Data Protection Act 2023`
+          },
+          {
+            title: '20. Cookies and Tracking',
             content: `We use minimal cookies and tracking technologies:
 
 • Authentication cookies: Essential for maintaining your logged-in session
@@ -165,195 +335,6 @@ To exercise any of these rights, please contact us at getintelligen@gmail.com. W
 • Analytics: Anonymous usage statistics to improve the platform
 
 We do not use advertising cookies or track users across third-party websites. You can control cookie settings through your browser, though disabling essential cookies may affect platform functionality.`
-          },
-
-                    {
-            title: '10. Location Data',
-            content: `IntelliGen collects and uses location data for the following purposes:
-
-Transport Tracking
-- School bus drivers share their real-time GPS location during active school trips
-- Parents can view live bus location to track their child's transport for safety
-- Location data is collected only during active school trips
-
-Background Location
-- The driver app collects location in the background while an active school trip is in progress
-- Background location is required to continuously update bus position for parent tracking
-- Location collection stops automatically when the trip ends
-
-How We Use Location Data
-- Location is used exclusively for school transport safety and monitoring
-- Location data is displayed to parents of students assigned to that transport route
-- Location data is never shared with unauthorized third parties
-- Location data is never used for advertising purposes
-
-Data Retention
-- Real-time location data is updated continuously during trips
-- Historical location data is automatically deleted after each trip ends
-- No permanent location history is maintained
-
-Driver Consent
-- Drivers are informed about location collection before starting a trip
-- Drivers must explicitly start a trip to enable location sharing
-- Location sharing stops when trip is ended by the driver`
-          },
-
-                    {
-            title: '11. Camera',
-            content: `IntelliGen uses camera access for the following purposes:
-
-- Teachers can take photos directly within the app to share classroom moments with parents
-- QR code scanning for student check-in and check-out at school entrance
-
-Camera access is:
-- Only activated when teacher explicitly taps the camera button
-- Never used for background recording or surveillance
-- Never used for facial recognition or biometric data collection
-- Photos taken are shared only with authorized parents of students in that class`
-          },
-          {
-            title: '12. Push Notifications',
-            content: `IntelliGen sends push notifications for the following purposes:
-
-- Attendance alerts when child is marked present or absent
-- Transport updates when child boards or exits school bus
-- Diary entries from teachers
-- Fee payment reminders
-- School announcements and events
-- Birthday wishes
-
-You can control notifications:
-- Through your device notification settings
-- By contacting your school administrator
-
-We do not send promotional or advertising notifications.`
-          },
-          {
-            title: '13. Biometric Data',
-            content: `IntelliGen does not collect or store any biometric data including:
-
-- Facial recognition data
-- Fingerprints
-- Voice recordings
-- Any other biometric identifiers
-
-The app does not use any biometric authentication or identification features.`
-          },
-          {
-            title: '14. Payment Data',
-            content: `IntelliGen processes payments through GetePay payment gateway.
-
-- We do not store credit card or debit card numbers
-- We do not store UPI IDs or bank account details
-- Payment data is processed directly by GetePay
-- We only store payment status and transaction reference numbers
-- Please refer to GetePay's privacy policy for details on payment data handling
-
-Payment records including amount, date and status are retained for 7 years as required by financial regulations in India.`
-          },
-          {
-            title: '15. Data Localisation',
-            content: `IntelliGen stores all data on secure cloud servers.
-
-- Database hosted on Supabase infrastructure
-- Application hosted on Vercel cloud platform
-- Data may be processed on servers located outside India
-- We ensure appropriate safeguards are in place for cross-border data transfers
-- We comply with applicable Indian data protection laws including the Digital Personal Data Protection Act 2023`
-          },
-
-                    {
-            title: '16. Data Breach Notification',
-            content: `In the event of a data security breach 
-that affects your personal information:
-
-- We will notify affected school administrators 
-  within 72 hours of becoming aware
-- Notification will be sent via email and 
-  in-app notification
-- We will provide details of:
-  - What data was affected
-  - When the breach occurred
-  - Steps we are taking to address it
-  - Steps you can take to protect yourself
-- We will report to relevant authorities 
-  as required by applicable Indian law
-- We maintain an incident response plan 
-  to handle security breaches promptly`
-          },
-          {
-            title: '17. Data Ownership',
-            content: `Schools retain full ownership of all data 
-entered into the intelliGen platform:
-
-- Student records belong to the school ✅
-- Parent information belongs to the school ✅
-- Attendance and academic data belongs to school ✅
-- intelliGen acts as a data processor only ✅
-- We process data on behalf of schools 
-  as per their instructions
-- Schools can export all their data 
-  at any time through admin portal
-- Upon termination we provide 30 days 
-  to export data before deletion
-- We do not claim ownership of 
-  any school or student data`
-          },
-          {
-            title: '18. Anonymous and Aggregate Data',
-            content: `We may collect and use anonymized, 
-non-identifiable data for:
-
-- Improving platform performance ✅
-- Developing new features ✅
-- Statistical analysis ✅
-- Quality testing ✅
-
-This data:
-- Cannot identify individual users ✅
-- Cannot identify individual schools ✅
-- Is never sold to third parties ✅
-- Is used only to improve intelliGen ✅`
-          },
-          {
-            title: '19. Account Deletion',
-            content: `You have the right to request deletion 
-of your account and associated data:
-
-Parents:
-- Contact your school administrator 
-  to request data deletion
-- School admin can remove parent account 
-  through admin portal
-
-Schools:
-- Contact us at getintelligen@gmail.com
-- We will process deletion within 30 days
-- You will have 30 days to export data first
-- After deletion all data is permanently removed
-
-Note: Some data may be retained for legal 
-compliance purposes such as financial records 
-as required by Indian tax laws`
-          },
-          {
-            title: '20. Opt-Out Rights',
-            content: `You have the right to opt out of:
-
-Communications:
-- Marketing emails: Unsubscribe link 
-  in every email ✅
-- Push notifications: Manage through 
-  device notification settings ✅
-- In-app notifications: Contact school admin ✅
-
-Note: You cannot opt out of:
-- Essential service notifications 
-  (attendance, fees, transport safety) ✅
-- These are core to the service ✅
-
-To opt out contact:
-getintelligen@gmail.com`
           },
           {
             title: '21. Third-Party Links',
@@ -393,7 +374,7 @@ We are committed to resolving privacy concerns promptly and transparently.`
 
         <div style={{ marginTop: '48px', padding: '20px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', textAlign: 'center' }}>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
-            © 2025 IntelliGen Technologies. All rights reserved.
+            © 2026 IntelliGen Technologies. All rights reserved.
           </p>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
             <a href='/terms' style={{ color: '#38bdf8', fontSize: '13px' }}>Terms of Service</a>

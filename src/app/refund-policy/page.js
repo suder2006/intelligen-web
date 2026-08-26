@@ -7,7 +7,7 @@ export default function RefundPolicy() {
             Intelli<span style={{ color: '#38bdf8' }}>Gen</span>
           </div>
           <h1 style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px' }}>Refund & Cancellation Policy</h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Last updated: June 2025</p>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Last updated: August 2026</p>
         </div>
 
         {/* Summary Box */}
@@ -96,7 +96,19 @@ Annual Plan Cancellations
 • Annual plans cancelled after 90 days: No refund for remaining period`
           },
           {
-            title: '4. School Fee Payments (Parent Payments)',
+            title: '4. GST and Tax on Refunds',
+            content: `All subscription fees are inclusive of applicable GST at 18%.
+
+For refunds:
+• GST component will be refunded as per applicable Indian tax laws
+• We will issue a credit note for the GST amount refunded
+• You may use this for your own GST filing purposes
+
+For any tax related queries contact:
+getintelligen@gmail.com`
+          },
+          {
+            title: '5. School Fee Payments (Parent Payments)',
             content: `Payments Made by Parents to Schools
 
 IntelliGen provides a payment gateway for parents to pay school fees to their respective schools. These are direct transactions between parents and schools.
@@ -120,7 +132,7 @@ If a payment fails but your account is charged:
 • We will verify with our payment processor and resolve within 3 business days`
           },
           {
-            title: '5. Refund Process',
+            title: '6. Refund Process',
             content: `How to Request a Refund
 
 Step 1 — Contact Us
@@ -149,7 +161,7 @@ Processing Fees
 • A processing fee of up to 5% may be deducted from refunds at our discretion`
           },
           {
-            title: '6. Non-Refundable Items',
+            title: '7. Non-Refundable Items',
             content: `The following are strictly non-refundable:
 
 • Setup fees, onboarding fees, and data migration fees
@@ -161,7 +173,7 @@ Processing Fees
 • Any fees related to third-party integrations or add-ons`
           },
           {
-            title: '7. Free Trial Policy',
+            title: '8. Free Trial Policy',
             content: `If IntelliGen offers a free trial period:
 
 • No credit card or payment is required to start a free trial
@@ -171,7 +183,7 @@ Processing Fees
 • Trial data can be exported before the trial expires`
           },
           {
-            title: '8. Disputed Charges',
+            title: '9. Disputed Charges',
             content: `If you believe you have been incorrectly charged:
 
 1. Contact us first at getintelligen@gmail.com before initiating a chargeback
@@ -185,7 +197,7 @@ Chargebacks
 • Any costs incurred by us due to a chargeback may be passed on to you`
           },
           {
-            title: '9. Upgrades and Downgrades',
+            title: '10. Upgrades and Downgrades',
             content: `Plan Upgrades
 • You may upgrade your plan at any time
 • Upgrades take effect immediately
@@ -198,7 +210,7 @@ Plan Downgrades
 • Features not available in the lower plan will be inaccessible from the next billing date`
           },
           {
-            title: '10. Contact for Refund Queries',
+            title: '11. Contact for Refund Queries',
             content: `We are committed to resolving all refund and billing queries fairly and promptly.
 
 IntelliGen Technologies
@@ -223,7 +235,7 @@ We aim to respond to all refund queries within 1 business day and resolve them w
 
         <div style={{ marginTop: '48px', padding: '20px', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', textAlign: 'center' }}>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
-            © 2025 IntelliGen Technologies. All rights reserved.
+            © 2026 IntelliGen Technologies. All rights reserved.
           </p>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
             <a href='/privacy-policy' style={{ color: '#38bdf8', fontSize: '13px' }}>Privacy Policy</a>
