@@ -9,18 +9,6 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    // Verify user is authenticated
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const { fileName, contentType, folder } = await request.json()
 
     if (!fileName || !contentType || !folder) {
