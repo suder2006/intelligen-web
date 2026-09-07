@@ -1,30 +1,43 @@
 import { NextResponse } from 'next/server'
-import { getPresignedUploadUrl } from '@/lib/r2'
-import { createClient } from '@supabase/supabase-js'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+const R2 = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+  },
+})
 
 export async function POST(request) {
   try {
-    const { fileName, contentType, folder } = await request.json()
+    const formData = await request.formData()
+    const file = formData.get('file')
+    const folder = formData.get('folder') || 'uploads'
 
-    if (!fileName || !contentType || !folder) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Create unique key
-    const ext = fileName.split('.').pop()
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    const ext = file.name.split('.').pop()
     const key = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`
 
-    // Get presigned URL
-    const { uploadUrl, publicUrl } = await getPresignedUploadUrl(key, contentType)
+    await R2.send(new PutObjectCommand({
+      Bucket: process.env.CLOUDFLARE_R2_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: file.type,
+    }))
 
-    return NextResponse.json({ uploadUrl, publicUrl, key })
+    const publicUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
+
+    return NextResponse.json({ publicUrl, key })
   } catch (error) {
-    console.error('Upload API error:', error)
+    console.error('Upload error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
