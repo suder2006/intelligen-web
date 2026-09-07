@@ -40,13 +40,42 @@ useEffect(() => {
     setPreview(URL.createObjectURL(file))
   }
 
+      async function compressImage(file) {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new window.Image()
+      img.onload = () => {
+        // Max 1200px width
+        const maxWidth = 1200
+        let width = img.width
+        let height = img.height
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+        canvas.width = width
+        canvas.height = height
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })),
+          'image/jpeg',
+          0.75 // 75% quality
+        )
+      }
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
     async function uploadPhoto() {
     if (!selectedFile || !className) { alert('Please select a photo and class'); return }
     setUploading(true)
     try {
+      // Compress image before upload
+      const compressedFile = await compressImage(selectedFile)
       const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('folder', 'moments')
+      formData.append('file', compressedFile)
+      formData.append('folder', 'moments') 
 
       const res = await fetch('/api/upload', {
         method: 'POST',
