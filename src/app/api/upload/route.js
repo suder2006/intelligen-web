@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { createClient } from '@supabase/supabase-js'
 
 const R2 = new S3Client({
   region: 'auto',
@@ -10,8 +11,23 @@ const R2 = new S3Client({
   },
 })
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
 export async function POST(request) {
   try {
+    // Verify authentication
+    const authHeader = request.headers.get('authorization')
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error } = await supabase.auth.getUser(token)
+      if (error || !user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    }
+
     const formData = await request.formData()
     const file = formData.get('file')
     const folder = formData.get('folder') || 'uploads'
