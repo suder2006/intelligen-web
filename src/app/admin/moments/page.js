@@ -40,20 +40,27 @@ useEffect(() => {
     setPreview(URL.createObjectURL(file))
   }
 
-  async function uploadPhoto() {
+    async function uploadPhoto() {
     if (!selectedFile || !className) { alert('Please select a photo and class'); return }
     setUploading(true)
     try {
-      const ext = selectedFile.name.split('.').pop()
-      const path = `${className}/${selectedDate}/${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('classroom-moments').upload(path, selectedFile)
-      if (upErr) throw upErr
-      const { data: { publicUrl } } = supabase.storage.from('classroom-moments').getPublicUrl(path)
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      formData.append('folder', 'moments')
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      })
+      const { publicUrl, key, error: uploadError } = await res.json()
+      if (uploadError) throw new Error(uploadError)
+
       const { data: { user } } = await supabase.auth.getUser()
       const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', user.id).single()
+      
       await supabase.from('classroom_moments').insert({
         class_name: className, caption, photo_url: publicUrl,
-        storage_path: path, uploaded_by: user.id,
+        storage_path: key, uploaded_by: user.id,
         uploaded_by_name: prof?.full_name || 'Admin',
         moment_date: selectedDate, school_id: schoolId
       })
@@ -107,10 +114,14 @@ useEffect(() => {
         .filter(m => m.storage_path)
         .map(m => m.storage_path)
       
-      if (storagePaths.length > 0) {
-        await supabase.storage
-          .from('classroom-moments')
-          .remove(storagePaths)
+        if (storagePaths.length > 0) {
+        await Promise.all(storagePaths.map(key =>
+          fetch('/api/upload', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key })
+          }).catch(e => console.log('R2 delete error:', e))
+        ))
       }
 
       // Soft delete from database
@@ -127,9 +138,17 @@ useEffect(() => {
     }
   }
 
-  async function deleteMoment(id, storagePath) {
+    async function deleteMoment(id, storagePath) {
     if (!confirm('Delete this photo?')) return
-    await supabase.storage.from('classroom-moments').remove([storagePath])
+    try {
+      if (storagePath) {
+        await fetch('/api/upload', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: storagePath })
+        })
+      }
+    } catch (e) { console.log('R2 delete error:', e) }
     await supabase.from('classroom_moments')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)

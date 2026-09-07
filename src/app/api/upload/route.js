@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { createClient } from '@supabase/supabase-js'
 
 const R2 = new S3Client({
@@ -18,7 +18,6 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     if (authHeader) {
       const token = authHeader.replace('Bearer ', '')
@@ -50,10 +49,26 @@ export async function POST(request) {
     }))
 
     const publicUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
-
     return NextResponse.json({ publicUrl, key })
   } catch (error) {
     console.error('Upload error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const { key } = await request.json()
+    if (!key) {
+      return NextResponse.json({ error: 'No key provided' }, { status: 400 })
+    }
+    await R2.send(new DeleteObjectCommand({
+      Bucket: process.env.CLOUDFLARE_R2_BUCKET,
+      Key: key,
+    }))
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Delete error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
