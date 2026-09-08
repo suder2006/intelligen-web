@@ -82,6 +82,32 @@ export default function AdminAlbumsPage() {
     }
   }
 
+    const compressImage = async (file) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new window.Image()
+      img.onload = () => {
+        const maxWidth = 1200
+        let width = img.width
+        let height = img.height
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+        canvas.width = width
+        canvas.height = height
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })),
+          'image/jpeg',
+          0.75
+        )
+      }
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   const uploadMedia = async (files, mediaType) => {
     if (!selectedAlbum) return
     setUploading(true)
@@ -93,16 +119,38 @@ export default function AdminAlbumsPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       for (const file of files) {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('folder', `albums/${selectedAlbum.id}`)
+        let publicUrl, key
 
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        })
-        const { publicUrl, key, error: uploadError } = await res.json()
-        if (uploadError) throw new Error(uploadError)
+        if (mediaType === 'video') {
+          const presignRes = await fetch(
+            `/api/upload?folder=albums/${selectedAlbum.id}&contentType=${file.type}`
+          )
+          const presignData = await presignRes.json()
+          if (presignData.error) throw new Error(presignData.error)
+
+          await fetch(presignData.uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type }
+          })
+
+          publicUrl = presignData.publicUrl
+          key = presignData.key
+        } else {
+          const compressed = await compressImage(file)
+          const formData = new FormData()
+          formData.append('file', compressed)
+          formData.append('folder', `albums/${selectedAlbum.id}`)
+
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          })
+          const data = await res.json()
+          if (data.error) throw new Error(data.error)
+          publicUrl = data.publicUrl
+          key = data.key
+        }
 
         await supabase.from('classroom_moments').insert({
           school_id: schoolId,
@@ -117,7 +165,6 @@ export default function AdminAlbumsPage() {
           uploaded_by_name: 'Admin'
         })
 
-        // Set cover if first photo
         if (mediaType === 'photo' && !selectedAlbum.cover_url) {
           await supabase.from('moment_albums')
             .update({ cover_url: publicUrl })

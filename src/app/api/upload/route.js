@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { createClient } from '@supabase/supabase-js'
 
 const R2 = new S3Client({
@@ -16,6 +17,32 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// GET - Generate presigned URL for direct video upload
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const folder = searchParams.get('folder') || 'uploads'
+    const contentType = searchParams.get('contentType') || 'video/mp4'
+    const ext = contentType.split('/')[1]
+    const key = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.CLOUDFLARE_R2_BUCKET,
+      Key: key,
+      ContentType: contentType,
+    })
+
+    const uploadUrl = await getSignedUrl(R2, command, { expiresIn: 3600 })
+    const publicUrl = `${process.env.CLOUDFLARE_R2_PUBLIC_URL}/${key}`
+
+    return NextResponse.json({ uploadUrl, publicUrl, key })
+  } catch (error) {
+    console.error('Presign error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+// POST - Upload photo via server
 export async function POST(request) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -56,6 +83,7 @@ export async function POST(request) {
   }
 }
 
+// DELETE - Delete file from R2
 export async function DELETE(request) {
   try {
     const { key } = await request.json()
