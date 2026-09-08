@@ -1224,14 +1224,39 @@ export default function ParentPortal() {
                   <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No moments shared yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '14px' }}>
-                    {moments.map(m => (
+                    {moments.map(m => {
+                      const isVideo = m.media_type === 'video'
+                      // Videos store a captured poster frame; photo_url is nullable,
+                      // so fall back to a placeholder rather than a broken image
+                      const poster = isVideo ? (m.thumbnail_url || null) : (m.photo_url || null)
+                      const fileUrl = isVideo ? m.video_url : m.photo_url
+
+                      return (
                       <div key={m.id} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <div style={{ position: 'relative' }}>
-                          <img src={m.photo_url} alt={m.caption} style={{ width: '100%', height: '170px', objectFit: 'cover', display: 'block' }} />
-                          <a href={m.photo_url} target='_blank' download
-                            style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', textDecoration: 'none', backdropFilter: 'blur(4px)' }}>
-                            ⬇️ Save
-                          </a>
+                          {poster ? (
+                            <img src={poster} alt={m.caption || (isVideo ? 'Video' : 'Photo')} style={{ width: '100%', height: '170px', objectFit: 'cover', display: 'block' }} />
+                          ) : (
+                            <div style={{ width: '100%', height: '170px', background: 'rgba(167,139,250,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>
+                              {isVideo ? '🎥' : '📷'}
+                            </div>
+                          )}
+
+                          {isVideo && m.video_url && (
+                            <a href={m.video_url} target='_blank' rel='noreferrer'
+                              style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                              <span style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: '2px solid rgba(255,255,255,0.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', paddingLeft: '4px', backdropFilter: 'blur(4px)' }}>
+                                ▶
+                              </span>
+                            </a>
+                          )}
+
+                          {fileUrl && (
+                            <a href={fileUrl} target='_blank' rel='noreferrer' download
+                              style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', textDecoration: 'none', backdropFilter: 'blur(4px)' }}>
+                              ⬇️ Save
+                            </a>
+                          )}
                         </div>
                         <div style={{ padding: '12px' }}>
                           {m.caption && <p style={{ color: '#e2e8f0', fontSize: '13px', marginBottom: '6px', fontWeight: 500 }}>{m.caption}</p>}
@@ -1239,7 +1264,8 @@ export default function ParentPortal() {
                           <div style={{ color: '#64748b', fontSize: '12px' }}>📅 {m.moment_date}</div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </>

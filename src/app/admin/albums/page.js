@@ -108,9 +108,8 @@ export default function AdminAlbumsPage() {
     })
   }
 
-  // classroom_moments.photo_url is NOT NULL, so a video row still needs an image.
-  // Grab a poster frame from the file so the row is valid and the video renders
-  // as a real thumbnail in the album grid and the parent app.
+  // Grab a poster frame from the video file so it renders as a real thumbnail
+  // in the album grid and the parent app instead of a blank placeholder.
   const captureVideoThumbnail = (file) => {
     return new Promise((resolve) => {
       const video = document.createElement('video')
@@ -247,9 +246,9 @@ export default function AdminAlbumsPage() {
           school_id: schoolId,
           album_id: selectedAlbum.id,
           class_name: selectedAlbum.program || 'All',
-          // photo_url is NOT NULL: videos fall back to the poster frame, then to
-          // the video URL itself if the browser could not decode the file
-          photo_url: mediaType === 'photo' ? publicUrl : (thumbnailUrl || publicUrl),
+          // Videos have no photo: photo_url stays null when the browser could
+          // not decode a poster frame, and consumers fall back on media_type
+          photo_url: mediaType === 'photo' ? publicUrl : thumbnailUrl,
           video_url: mediaType === 'video' ? publicUrl : null,
           thumbnail_url: mediaType === 'video' ? thumbnailUrl : null,
           storage_path: key,
