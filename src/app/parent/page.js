@@ -9,6 +9,15 @@ const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false }
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
 const LiveMap = dynamic(() => import('@/components/LiveMap'), { ssr: false })
 
+// PTM dates are stored as plain 'YYYY-MM-DD'. Parsing one directly makes JS read
+// it as UTC midnight, which renders as the previous day in IST, so anchor every
+// date at local noon before formatting.
+const fmtPtmDate = (dateStr, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => {
+  if (!dateStr) return ''
+  const d = new Date(`${dateStr}T12:00:00`)
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', opts)
+}
+
 export default function ParentPortal() {
   const [moments, setMoments] = useState([])
   const [user, setUser] = useState(null)
@@ -277,7 +286,9 @@ export default function ParentPortal() {
         supabase.from('ptm_notes').select('*, students(full_name)').eq('parent_id', user.id).eq('shared_with_parent', true).order('created_at', { ascending: false })
       ])
       setPtmEvents(evRes.data || [])
-      setPtmSlots(slRes.data || [])
+      // A slot with no program is open to the whole school; a slot tagged with a
+      // program is only bookable by parents whose child is in that program.
+      setPtmSlots((slRes.data || []).filter(sl => !sl.program || parentPrograms.includes(sl.program)))
       setPtmBookings(bkRes.data || [])
       setPtmNotes(ntRes.data || [])
     }
@@ -464,29 +475,65 @@ export default function ParentPortal() {
   }
   const bookSlot = async () => {
     if (!bookingForm.slot_id || !bookingForm.student_id) { alert('Please select slot and child'); return }
+    const slot = ptmSlots.find(s => s.id === bookingForm.slot_id)
+    if (!slot) { alert('That slot is no longer available. Please refresh.'); return }
+    // A cancelled booking must not block rebooking the same slot.
+    const active = ptmBookings.filter(b => b.status !== 'cancelled')
+    if (active.some(b => b.slot_id === bookingForm.slot_id)) {
+      alert('You have already booked this slot!'); return
+    }
+    if (active.some(b => b.event_id === slot.event_id && b.student_id === bookingForm.student_id)) {
+      alert('This child already has a slot for this PTM. Cancel it first to move to another time.'); return
+    }
     setBookingLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const slot = ptmSlots.find(s => s.id === bookingForm.slot_id)
-    // Check if already booked
-    const alreadyBooked = ptmBookings.find(b => b.slot_id === bookingForm.slot_id)
-    if (alreadyBooked) { alert('This slot is already booked!'); setBookingLoading(false); return }
-    await supabase.from('ptm_bookings').insert({
+    // Claim the slot before inserting so two parents picking the same slot can't
+    // both end up booked on it.
+    const { data: claimed, error: claimErr } = await supabase.from('ptm_slots')
+      .update({ is_available: false }).eq('id', slot.id).eq('is_available', true).select('id')
+    if (claimErr || !claimed?.length) {
+      alert('Someone just booked this slot. Please pick another one.')
+      setBookingSlot(null)
+      await loadData()
+      setBookingLoading(false)
+      return
+    }
+    const { error } = await supabase.from('ptm_bookings').insert({
       school_id: schoolId,
       event_id: slot.event_id,
-      slot_id: bookingForm.slot_id,
+      slot_id: slot.id,
       teacher_id: slot.teacher_id,
       parent_id: user.id,
       student_id: bookingForm.student_id,
       parent_notes: bookingForm.parent_notes,
       status: 'booked'
     })
-    // Mark slot as unavailable
-    await supabase.from('ptm_slots').update({ is_available: false }).eq('id', bookingForm.slot_id)
+    if (error) {
+      // Release the slot again so a failed insert doesn't strand it.
+      await supabase.from('ptm_slots').update({ is_available: true }).eq('id', slot.id)
+      alert(`Booking failed: ${error.message}`)
+      setBookingLoading(false)
+      return
+    }
     setBookingSlot(null)
     setBookingForm({ slot_id: '', student_id: '', parent_notes: '' })
     await loadData()
     setBookingLoading(false)
     alert('✅ Slot booked successfully!')
+  }
+
+  const cancelPtmBooking = async (b) => {
+    if (!confirm(`Cancel your PTM slot on ${fmtPtmDate(b.ptm_slots?.slot_date)} at ${b.ptm_slots?.start_time || ''}?`)) return
+    const { error } = await supabase.from('ptm_bookings')
+      .update({ status: 'cancelled' }).eq('id', b.id)
+    if (error) { alert(`Could not cancel: ${error.message}`); return }
+    // A DB trigger frees the slot on cancel; do it here too so the slot comes back
+    // even where that trigger isn't installed.
+    if (b.slot_id) {
+      await supabase.from('ptm_slots').update({ is_available: true }).eq('id', b.slot_id)
+    }
+    await loadData()
+    alert('Booking cancelled — that slot is free again and you can book another time.')
   }
 
     const searchAddress = async () => {
@@ -1540,13 +1587,16 @@ export default function ParentPortal() {
                   </div>
                 ) : ptmEvents.map(event => {
                   const eventSlots = ptmSlots.filter(s => s.event_id === event.id)
-                  const eventBookings = ptmBookings.filter(b => b.event_id === event.id)
+                  const eventBookings = ptmBookings.filter(b => b.event_id === event.id && b.status !== 'cancelled')
+                  // Slots this parent already holds shouldn't show up as bookable again.
+                  const heldSlotIds = new Set(eventBookings.map(b => b.slot_id))
+                  const bookableSlots = eventSlots.filter(s => !heldSlotIds.has(s.id))
                   return (
                     <div key={event.id} className="card" style={{ marginBottom: '20px' }}>
                       <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>{event.title}</div>
                       {event.description && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginBottom: '8px' }}>{event.description}</div>}
                       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {event.from_date}{event.to_date && event.to_date !== event.from_date ? ` → ${event.to_date}` : ''}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {fmtPtmDate(event.from_date)}{event.to_date && event.to_date !== event.from_date ? ` → ${fmtPtmDate(event.to_date)}` : ''}</span>
                         <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>{event.meeting_type}</span>
                       </div>
 
@@ -1557,7 +1607,7 @@ export default function ParentPortal() {
                           {eventBookings.map(b => (
                             <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                               <div>
-                                <div style={{ fontSize: '13px', fontWeight: '600' }}>{b.ptm_slots?.slot_date} at {b.ptm_slots?.start_time}</div>
+                                <div style={{ fontSize: '13px', fontWeight: '600' }}>{fmtPtmDate(b.ptm_slots?.slot_date, { weekday: 'short', day: 'numeric', month: 'short' })} at {b.ptm_slots?.start_time}</div>
                                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>👩‍🏫 {b.profiles?.full_name}</div>
                                 {b.ptm_slots?.meeting_type === 'online' && b.ptm_slots?.meeting_link && (
                                   <a href={b.ptm_slots.meeting_link} target='_blank' rel='noreferrer'
@@ -1567,26 +1617,34 @@ export default function ParentPortal() {
                                   <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>📍 {b.ptm_slots.location}</div>
                                 )}
                               </div>
-                              <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
-                                background: b.status === 'confirmed' ? 'rgba(16,185,129,0.15)' : b.status === 'completed' ? 'rgba(167,139,250,0.15)' : 'rgba(56,189,248,0.15)',
-                                color: b.status === 'confirmed' ? '#34d399' : b.status === 'completed' ? '#a78bfa' : '#38bdf8' }}>{b.status}</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                                <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                                  background: b.status === 'confirmed' ? 'rgba(16,185,129,0.15)' : b.status === 'completed' ? 'rgba(167,139,250,0.15)' : 'rgba(56,189,248,0.15)',
+                                  color: b.status === 'confirmed' ? '#34d399' : b.status === 'completed' ? '#a78bfa' : '#38bdf8' }}>{b.status}</span>
+                                {(b.status === 'booked' || b.status === 'confirmed') && (
+                                  <button onClick={() => cancelPtmBooking(b)}
+                                    style={{ padding: '3px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '11px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>✕ Cancel</button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
                       )}
 
                       {/* Available slots */}
-                      {eventSlots.length > 0 && eventBookings.length === 0 && (
+                      {bookableSlots.length > 0 && (
                         <>
-                          <div style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>Available Slots:</div>
+                          <div style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>
+                            {eventBookings.length > 0 ? 'Book Another Slot:' : 'Available Slots:'}
+                          </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                            {[...new Set(eventSlots.map(s => s.slot_date))].sort().map(date => (
+                            {[...new Set(bookableSlots.map(s => s.slot_date))].sort().map(date => (
                               <div key={date} style={{ marginBottom: '10px', width: '100%' }}>
                                 <div style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>
-                                  📅 {new Date(date).toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                  📅 {fmtPtmDate(date, { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                  {eventSlots.filter(s => s.slot_date === date).map(slot => (
+                                  {bookableSlots.filter(s => s.slot_date === date).map(slot => (
                                     /* <button key={slot.id} onClick={() => { setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: students[0]?.id || '', parent_notes: '' }) }} */
                                     <button key={slot.id} onClick={() => { setBookingSlot(slot); setBookingForm({ slot_id: slot.id, student_id: '', parent_notes: '' }) }}
                                     style={{ padding: '8px 14px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif" }}>
@@ -1604,7 +1662,7 @@ export default function ParentPortal() {
                         </>
                       )}
 
-                      {eventSlots.length === 0 && eventBookings.length === 0 && (
+                      {bookableSlots.length === 0 && eventBookings.length === 0 && (
                         <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>No slots available yet. Check back soon!</div>
                       )}
                     </div>

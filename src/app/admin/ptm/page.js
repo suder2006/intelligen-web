@@ -7,6 +7,15 @@ import AdminSidebar from '@/components/AdminSidebar'
 
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 
+// PTM dates are stored as plain 'YYYY-MM-DD'. Parsing one directly makes JS read
+// it as UTC midnight, which renders as the previous day in IST, so anchor every
+// date at local noon before formatting.
+const fmtDate = (dateStr, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => {
+  if (!dateStr) return '—'
+  const d = new Date(`${dateStr}T12:00:00`)
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', opts)
+}
+
 export default function AdminPTMPage() {
   const [events, setEvents] = useState([])
   const [bookings, setBookings] = useState([])
@@ -42,11 +51,14 @@ export default function AdminPTMPage() {
   const saveEvent = async () => {
     if (!form.title || !form.from_date) { alert('Please enter title and date'); return }
     setSaving(true)
-    const data = { ...form, school_id: schoolId }
-    if (editingEvent) {
-      await supabase.from('ptm_events').update(data).eq('id', editingEvent.id)
-    } else {
-      await supabase.from('ptm_events').insert(data)
+    const data = { ...form, school_id: schoolId, to_date: form.to_date || form.from_date }
+    const { error } = editingEvent
+      ? await supabase.from('ptm_events').update(data).eq('id', editingEvent.id)
+      : await supabase.from('ptm_events').insert(data)
+    if (error) {
+      alert(`Could not save event: ${error.message}`)
+      setSaving(false)
+      return
     }
     setShowForm(false)
     setEditingEvent(null)
@@ -56,13 +68,65 @@ export default function AdminPTMPage() {
   }
 
   const deleteEvent = async (id) => {
-    if (!confirm('Delete this PTM event?')) return
-    await supabase.from('ptm_events').delete().eq('id', id)
+    if (!confirm('Delete this PTM event? Its slots and bookings will be removed too.')) return
+    const { error } = await supabase.from('ptm_events').delete().eq('id', id)
+    if (error) { alert(`Could not delete event: ${error.message}`); return }
     await fetchAll()
   }
 
+  const notifyParent = async (parentId, slotDate, startTime) => {
+    if (!parentId) return
+    await supabase.from('chat_messages').insert({
+      sender_id: schoolId,
+      receiver_id: parentId,
+      sender_name: schoolName,
+      content: `⚠️ Your PTM slot on ${fmtDate(slotDate)} at ${startTime} has been cancelled by the school. Please go to the PTM tab in your portal and rebook a new slot.`
+    })
+  }
+
   const updateBookingStatus = async (id, status) => {
-    await supabase.from('ptm_bookings').update({ status }).eq('id', id)
+    const booking = bookings.find(b => b.id === id)
+    const { error } = await supabase.from('ptm_bookings').update({ status }).eq('id', id)
+    if (error) { alert(`Could not update booking: ${error.message}`); return }
+
+    // A DB trigger frees the slot when a booking is cancelled, but do it here too
+    // so the slot reliably reopens for parents (and gets re-held on un-cancel).
+    if (booking?.slot_id) {
+      const wasCancelled = booking.status === 'cancelled'
+      if (status === 'cancelled') {
+        await supabase.from('ptm_slots').update({ is_available: true }).eq('id', booking.slot_id)
+        await notifyParent(booking.parent_id, booking.ptm_slots?.slot_date, booking.ptm_slots?.start_time)
+      } else if (wasCancelled) {
+        await supabase.from('ptm_slots').update({ is_available: false }).eq('id', booking.slot_id)
+      }
+    }
+    await fetchAll()
+  }
+
+  const freeUpSlot = async (slot) => {
+    if (!confirm('Free up this slot? The booking will be cancelled and the parent can rebook.')) return
+    const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
+    if (booking) {
+      const { error } = await supabase.from('ptm_bookings')
+        .update({ status: 'cancelled' }).eq('slot_id', slot.id).neq('status', 'cancelled')
+      if (error) { alert(`Could not cancel the booking: ${error.message}`); return }
+    }
+    const { error: slotErr } = await supabase.from('ptm_slots')
+      .update({ is_available: true }).eq('id', slot.id)
+    if (slotErr) { alert(`Booking cancelled, but the slot could not be freed: ${slotErr.message}`); return }
+    await notifyParent(booking?.parent_id, slot.slot_date, slot.start_time)
+    await fetchAll()
+    alert(booking ? '✅ Slot freed up and parent notified!' : '✅ Slot is available again.')
+  }
+
+  const deleteSlot = async (slot) => {
+    if (!confirm('Delete this slot? If booked, the booking will be cancelled.')) return
+    const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
+    await supabase.from('ptm_bookings')
+      .update({ status: 'cancelled' }).eq('slot_id', slot.id).neq('status', 'cancelled')
+    const { error } = await supabase.from('ptm_slots').delete().eq('id', slot.id)
+    if (error) { alert(`Could not delete the slot: ${error.message}`); return }
+    await notifyParent(booking?.parent_id, slot.slot_date, slot.start_time)
     await fetchAll()
   }
 
@@ -132,7 +196,7 @@ export default function AdminPTMPage() {
           {[
             { label: 'Total Events', value: events.length, color: '#38bdf8' },
             { label: 'Total Slots', value: slots.length, color: '#a78bfa' },
-            { label: 'Total Bookings', value: bookings.length, color: '#10b981' },
+            { label: 'Active Bookings', value: bookings.filter(b => b.status !== 'cancelled').length, color: '#10b981' },
             { label: 'Completed', value: bookings.filter(b => b.status === 'completed').length, color: '#34d399' },
             { label: 'Cancelled', value: bookings.filter(b => b.status === 'cancelled').length, color: '#f87171' },
           ].map(item => (
@@ -174,9 +238,9 @@ export default function AdminPTMPage() {
                           </div>
                           {event.description && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginBottom: '8px' }}>{event.description}</div>}
                           <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {event.from_date}{event.to_date && event.to_date !== event.from_date ? ` → ${event.to_date}` : ''}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {fmtDate(event.from_date)}{event.to_date && event.to_date !== event.from_date ? ` → ${fmtDate(event.to_date)}` : ''}</span>
                             <span style={{ color: '#38bdf8', fontSize: '13px' }}>🕐 {evSlots.length} slots</span>
-                            <span style={{ color: '#10b981', fontSize: '13px' }}>📋 {evBookings.length} bookings</span>
+                            <span style={{ color: '#10b981', fontSize: '13px' }}>📋 {evBookings.filter(b => b.status !== 'cancelled').length} bookings</span>
                             <span style={{ color: '#a78bfa', fontSize: '13px' }}>✅ {evBookings.filter(b => b.status === 'completed').length} completed</span>
                           </div>
                         </div>
@@ -198,55 +262,26 @@ export default function AdminPTMPage() {
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                             {evSlots.map(slot => {
                               const isBooked = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
+                              // A slot can also be stuck as unavailable with no live
+                              // booking (e.g. a cancel that never freed it) — admin
+                              // needs to be able to reopen those too.
+                              const isStuck = !isBooked && slot.is_available === false
                               return (
                                 <div key={slot.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: isBooked ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${isBooked ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: '8px' }}>
                                   <span style={{ fontSize: '12px', color: isBooked ? '#fbbf24' : '#34d399', fontWeight: '600' }}>
-                                    {slot.slot_date} {slot.start_time}-{slot.end_time}
+                                    {fmtDate(slot.slot_date, { day: 'numeric', month: 'short' })} {slot.start_time}-{slot.end_time}
                                   </span>
                                   <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
                                     {slot.profiles?.full_name}
                                   </span>
                                   {slot.program && <span style={{ fontSize: '11px', color: '#a78bfa' }}>{slot.program}</span>}
-                                  <span style={{ fontSize: '11px', color: isBooked ? '#fbbf24' : '#34d399' }}>
-                                    {isBooked ? '🔴 Booked' : '🟢 Free'}
+                                  <span style={{ fontSize: '11px', color: isBooked ? '#fbbf24' : isStuck ? '#f87171' : '#34d399' }}>
+                                    {isBooked ? '🔴 Booked' : isStuck ? '⚠️ Blocked' : '🟢 Free'}
                                   </span>
-                                    <button onClick={async () => {
-                                    if (!confirm('Delete this slot? If booked, the booking will be cancelled.')) return
-                                    const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
-                                    await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
-                                    await supabase.from('ptm_slots').delete().eq('id', slot.id)
-                                    if (booking?.parent_id) {
-                                      await supabase.from('chat_messages').insert({
-                                        sender_id: schoolId,
-                                        receiver_id: booking.parent_id,
-                                        sender_name: schoolName,
-                                        content: `⚠️ Your PTM slot on ${slot.slot_date} at ${slot.start_time} has been cancelled by the school. Please go to the PTM tab in your portal and rebook a new slot.`
-                                      })
-                                    }
-                                    await fetchAll()
-                                  }}
+                                  <button onClick={() => deleteSlot(slot)}
                                     style={{ padding: '2px 6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                                  {isBooked && (
-                                      <button onClick={async () => {
-                                      if (!confirm('Free up this slot? The booking will be cancelled and parent can rebook.')) return
-                                      // Get booking details for notification
-                                      const booking = bookings.find(b => b.slot_id === slot.id && b.status !== 'cancelled')
-                                      // Cancel booking
-                                      await supabase.from('ptm_bookings').update({ status: 'cancelled' }).eq('slot_id', slot.id)
-                                      // Free up slot
-                                      await supabase.from('ptm_slots').update({ is_available: true }).eq('id', slot.id)
-                                      // Notify parent
-                                      if (booking?.parent_id) {
-                                        await supabase.from('chat_messages').insert({
-                                          sender_id: schoolId,
-                                          receiver_id: booking.parent_id,
-                                          sender_name: schoolName,
-                                          content: `⚠️ Your PTM slot on ${slot.slot_date} at ${slot.start_time} has been cancelled by the school. Please go to the PTM tab in your portal and rebook a new slot.`
-                                        })
-                                      }
-                                      await fetchAll()
-                                      alert('✅ Slot freed up and parent notified!')
-                                    }}
+                                  {(isBooked || isStuck) && (
+                                    <button onClick={() => freeUpSlot(slot)}
                                       style={{ padding: '2px 6px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>🔓 Free Up</button>
                                   )}
                                 </div>
@@ -280,7 +315,7 @@ export default function AdminPTMPage() {
                                     </td>
                                     <td style={{ color: 'rgba(255,255,255,0.6)' }}>{b.profiles?.full_name}</td>
                                     <td>
-                                      <div>{b.ptm_slots?.slot_date}</div>
+                                      <div>{fmtDate(b.ptm_slots?.slot_date)}</div>
                                       <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{b.ptm_slots?.start_time} - {b.ptm_slots?.end_time}</div>
                                     </td>
                                     <td>
@@ -338,7 +373,7 @@ export default function AdminPTMPage() {
                           <td style={{ color: 'rgba(255,255,255,0.6)' }}>{b.profiles?.full_name}</td>
                           <td style={{ color: '#38bdf8', fontSize: '12px' }}>{events.find(e => e.id === b.event_id)?.title}</td>
                           <td>
-                            <div>{b.ptm_slots?.slot_date}</div>
+                            <div>{fmtDate(b.ptm_slots?.slot_date)}</div>
                             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{b.ptm_slots?.start_time} - {b.ptm_slots?.end_time}</div>
                           </td>
                           <td>
@@ -388,18 +423,19 @@ export default function AdminPTMPage() {
                 {events.map(event => {
                   const evB = eventBookings(event.id)
                   const evS = eventSlots(event.id)
-                  const completionRate = evS.length > 0 ? Math.round((evB.filter(b => b.status === 'completed').length / evS.length) * 100) : 0
+                  const evLive = evB.filter(b => b.status !== 'cancelled')
+                  const completionRate = evLive.length > 0 ? Math.round((evLive.filter(b => b.status === 'completed').length / evLive.length) * 100) : 0
                   return (
                     <div key={event.id} className="card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                         <div>
                           <div style={{ fontWeight: '700', marginBottom: '4px' }}>{event.title}</div>
-                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {event.from_date}{event.to_date && event.to_date !== event.from_date ? ` → ${event.to_date}` : ''}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📅 {fmtDate(event.from_date)}{event.to_date && event.to_date !== event.from_date ? ` → ${fmtDate(event.to_date)}` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                           {[
                             { label: 'Slots', value: evS.length, color: '#38bdf8' },
-                            { label: 'Booked', value: evB.length, color: '#10b981' },
+                            { label: 'Booked', value: evLive.length, color: '#10b981' },
                             { label: 'Completed', value: evB.filter(b => b.status === 'completed').length, color: '#a78bfa' },
                             { label: 'Cancelled', value: evB.filter(b => b.status === 'cancelled').length, color: '#ef4444' },
                           ].map(item => (

@@ -3,6 +3,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+// PTM dates are stored as plain 'YYYY-MM-DD'. Parsing one directly makes JS read
+// it as UTC midnight, which renders as the previous day in IST, so anchor every
+// date at local noon before formatting.
+const fmtDate = (dateStr, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => {
+  if (!dateStr) return ''
+  const d = new Date(`${dateStr}T12:00:00`)
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', opts)
+}
+
 export default function TeacherPTMPage() {
   const [profile, setProfile] = useState(null)
   const [events, setEvents] = useState([])
@@ -16,6 +25,7 @@ export default function TeacherPTMPage() {
   const [showNoteForm, setShowNoteForm] = useState(null) // booking object
   const [editingSlot, setEditingSlot] = useState(null)
   const [teacherPrograms, setTeacherPrograms] = useState([])
+  const [userId, setUserId] = useState(null)
   const router = useRouter()
 
 const [slotForm, setSlotForm] = useState({
@@ -36,20 +46,46 @@ const [slotForm, setSlotForm] = useState({
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
+    setUserId(user.id)
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
-    const { data: spData } = await supabase.from('staff_programs').select('program').eq('staff_id', user.id)
-    setTeacherPrograms(spData?.map(p => p.program) || [])
+    if (!prof?.school_id) {
+      setEvents([]); setSlots([]); setBookings([]); setNotes([]); setLoading(false); return
+    }
+
+    // Programs are assigned per staff member; pull the whole school's mapping so we
+    // can tell which other teachers share a program with this one.
+    const { data: spData } = await supabase.from('staff_programs')
+      .select('staff_id, program').eq('school_id', prof.school_id)
+    const programsByStaff = {}
+    for (const row of spData || []) {
+      if (!programsByStaff[row.staff_id]) programsByStaff[row.staff_id] = []
+      programsByStaff[row.staff_id].push(row.program)
+    }
+    const myPrograms = programsByStaff[user.id] || []
+    setTeacherPrograms(myPrograms)
 
     const [evRes, slRes, bkRes, ntRes] = await Promise.all([
-      supabase.from('ptm_events').select('*').eq('school_id', prof.school_id).eq('status', 'upcoming').order('from_date'),
-      supabase.from('ptm_slots').select('*').eq('teacher_id', user.id).order('slot_date').order('start_time'),
-      supabase.from('ptm_bookings').select('*, students(full_name, program), profiles!ptm_bookings_parent_id_fkey(full_name, phone)').eq('teacher_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('ptm_events').select('*').eq('school_id', prof.school_id).in('status', ['upcoming', 'ongoing']).order('from_date'),
+      supabase.from('ptm_slots').select('*, profiles!ptm_slots_teacher_id_fkey(full_name)').eq('school_id', prof.school_id).order('slot_date').order('start_time'),
+      supabase.from('ptm_bookings').select('*, ptm_slots(*), students(full_name, program), profiles!ptm_bookings_parent_id_fkey(full_name, phone)').eq('school_id', prof.school_id).order('created_at', { ascending: false }),
       supabase.from('ptm_notes').select('*, students(full_name)').eq('teacher_id', user.id).order('created_at', { ascending: false })
     ])
+
+    // Slots belong to a program, not to one teacher: every teacher on a program sees
+    // the same slots. An untagged slot is matched through its owner's programs.
+    const visibleSlots = (slRes.data || []).filter(sl => {
+      if (sl.teacher_id === user.id) return true
+      if (sl.program) return myPrograms.includes(sl.program)
+      return (programsByStaff[sl.teacher_id] || []).some(pr => myPrograms.includes(pr))
+    })
+    const visibleSlotIds = new Set(visibleSlots.map(sl => sl.id))
+
     setEvents(evRes.data || [])
-    setSlots(slRes.data || [])
-    setBookings(bkRes.data || [])
+    setSlots(visibleSlots)
+    // Bookings follow the same scope, otherwise a co-teacher's slot would look free
+    // here and could be deleted out from under a booked parent.
+    setBookings((bkRes.data || []).filter(b => b.teacher_id === user.id || visibleSlotIds.has(b.slot_id)))
     setNotes(ntRes.data || [])
     setLoading(false)
   }
@@ -58,14 +94,21 @@ const [slotForm, setSlotForm] = useState({
     if (!slotForm.event_id || !slotForm.slot_date || !slotForm.start_time || !slotForm.end_time) {
       alert('Please fill event, date and times'); return
     }
+    if (slotForm.end_time <= slotForm.start_time) {
+      alert('End time must be after start time'); return
+    }
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const data = { ...slotForm, teacher_id: user.id, school_id: profile.school_id }
-    if (editingSlot) {
-      await supabase.from('ptm_slots').update(data).eq('id', editingSlot.id)
-    } else {
-      await supabase.from('ptm_slots').insert(data)
+    const data = {
+      ...slotForm,
+      program: slotForm.program || null,
+      teacher_id: user.id,
+      school_id: profile.school_id
     }
+    const { error } = editingSlot
+      ? await supabase.from('ptm_slots').update(data).eq('id', editingSlot.id)
+      : await supabase.from('ptm_slots').insert(data)
+    if (error) { alert(`Could not save the slot: ${error.message}`); setSaving(false); return }
     setShowSlotForm(false)
     setEditingSlot(null)
     resetSlotForm()
@@ -73,9 +116,13 @@ const [slotForm, setSlotForm] = useState({
     setSaving(false)
   }
 
-  const deleteSlot = async (id) => {
+  const deleteSlot = async (slot) => {
+    if (slot.teacher_id !== userId) {
+      alert('This slot belongs to another teacher on your program.'); return
+    }
     if (!confirm('Delete this slot?')) return
-    await supabase.from('ptm_slots').delete().eq('id', id)
+    const { error } = await supabase.from('ptm_slots').delete().eq('id', slot.id)
+    if (error) { alert(`Could not delete the slot: ${error.message}`); return }
     await loadData()
   }
 
@@ -92,11 +139,10 @@ const [slotForm, setSlotForm] = useState({
       parent_id: showNoteForm.parent_id,
       school_id: profile.school_id
     }
-    if (existing) {
-      await supabase.from('ptm_notes').update(data).eq('id', existing.id)
-    } else {
-      await supabase.from('ptm_notes').insert(data)
-    }
+    const { error } = existing
+      ? await supabase.from('ptm_notes').update(data).eq('id', existing.id)
+      : await supabase.from('ptm_notes').insert(data)
+    if (error) { alert(`Could not save the notes: ${error.message}`); setSaving(false); return }
     // Mark booking as completed
     await supabase.from('ptm_bookings').update({ status: 'completed' }).eq('id', showNoteForm.id)
 
@@ -165,7 +211,8 @@ const [slotForm, setSlotForm] = useState({
     if (slotsToCreate.length === 0) { alert('No slots can be generated with these times'); return }
     if (!confirm(`Generate ${slotsToCreate.length} slots of ${duration} minutes each?`)) return
     setSaving(true)
-    await supabase.from('ptm_slots').insert(slotsToCreate)
+    const { error } = await supabase.from('ptm_slots').insert(slotsToCreate)
+    if (error) { alert(`Could not create the slots: ${error.message}`); setSaving(false); return }
     setShowSlotForm(false)
     resetSlotForm()
     await loadData()
@@ -225,7 +272,7 @@ const [slotForm, setSlotForm] = useState({
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginBottom: '24px' }}>
           {[
-            { label: 'My Slots', value: slots.length, color: '#38bdf8' },
+            { label: 'Slots', value: slots.length, color: '#38bdf8' },
             { label: 'Booked', value: bookings.filter(b => b.status === 'booked').length, color: '#f59e0b' },
             { label: 'Completed', value: bookings.filter(b => b.status === 'completed').length, color: '#10b981' },
             { label: 'Notes Added', value: notes.length, color: '#a78bfa' },
@@ -239,7 +286,7 @@ const [slotForm, setSlotForm] = useState({
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['slots', '🕐 My Slots'], ['bookings', '📋 Bookings'], ['notes', '📝 Notes']].map(([v, l]) => (
+          {[['slots', '🕐 Slots'], ['bookings', '📋 Bookings'], ['notes', '📝 Notes']].map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
@@ -264,10 +311,11 @@ const [slotForm, setSlotForm] = useState({
                   [...new Set(slots.map(s => s.slot_date))].sort().map(date => (
                     <div key={date} style={{ marginBottom: '20px' }}>
                       <div style={{ fontWeight: '600', color: '#38bdf8', marginBottom: '10px', fontSize: '15px' }}>
-                        📅 {new Date(date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        📅 {fmtDate(date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                       </div>
                       {slots.filter(s => s.slot_date === date).map(slot => {
-                        const slotBookings = bookings.filter(b => b.slot_id === slot.id)
+                        // A cancelled booking leaves the slot open again.
+                        const slotBookings = bookings.filter(b => b.slot_id === slot.id && b.status !== 'cancelled')
                         return (
                           <div key={slot.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '14px 20px' }}>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -277,6 +325,10 @@ const [slotForm, setSlotForm] = useState({
                               </span>
                               <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{slot.duration_minutes} min</span>
                               {slot.location && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>📍 {slot.location}</span>}
+                              {slot.program && <span className="badge" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{slot.program}</span>}
+                              {slot.teacher_id !== userId && (
+                                <span style={{ color: '#a78bfa', fontSize: '13px' }}>👩‍🏫 {slot.profiles?.full_name || 'Co-teacher'}</span>
+                              )}
                               {slotBookings.length > 0 && (
                                 <span style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '600' }}>👤 {slotBookings[0]?.students?.full_name}</span>
                               )}
@@ -289,8 +341,8 @@ const [slotForm, setSlotForm] = useState({
                                 <a href={slot.meeting_link} target='_blank' rel='noreferrer'
                                   style={{ padding: '5px 10px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', textDecoration: 'none' }}>🔗 Join</a>
                               )}
-                              {slotBookings.length === 0 && (
-                                <button onClick={() => deleteSlot(slot.id)}
+                              {slotBookings.length === 0 && slot.teacher_id === userId && (
+                                <button onClick={() => deleteSlot(slot)}
                                   style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                               )}
                             </div>
@@ -319,7 +371,7 @@ const [slotForm, setSlotForm] = useState({
                           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                             <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>👪 {b.profiles?.full_name}</span>
                             {b.profiles?.phone && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>📞 {b.profiles.phone}</span>}
-                            <span style={{ color: '#38bdf8', fontSize: '13px' }}>📅 {b.ptm_slots?.slot_date} {b.ptm_slots?.start_time}</span>
+                            <span style={{ color: '#38bdf8', fontSize: '13px' }}>📅 {fmtDate(b.ptm_slots?.slot_date)} {b.ptm_slots?.start_time}</span>
                           </div>
                           {b.parent_notes && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '6px', fontStyle: 'italic' }}>💬 Parent: {b.parent_notes}</div>}
                         </div>
@@ -329,14 +381,14 @@ const [slotForm, setSlotForm] = useState({
                             <button onClick={() => supabase.from('ptm_bookings').update({ status: 'confirmed' }).eq('id', b.id).then(() => loadData())}
                               style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '6px', color: '#34d399', cursor: 'pointer', fontSize: '12px' }}>✅ Confirm</button>
                           )}
-                          <button onClick={() => {
+                          {b.teacher_id === userId && <button onClick={() => {
                             setShowNoteForm(b)
                             if (note) setNoteForm({ discussion_points: note.discussion_points || '', action_items: note.action_items || '', teacher_observations: note.teacher_observations || '', follow_up_required: note.follow_up_required || false, follow_up_notes: note.follow_up_notes || '', shared_with_parent: note.shared_with_parent || false })
                             else resetNoteForm()
                           }}
                             style={{ padding: '5px 10px', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px' }}>
                             {note ? '✏️ Edit Notes' : '📝 Add Notes'}
-                          </button>
+                          </button>}
                         </div>
                       </div>
                       {note && (
@@ -405,7 +457,7 @@ const [slotForm, setSlotForm] = useState({
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>PTM Event *</label>
             <select value={slotForm.event_id} onChange={e => setSlotForm({ ...slotForm, event_id: e.target.value })} style={inputStyle}>
               <option value=''>-- Select Event --</option>
-              {events.map(e => <option key={e.id} value={e.id}>{e.title} ({e.from_date})</option>)}
+              {events.map(e => <option key={e.id} value={e.id}>{e.title} ({fmtDate(e.from_date)})</option>)}
             </select>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Date *</label>
             <input type='date' value={slotForm.slot_date} onChange={e => setSlotForm({ ...slotForm, slot_date: e.target.value })} style={inputStyle} />
