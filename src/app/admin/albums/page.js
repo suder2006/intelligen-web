@@ -133,7 +133,9 @@ export default function AdminAlbumsPage() {
             body: file,
             headers: { 'Content-Type': file.type }
           })
-
+          console.log('R2 upload status:', r2Res.status, r2Res.ok)
+          if (!r2Res.ok) throw new Error(`R2 upload failed: ${r2Res.status}`)
+            
           publicUrl = presignData.publicUrl
           key = presignData.key
         } else {
@@ -152,7 +154,7 @@ export default function AdminAlbumsPage() {
           key = data.key
         }
 
-        await supabase.from('classroom_moments').insert({
+        const { error: dbError } = await supabase.from('classroom_moments').insert({
           school_id: schoolId,
           album_id: selectedAlbum.id,
           class_name: selectedAlbum.program || 'All',
@@ -164,6 +166,10 @@ export default function AdminAlbumsPage() {
           uploaded_by: user.id,
           uploaded_by_name: 'Admin'
         })
+        if (dbError) {
+          console.error('DB insert error:', dbError)
+          throw new Error(dbError.message)
+        }
 
         if (mediaType === 'photo' && !selectedAlbum.cover_url) {
           await supabase.from('moment_albums')
