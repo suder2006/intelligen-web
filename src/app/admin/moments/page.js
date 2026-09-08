@@ -116,6 +116,26 @@ useEffect(() => {
     }
   }
 
+  const deleteFromR2 = (key) =>
+    fetch('/api/upload', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    })
+
+  // R2 keys are the URL path, so a stored public URL maps straight back to its object
+  const keyFromUrl = (url) => {
+    if (!url) return null
+    try {
+      return decodeURIComponent(new URL(url).pathname).replace(/^\//, '')
+    } catch {
+      return null
+    }
+  }
+
+  // A video also has a poster frame in R2 that has to go with it
+  const r2KeysFor = (m) => [m.storage_path, keyFromUrl(m.thumbnail_url)].filter(Boolean)
+
   async function downloadMoment(m) {
     const url = mediaUrl(m)
     if (!url) throw new Error('This item has no file to download')
@@ -152,18 +172,12 @@ useEffect(() => {
     if (!confirm(`Delete ALL ${items.length} photos from ${date}?\nThis cannot be undone!`)) return
     
     try {
-      // Delete from storage
-      const storagePaths = items
-        .filter(m => m.storage_path)
-        .map(m => m.storage_path)
-      
-        if (storagePaths.length > 0) {
-        await Promise.all(storagePaths.map(key =>
-          fetch('/api/upload', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key })
-          }).catch(e => console.log('R2 delete error:', e))
+      // Delete from storage (media plus any video poster frames)
+      const keys = items.flatMap(r2KeysFor)
+
+      if (keys.length > 0) {
+        await Promise.all(keys.map(key =>
+          deleteFromR2(key).catch(e => console.log('R2 delete error:', e))
         ))
       }
 
@@ -181,20 +195,14 @@ useEffect(() => {
     }
   }
 
-    async function deleteMoment(id, storagePath) {
-    if (!confirm('Delete this photo?')) return
+  async function deleteMoment(m) {
+    if (!confirm(m.media_type === 'video' ? 'Delete this video?' : 'Delete this photo?')) return
     try {
-      if (storagePath) {
-        await fetch('/api/upload', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: storagePath })
-        })
-      }
+      await Promise.all(r2KeysFor(m).map(key => deleteFromR2(key)))
     } catch (e) { console.log('R2 delete error:', e) }
     await supabase.from('classroom_moments')
       .update({ deleted_at: new Date().toISOString() })
-      .eq('id', id)
+      .eq('id', m.id)
     fetchMoments()
   }
 
@@ -324,7 +332,7 @@ useEffect(() => {
                           }}
                             style={{ padding: '4px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>⬇️</button>
                         )}
-                        <button onClick={() => deleteMoment(m.id, m.storage_path)}
+                        <button onClick={() => deleteMoment(m)}
                           style={{ padding: '4px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                       </div>
                     </div>
