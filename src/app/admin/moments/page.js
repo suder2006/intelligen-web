@@ -105,33 +105,47 @@ useEffect(() => {
     setUploading(false)
   }
 
+  // Album videos share this feed, so the file to download is video_url for them
+  const mediaUrl = (m) => (m.media_type === 'video' ? m.video_url : m.photo_url)
+  const mediaExt = (url, fallback) => {
+    try {
+      const ext = new URL(url).pathname.split('.').pop()
+      return ext && ext.length <= 5 ? ext : fallback
+    } catch {
+      return fallback
+    }
+  }
+
+  async function downloadMoment(m) {
+    const url = mediaUrl(m)
+    if (!url) throw new Error('This item has no file to download')
+    const response = await fetch(url)
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `moment-${m.moment_date}-${m.class_name}.${mediaExt(url, m.media_type === 'video' ? 'mp4' : 'jpg')}`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(objectUrl)
+  }
+
   async function downloadAllPhotos(date, items) {
-    alert(`⏳ Downloading ${items.length} photos. Please wait...`)
-    for (const item of items) {
+    const downloadable = items.filter(m => mediaUrl(m))
+    alert(`⏳ Downloading ${downloadable.length} file(s). Please wait...`)
+    let done = 0
+    for (const item of downloadable) {
       try {
-        // Fetch image as blob
-        const response = await fetch(item.photo_url)
-        const blob = await response.blob()
-        
-        // Create download link
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `moment-${date}-${item.class_name}.jpg`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        
-        // Cleanup
-        URL.revokeObjectURL(url)
-        
+        await downloadMoment(item)
+        done++
         // Delay between downloads
         await new Promise(resolve => setTimeout(resolve, 800))
       } catch (e) {
         console.error('Download error:', e)
       }
     }
-    alert(`✅ ${items.length} photos downloaded!`)
+    alert(`✅ ${done} file(s) downloaded!`)
   }
 
   async function deleteAllPhotos(date, items) {
@@ -270,31 +284,46 @@ useEffect(() => {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-              {items.map(m => (
+              {items.map(m => {
+                const isVideo = m.media_type === 'video'
+                // Videos carry a captured poster frame; photo_url is nullable, so
+                // render a placeholder rather than a broken image when there is none
+                const poster = isVideo ? m.thumbnail_url : m.photo_url
+
+                return (
                 <div key={m.id} style={{ backgroundColor: '#1e293b', borderRadius: '14px', overflow: 'hidden', border: '1px solid #334155' }}>
-                  <img src={m.photo_url} alt={m.caption} style={{ width: '100%', height: '180px', objectFit: 'cover' }} />
+                  <div style={{ position: 'relative' }}>
+                    {poster ? (
+                      <img src={poster} alt={m.caption || (isVideo ? 'Video' : 'Photo')} style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '180px', backgroundColor: 'rgba(167,139,250,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>
+                        {isVideo ? '🎥' : '📷'}
+                      </div>
+                    )}
+                    {isVideo && m.video_url && (
+                      <a href={m.video_url} target='_blank' rel='noreferrer'
+                        style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                        <span style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.55)', border: '2px solid rgba(255,255,255,0.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', paddingLeft: '4px' }}>
+                          ▶
+                        </span>
+                      </a>
+                    )}
+                  </div>
                   <div style={{ padding: '12px' }}>
                     {m.caption && <p style={{ color: '#e2e8f0', fontSize: '13px', marginBottom: '6px' }}>{m.caption}</p>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#64748b', fontSize: '12px' }}>📚 {m.class_name}</span>
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={async () => {
-                          try {
-                            const response = await fetch(m.photo_url)
-                            const blob = await response.blob()
-                            const url = URL.createObjectURL(blob)
-                            const link = document.createElement('a')
-                            link.href = url
-                            link.download = `moment-${m.moment_date}-${m.class_name}.jpg`
-                            document.body.appendChild(link)
-                            link.click()
-                            document.body.removeChild(link)
-                            URL.revokeObjectURL(url)
-                          } catch(e) {
-                            alert('Download failed: ' + e.message)
-                          }
-                        }}
-                          style={{ padding: '4px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>⬇️</button>
+                        {mediaUrl(m) && (
+                          <button onClick={async () => {
+                            try {
+                              await downloadMoment(m)
+                            } catch(e) {
+                              alert('Download failed: ' + e.message)
+                            }
+                          }}
+                            style={{ padding: '4px 10px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>⬇️</button>
+                        )}
                         <button onClick={() => deleteMoment(m.id, m.storage_path)}
                           style={{ padding: '4px 10px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                       </div>
@@ -302,7 +331,8 @@ useEffect(() => {
                     <div style={{ color: '#475569', fontSize: '11px', marginTop: '4px' }}>by {m.uploaded_by_name}</div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}
