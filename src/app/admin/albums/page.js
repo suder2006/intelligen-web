@@ -108,6 +108,91 @@ export default function AdminAlbumsPage() {
     })
   }
 
+  // classroom_moments.photo_url is NOT NULL, so a video row still needs an image.
+  // Grab a poster frame from the file so the row is valid and the video renders
+  // as a real thumbnail in the album grid and the parent app.
+  const captureVideoThumbnail = (file) => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video')
+      const objectUrl = URL.createObjectURL(file)
+      let settled = false
+      const done = (result) => {
+        if (settled) return
+        settled = true
+        URL.revokeObjectURL(objectUrl)
+        resolve(result)
+      }
+
+      video.preload = 'metadata'
+      video.muted = true
+      video.playsInline = true
+      video.onloadeddata = () => {
+        video.currentTime = Math.min(1, (video.duration || 2) / 2)
+      }
+      video.onseeked = () => {
+        try {
+          const maxWidth = 800
+          const vw = video.videoWidth || maxWidth
+          const vh = video.videoHeight || maxWidth
+          const scale = Math.min(1, maxWidth / vw)
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(vw * scale)
+          canvas.height = Math.round(vh * scale)
+          canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+          canvas.toBlob(
+            (blob) => done(blob ? new File([blob], 'thumb.jpg', { type: 'image/jpeg' }) : null),
+            'image/jpeg',
+            0.7
+          )
+        } catch (e) {
+          console.warn('Thumbnail capture failed:', e)
+          done(null)
+        }
+      }
+      // Codec the browser cannot decode (e.g. some .mov files) - fall back silently
+      video.onerror = () => done(null)
+      setTimeout(() => done(null), 15000)
+      video.src = objectUrl
+    })
+  }
+
+  const uploadVideoThumbnail = async (file, folder) => {
+    try {
+      const thumb = await captureVideoThumbnail(file)
+      if (!thumb) return null
+      const formData = new FormData()
+      formData.append('file', thumb)
+      formData.append('folder', `${folder}/thumbs`)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.error) {
+        console.warn('Thumbnail upload failed:', data.error)
+        return null
+      }
+      return data.publicUrl
+    } catch (e) {
+      console.warn('Thumbnail upload failed:', e)
+      return null
+    }
+  }
+
+  const deleteFromR2 = (key) =>
+    fetch('/api/upload', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    })
+
+  // R2 keys are the URL path, so a stored public URL maps straight back to its object
+  const keyFromUrl = (url) => {
+    if (!url) return null
+    try {
+      return decodeURIComponent(new URL(url).pathname).replace(/^\//, '')
+    } catch {
+      return null
+    }
+  }
+
   const uploadMedia = async (files, mediaType) => {
     if (!selectedAlbum) return
     setUploading(true)
@@ -119,7 +204,7 @@ export default function AdminAlbumsPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       for (const file of files) {
-        let publicUrl, key
+        let publicUrl, key, thumbnailUrl = null
 
         if (mediaType === 'video') {
           const presignRes = await fetch(
@@ -128,16 +213,20 @@ export default function AdminAlbumsPage() {
           const presignData = await presignRes.json()
           if (presignData.error) throw new Error(presignData.error)
 
-          await fetch(presignData.uploadUrl, {
+          const r2Res = await fetch(presignData.uploadUrl, {
             method: 'PUT',
             body: file,
             headers: { 'Content-Type': file.type }
           })
           console.log('R2 upload status:', r2Res.status, r2Res.ok)
-          if (!r2Res.ok) throw new Error(`R2 upload failed: ${r2Res.status}`)
-            
+          if (!r2Res.ok) {
+            const detail = await r2Res.text().catch(() => '')
+            throw new Error(`R2 upload failed: ${r2Res.status} ${detail}`)
+          }
+
           publicUrl = presignData.publicUrl
           key = presignData.key
+          thumbnailUrl = await uploadVideoThumbnail(file, `albums/${selectedAlbum.id}`)
         } else {
           const compressed = await compressImage(file)
           const formData = new FormData()
@@ -154,21 +243,36 @@ export default function AdminAlbumsPage() {
           key = data.key
         }
 
-        const { error: dbError } = await supabase.from('classroom_moments').insert({
+        const row = {
           school_id: schoolId,
           album_id: selectedAlbum.id,
           class_name: selectedAlbum.program || 'All',
-          photo_url: mediaType === 'photo' ? publicUrl : null,
+          // photo_url is NOT NULL: videos fall back to the poster frame, then to
+          // the video URL itself if the browser could not decode the file
+          photo_url: mediaType === 'photo' ? publicUrl : (thumbnailUrl || publicUrl),
           video_url: mediaType === 'video' ? publicUrl : null,
+          thumbnail_url: mediaType === 'video' ? thumbnailUrl : null,
           storage_path: key,
           media_type: mediaType,
           moment_date: selectedAlbum.event_date,
           uploaded_by: user.id,
           uploaded_by_name: 'Admin'
-        })
+        }
+
+        const { error: dbError } = await supabase.from('classroom_moments').insert(row)
         if (dbError) {
-          console.error('DB insert error:', dbError)
-          throw new Error(dbError.message)
+          console.error('classroom_moments insert failed', {
+            row,
+            message: dbError.message,
+            code: dbError.code,
+            details: dbError.details,
+            hint: dbError.hint
+          })
+          throw new Error(
+            `DB insert failed (${dbError.code || 'unknown'}): ${dbError.message}` +
+            (dbError.details ? ` - ${dbError.details}` : '') +
+            (dbError.hint ? ` (${dbError.hint})` : '')
+          )
         }
 
         if (mediaType === 'photo' && !selectedAlbum.cover_url) {
@@ -199,11 +303,11 @@ export default function AdminAlbumsPage() {
     setDeleting(media.id)
     try {
       if (media.storage_path) {
-        await fetch('/api/upload', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: media.storage_path })
-        })
+        await deleteFromR2(media.storage_path)
+      }
+      const thumbKey = keyFromUrl(media.thumbnail_url)
+      if (thumbKey) {
+        await deleteFromR2(thumbKey).catch(e => console.log('R2 thumb delete error:', e))
       }
       await supabase.from('classroom_moments')
         .update({ deleted_at: new Date().toISOString() })
@@ -220,16 +324,13 @@ export default function AdminAlbumsPage() {
     try {
       // Get all media
       const { data: media } = await supabase.from('classroom_moments')
-        .select('storage_path').eq('album_id', album.id)
+        .select('storage_path, thumbnail_url').eq('album_id', album.id)
 
-      // Delete from R2
+      // Delete from R2 (media plus any video poster frames)
       if (media?.length > 0) {
-        await Promise.all(media.filter(m => m.storage_path).map(m =>
-          fetch('/api/upload', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: m.storage_path })
-          }).catch(e => console.log('R2 delete error:', e))
+        const keys = media.flatMap(m => [m.storage_path, keyFromUrl(m.thumbnail_url)]).filter(Boolean)
+        await Promise.all(keys.map(key =>
+          deleteFromR2(key).catch(e => console.log('R2 delete error:', e))
         ))
       }
 
@@ -454,11 +555,13 @@ export default function AdminAlbumsPage() {
                     {media.media_type === 'photo' ? (
                       <img src={media.photo_url} style={{ width: '100%', height: '160px', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{ width: '100%', height: '160px', background: 'rgba(167,139,250,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ fontSize: '36px' }}>🎥</div>
-                        <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '600' }}>Video</div>
+                      <div style={{ position: 'relative', width: '100%', height: '160px', background: 'rgba(167,139,250,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
+                        {media.thumbnail_url && (
+                          <img src={media.thumbnail_url} style={{ position: 'absolute', inset: 0, width: '100%', height: '160px', objectFit: 'cover' }} />
+                        )}
+                        <div style={{ position: 'relative', fontSize: '36px', textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>🎥</div>
                         <a href={media.video_url} target="_blank" rel="noreferrer"
-                          style={{ color: '#38bdf8', fontSize: '11px' }}>▶ Preview</a>
+                          style={{ position: 'relative', color: '#38bdf8', fontSize: '11px', fontWeight: '600', background: 'rgba(0,0,0,0.55)', padding: '3px 10px', borderRadius: '20px' }}>▶ Preview</a>
                       </div>
                     )}
 
