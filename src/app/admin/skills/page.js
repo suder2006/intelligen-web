@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
@@ -33,6 +34,10 @@ export default function AdminSkillsPage() {
   const [editingActivity, setEditingActivity] = useState(null)
   const [skillForm, setSkillForm] = useState({ name: '', description: '' })
   const [activityForm, setActivityForm] = useState({ name: '', description: '' })
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkPreview, setBulkPreview] = useState([])
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const bulkFileRef = useRef(null)
 
   const { schoolId } = useSchool()
 
@@ -147,6 +152,133 @@ const getSkillSummary = (skillId) => {
   return grouped
 }
 
+    const downloadTemplate = () => {
+    const template = [
+      ['Skill Name', 'Skill Description', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month'],
+      ['Fine Motor Skills', 'Hand and finger coordination', 'Holds pencil correctly', 'Check grip position', 'LKG', 'Term 1', 'June'],
+      ['Fine Motor Skills', '', 'Cuts with scissors', 'Straight line cutting', 'LKG', 'Term 1', 'July'],
+      ['Gross Motor Skills', 'Body movement and balance', 'Runs in straight line', '', 'LKG', 'Term 1', 'June'],
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(template)
+    ws['!cols'] = [
+      { wch: 25 }, { wch: 30 }, { wch: 30 }, { wch: 30 },
+      { wch: 15 }, { wch: 10 }, { wch: 12 }
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Skills Template')
+    XLSX.writeFile(wb, 'intelligen_skills_template.xlsx')
+  }
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    try {
+      const data = await file.arrayBuffer()
+      const wb = XLSX.read(data)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
+      const dataRows = rows.slice(1).filter(r => r[0] || r[2])
+      if (dataRows.length === 0) { alert('No data found in file!'); return }
+      const parsed = []
+      dataRows.forEach(row => {
+        const skillName = (row[0] || '').toString().trim()
+        const skillDesc = (row[1] || '').toString().trim()
+        const actName = (row[2] || '').toString().trim()
+        const actDesc = (row[3] || '').toString().trim()
+        const program = (row[4] || '').toString().trim()
+        const term = (row[5] || '').toString().trim()
+        const month = (row[6] || '').toString().trim()
+        if (skillName || actName) {
+          parsed.push({ skillName, skillDesc, actName, actDesc, program, term, month })
+        }
+      })
+      setBulkPreview(parsed)
+      setShowBulkModal(true)
+    } catch (e) {
+      alert('Error reading file: ' + e.message)
+    }
+    e.target.value = ''
+  }
+
+  const saveBulkUpload = async () => {
+    if (!bulkPreview.length) return
+    setBulkSaving(true)
+    try {
+      const skillMap = {}
+      bulkPreview.forEach(row => {
+        if (!row.skillName) return
+        if (!skillMap[row.skillName]) {
+          skillMap[row.skillName] = { desc: row.skillDesc, activities: [], assignments: [] }
+        }
+        if (row.actName && !skillMap[row.skillName].activities.find(a => a.name === row.actName)) {
+          skillMap[row.skillName].activities.push({ name: row.actName, description: row.actDesc })
+        }
+        if (row.program && row.term && row.month) {
+          const exists = skillMap[row.skillName].assignments.find(
+            a => a.program === row.program && a.term === row.term && a.month === row.month
+          )
+          if (!exists) {
+            skillMap[row.skillName].assignments.push({ program: row.program, term: row.term, month: row.month })
+          }
+        }
+      })
+
+      let skillsCreated = 0, activitiesCreated = 0, assignmentsCreated = 0
+
+      for (const [skillName, skillData] of Object.entries(skillMap)) {
+        let skillId
+        const existing = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())
+        if (existing) {
+          skillId = existing.id
+        } else {
+          const { data: newSkill, error } = await supabase.from('skill_masters').insert({
+            name: skillName, description: skillData.desc || null,
+            academic_year: academicYear, order_index: skills.length + skillsCreated,
+            school_id: schoolId
+          }).select().single()
+          if (error) throw error
+          skillId = newSkill.id
+          skillsCreated++
+        }
+
+        for (let i = 0; i < skillData.activities.length; i++) {
+          const act = skillData.activities[i]
+          const existingAct = existing?.skill_activities?.find(
+            a => a.name.toLowerCase() === act.name.toLowerCase()
+          )
+          if (!existingAct) {
+            await supabase.from('skill_activities').insert({
+              skill_id: skillId, name: act.name,
+              description: act.description || null, order_index: i
+            })
+            activitiesCreated++
+          }
+        }
+
+        for (const assignment of skillData.assignments) {
+          const alreadyAssigned = skillMaps.find(
+            m => m.skill_id === skillId && m.program === assignment.program &&
+              m.term === assignment.term && m.month === assignment.month
+          )
+          if (!alreadyAssigned) {
+            await supabase.from('skill_program_map').insert({
+              skill_id: skillId, program: assignment.program,
+              term: assignment.term, month: assignment.month
+            })
+            assignmentsCreated++
+          }
+        }
+      }
+
+      setShowBulkModal(false)
+      setBulkPreview([])
+      await fetchAll()
+      alert(`✅ Bulk upload complete!\n\n→ ${skillsCreated} skills created\n→ ${activitiesCreated} activities created\n→ ${assignmentsCreated} assignments created`)
+    } catch (e) {
+      alert('Error saving: ' + e.message)
+    }
+    setBulkSaving(false)
+  }
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }
 
   return (
@@ -178,7 +310,12 @@ const getSkillSummary = (skillId) => {
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>🎯 Skills & Progress Setup</h1>
             <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Add skills → Add activities → Assign to Program + Term</p>
           </div>
-          <button onClick={() => { setEditingSkill(null); setSkillForm({ name: '', description: '' }); setShowSkillModal(true) }} className="btn-primary">+ Add Skill</button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input ref={bulkFileRef} type="file" accept=".xlsx,.xls" onChange={handleBulkUpload} style={{ display: 'none' }} />
+            <button onClick={downloadTemplate} className="btn-secondary">⬇️ Download Template</button>
+            <button onClick={() => bulkFileRef.current?.click()} className="btn-secondary">📤 Bulk Upload</button>
+            <button onClick={() => { setEditingSkill(null); setSkillForm({ name: '', description: '' }); setShowSkillModal(true) }} className="btn-primary">+ Add Skill</button>
+          </div>
         </div>
 
         {/* Academic Year */}
@@ -341,6 +478,49 @@ const getSkillSummary = (skillId) => {
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button onClick={() => { setShowSkillModal(false); setEditingSkill(null) }} className="btn-secondary">Cancel</button>
               <button onClick={saveSkill} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingSkill ? 'Update' : 'Add Skill'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {/* Bulk Upload Preview Modal */}
+      {showBulkModal && (
+        <div className="modal-overlay" onClick={() => setShowBulkModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>📤 Bulk Upload Preview</h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '16px' }}>
+              {bulkPreview.length} rows found. Review before saving.
+            </p>
+
+            {/* Preview table */}
+            <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    {['Skill', 'Activity', 'Program', 'Term', 'Month'].map(h => (
+                      <th key={h} style={{ padding: '8px', textAlign: 'left', color: '#38bdf8', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkPreview.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '6px 8px', color: row.skillName ? '#fff' : 'transparent' }}>{row.skillName || '↑ same'}</td>
+                      <td style={{ padding: '6px 8px', color: 'rgba(255,255,255,0.7)' }}>{row.actName}</td>
+                      <td style={{ padding: '6px 8px', color: '#a78bfa' }}>{row.program}</td>
+                      <td style={{ padding: '6px 8px', color: '#38bdf8' }}>{row.term}</td>
+                      <td style={{ padding: '6px 8px', color: 'rgba(255,255,255,0.5)' }}>{row.month}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowBulkModal(false); setBulkPreview([]) }} className="btn-secondary">Cancel</button>
+              <button onClick={saveBulkUpload} disabled={bulkSaving} className="btn-primary">
+                {bulkSaving ? '⏳ Saving...' : `✅ Import ${bulkPreview.length} rows`}
+              </button>
             </div>
           </div>
         </div>
