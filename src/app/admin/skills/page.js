@@ -12,9 +12,9 @@ const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 
 const TERM_MONTHS = {
-  'Term 1': ['June', 'July', 'August', 'September'],
-  'Term 2': ['October', 'November', 'December', 'January'],
-  'Term 3': ['February', 'March', 'April', 'May'],
+  'Term 1': ['June', 'July', 'August'],
+  'Term 2': ['September', 'October', 'November', 'December'],
+  'Term 3': ['January', 'February', 'March'],
 }
 
 export default function AdminSkillsPage() {
