@@ -58,22 +58,86 @@ export function driveFromCredentials(credentials) {
   return google.drive({ version: 'v3', auth })
 }
 
+// Reads a JWT's claims without verifying the signature. Only used to log the
+// token's shape and to tell "expired" apart from "rejected" — getUser below is
+// what actually validates it.
+function decodeJwtPayload(token) {
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 // Resolves the caller's school from their Supabase access token. Returns
-// { error, status } instead of throwing so routes can pass it straight through.
-export async function schoolFromToken(supabase, request) {
-  const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
-  if (!token) return { error: 'Not authenticated', status: 401 }
+// { error, stage, status } instead of throwing so routes can pass it straight
+// through. A 401 here is nearly always the token never arriving or arriving
+// expired rather than anything server-side, so each stage is logged and named:
+// the stage in the response says exactly how far the request got.
+export async function schoolFromToken(supabase, request, tag = 'drive-auth') {
+  const rawHeader = request.headers.get('authorization') || ''
+  const token = rawHeader.replace(/^Bearer\s+/i, '').trim()
+
+  console.log(`[${tag}] 1/4 authorization header:`, rawHeader
+    ? `present, ${rawHeader.length} chars, starts "${rawHeader.slice(0, 12)}..."`
+    : 'MISSING — the client sent no Authorization header')
+
+  if (!rawHeader) {
+    return { error: 'Not authenticated: no Authorization header was sent', stage: 'no-header', status: 401 }
+  }
+  // "Bearer undefined" is what a caller sends when session?.access_token was
+  // undefined — a signed-out or not-yet-restored client, not a bad key.
+  if (!token || token === 'undefined' || token === 'null') {
+    return {
+      error: `Not authenticated: Authorization header was "${rawHeader.slice(0, 24)}" — the client had no access token`,
+      stage: 'empty-token',
+      status: 401
+    }
+  }
+
+  const claims = decodeJwtPayload(token)
+  const secondsLeft = claims?.exp ? Math.round((claims.exp * 1000 - Date.now()) / 1000) : null
+  console.log(`[${tag}] 2/4 token:`, claims
+    ? `sub=${claims.sub} role=${claims.role} iss=${claims.iss} expires_in=${secondsLeft}s`
+    : `NOT a decodable JWT (length ${token.length}, starts "${token.slice(0, 8)}")`)
+
+  if (secondsLeft !== null && secondsLeft <= 0) {
+    return {
+      error: `Not authenticated: the access token expired ${Math.abs(Math.round(secondsLeft / 60))} minute(s) ago. Refresh the session before uploading.`,
+      stage: 'expired-token',
+      status: 401
+    }
+  }
 
   const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return { error: 'Not authenticated', status: 401 }
+  if (error || !user) {
+    console.log(`[${tag}] 2/4 getUser REJECTED the token:`, error?.message || 'no user returned')
+    return {
+      error: `Not authenticated: Supabase rejected the token (${error?.message || 'no user returned'})`,
+      stage: 'token-rejected',
+      status: 401
+    }
+  }
+  console.log(`[${tag}] 3/4 token verified, user id:`, user.id)
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, school_id')
     .eq('id', user.id)
     .single()
 
-  if (!profile?.school_id) return { error: 'No school linked to this account', status: 403 }
+  if (profileError || !profile) {
+    console.log(`[${tag}] 3/4 profile lookup FAILED:`, profileError?.message || 'no row for this user')
+    return { error: 'No profile found for this account', stage: 'no-profile', status: 403 }
+  }
+  console.log(`[${tag}] 4/4 profile: role=${profile.role} school_id=${profile.school_id}`)
+
+  if (!profile.school_id) {
+    return { error: 'No school linked to this account', stage: 'no-school', status: 403 }
+  }
   return { user, profile, schoolId: profile.school_id }
 }
 

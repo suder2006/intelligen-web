@@ -19,9 +19,10 @@ import {
 export async function POST(request) {
   try {
     const supabase = serviceClient()
-    const auth = await schoolFromToken(supabase, request)
+    const auth = await schoolFromToken(supabase, request, 'drive-test')
     if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
+      console.log('[drive-test] REJECTED at stage:', auth.stage, '-', auth.error)
+      return NextResponse.json({ success: false, error: auth.error, stage: auth.stage }, { status: auth.status })
     }
 
     const body = await request.json().catch(() => ({}))
