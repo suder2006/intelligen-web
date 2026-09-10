@@ -35,6 +35,9 @@ const getOrCreateFolder = async (drive, parentId, folderName) => {
 
 export async function POST(request) {
   try {
+    console.log('FOLDER_ID:', process.env.GOOGLE_DRIVE_FOLDER_ID)
+    console.log('KEY exists:', !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
+    console.log('KEY length:', process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.length)
     // Verify auth
     const authHeader = request.headers.get('authorization')
     if (authHeader) {
