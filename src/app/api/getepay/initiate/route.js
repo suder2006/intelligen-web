@@ -12,7 +12,9 @@ function getSupabase() {
 export async function POST(request) {
   try {
     const supabase = getSupabase()
-    const { invoice_id, school_id, student_name, amount } = await request.json()
+    const { invoice_id, school_id, student_name, amount, installment_ids } = await request.json()
+    const requestedInstallmentIds = Array.isArray(installment_ids) ? [...new Set(installment_ids.filter(Boolean))] : []
+    const isInstallmentPayment = requestedInstallmentIds.length > 0
 
     // Get school GetePay credentials
     const { data: school } = await supabase
@@ -25,19 +27,51 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Payment gateway not fully configured' }, { status: 400 })
     }
 
+    // For an installment payment the amount comes from the installment rows, not the
+    // client: the callback settles exactly these installments, so the charge must match.
+    let chargeAmount = parseFloat(amount)
+    let installmentIds = null
+    if (isInstallmentPayment) {
+      const { data: invoice } = await supabase
+        .from('fee_invoices')
+        .select('id')
+        .eq('id', invoice_id)
+        .eq('school_id', school_id)
+        .single()
+      if (!invoice) {
+        return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+      }
+
+      const { data: installments, error: installmentsError } = await supabase
+        .from('fee_installments')
+        .select('id, amount, status')
+        .eq('invoice_id', invoice_id)
+        .in('id', requestedInstallmentIds)
+      if (installmentsError || !installments || installments.length !== requestedInstallmentIds.length) {
+        return NextResponse.json({ error: 'Some selected installments were not found on this invoice' }, { status: 400 })
+      }
+      if (installments.some(i => i.status === 'paid')) {
+        return NextResponse.json({ error: 'Some selected installments are already paid. Please refresh and try again.' }, { status: 400 })
+      }
+
+      installmentIds = installments.map(i => i.id)
+      chargeAmount = installments.reduce((sum, i) => sum + Number(i.amount), 0)
+    }
+
     const transactionId = `INV-${invoice_id}-${Date.now()}`
     const transactionDate = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
     const data = {
       mid: school.getepay_mid,
-      amount: parseFloat(amount).toFixed(2),
+      amount: chargeAmount.toFixed(2),
       merchantTransactionId: transactionId,
       transactionDate: transactionDate,
       terminalId: school.getepay_terminal_id,
       udf1: invoice_id,
       udf2: school_id,
       udf3: student_name,
-      udf4: '',
+      // Echoed back in the callback so /api/payment/process can find the fee_transactions row
+      udf4: transactionId,
       udf5: '',
       udf6: '',
       udf7: '',
@@ -121,6 +155,22 @@ export async function POST(request) {
       return NextResponse.json({ error: `GetePay returned no response field. Full response: ${JSON.stringify(resultobj)}` }, { status: 500 })
     }
     const dataitem = JSON.parse(decryptEas(responseurl, config.GetepayKey, config.GetepayIV))
+
+    const { error: txnError } = await supabase.from('fee_transactions').insert({
+      merchant_transaction_id: transactionId,
+      invoice_id,
+      school_id,
+      amount: chargeAmount.toFixed(2),
+      installment_ids: installmentIds,
+    })
+    if (txnError) {
+      console.error('fee_transactions insert failed:', txnError)
+      // Without this row the callback can't tell an installment payment from a full
+      // one and would mark the whole invoice paid, so don't hand out the payment URL.
+      if (isInstallmentPayment) {
+        return NextResponse.json({ error: 'Could not start installment payment. Please try again or pay via UPI.' }, { status: 500 })
+      }
+    }
 
     // Save transaction to database
     await supabase.from('fee_invoices').update({
