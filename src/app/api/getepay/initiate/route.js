@@ -12,7 +12,9 @@ function getSupabase() {
 export async function POST(request) {
   try {
     const supabase = getSupabase()
-    const { invoice_id, school_id, student_name, amount, installment_ids } = await request.json()
+    // The client still sends `amount`, but it is ignored: the charge is always worked
+    // out below from the invoice/installment rows, since the callback settles by those.
+    const { invoice_id, school_id, student_name, installment_ids } = await request.json()
     const requestedInstallmentIds = Array.isArray(installment_ids) ? [...new Set(installment_ids.filter(Boolean))] : []
     const isInstallmentPayment = requestedInstallmentIds.length > 0
 
@@ -27,21 +29,24 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Payment gateway not fully configured' }, { status: 400 })
     }
 
-    // For an installment payment the amount comes from the installment rows, not the
-    // client: the callback settles exactly these installments, so the charge must match.
-    let chargeAmount = parseFloat(amount)
+    const { data: invoice } = await supabase
+      .from('fee_invoices')
+      .select('id, total_amount, paid_amount, status')
+      .eq('id', invoice_id)
+      .eq('school_id', school_id)
+      .single()
+    if (!invoice) {
+      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    }
+    if (invoice.status === 'paid' || invoice.status === 'refunded') {
+      return NextResponse.json({ error: `This invoice is already ${invoice.status}.` }, { status: 400 })
+    }
+
+    // Full payment: the pending balance. The callback marks the invoice fully paid,
+    // so charging anything else would let the app settle it for less.
+    let chargeAmount = Math.round((Number(invoice.total_amount) - Number(invoice.paid_amount || 0)) * 100) / 100
     let installmentIds = null
     if (isInstallmentPayment) {
-      const { data: invoice } = await supabase
-        .from('fee_invoices')
-        .select('id')
-        .eq('id', invoice_id)
-        .eq('school_id', school_id)
-        .single()
-      if (!invoice) {
-        return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
-      }
-
       const { data: installments, error: installmentsError } = await supabase
         .from('fee_installments')
         .select('id, amount, status')
@@ -54,8 +59,13 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Some selected installments are already paid. Please refresh and try again.' }, { status: 400 })
       }
 
+      // Installment payment: the sum of the selected installments, which the callback settles
       installmentIds = installments.map(i => i.id)
-      chargeAmount = installments.reduce((sum, i) => sum + Number(i.amount), 0)
+      chargeAmount = Math.round(installments.reduce((sum, i) => sum + Number(i.amount), 0) * 100) / 100
+    }
+
+    if (!(chargeAmount > 0)) {
+      return NextResponse.json({ error: 'Nothing is pending on this invoice.' }, { status: 400 })
     }
 
     const transactionId = `INV-${invoice_id}-${Date.now()}`
