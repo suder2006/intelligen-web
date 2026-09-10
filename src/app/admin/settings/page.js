@@ -15,6 +15,22 @@ const LOCKABLE_MODULES = [
   { id: 'settings', label: 'Settings', icon: '⚙️' },
   { id: 'reports', label: 'Reports', icon: '📊' },
 ]
+// Pulls the service account address out of JSON the admin is still typing, so
+// they can confirm which account to share the Drive folder with before saving.
+const readServiceAccountEmail = (raw) => {
+  const text = (raw || '').trim()
+  if (!text) return null
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { email: '', error: 'This is not valid JSON yet — paste the whole key file, including the { }' }
+  }
+  if (parsed.type !== 'service_account') return { email: '', error: 'This JSON is not a service account key' }
+  if (!parsed.client_email) return { email: '', error: 'No client_email found in this JSON' }
+  return { email: parsed.client_email, error: null }
+}
+
 export default function SchoolSettingsPage() {
   const { schoolId, schoolName } = useSchool()
   const [loading, setLoading] = useState(true)
@@ -56,7 +72,18 @@ export default function SchoolSettingsPage() {
     const [activePolicy, setActivePolicy] = useState('policy_privacy')
     const [savingPolicy, setSavingPolicy] = useState(false)
     const [policySaved, setPolicySaved] = useState(false)
-      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins() } }, [schoolId])
+
+  // Google Drive integration. The service account key is write-only in this
+  // form: the API reports the detected email and whether a key is on file, but
+  // never sends the key itself back to the browser.
+  const [drive, setDrive] = useState({ enabled: false, key: '', folderId: '' })
+  const [driveStatus, setDriveStatus] = useState({
+    connected: false, connected_at: null, service_account_email: '', has_key: false, folderId: ''
+  })
+  const [savingDrive, setSavingDrive] = useState(false)
+  const [testingDrive, setTestingDrive] = useState(false)
+  const [driveResult, setDriveResult] = useState(null)
+      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins(); fetchDriveSettings() } }, [schoolId])
 
 
   const authHeader = async () => {
@@ -147,6 +174,81 @@ export default function SchoolSettingsPage() {
   setTimeout(() => setPolicySaved(false), 3000)
   setSavingPolicy(false)
   }
+
+const applyDriveSettings = (data) => {
+  setDriveStatus({
+    connected: data.google_drive_connected,
+    connected_at: data.google_drive_connected_at,
+    service_account_email: data.service_account_email,
+    has_key: data.has_key,
+    folderId: data.google_drive_folder_id || ''
+  })
+  setDrive({ enabled: data.google_drive_enabled, key: '', folderId: data.google_drive_folder_id || '' })
+}
+
+const fetchDriveSettings = async () => {
+  try {
+    const res = await fetch(`/api/admin/drive-settings?school_id=${schoolId}`, { headers: await authHeader() })
+    if (res.ok) applyDriveSettings(await res.json())
+  } catch (e) {
+    // Leave the Drive fields at their defaults; the rest of the page still works.
+  }
+}
+
+const saveDrive = async () => {
+  setSavingDrive(true)
+  setDriveResult(null)
+  try {
+    const res = await fetch('/api/admin/drive-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify({
+        school_id: schoolId,
+        google_drive_enabled: drive.enabled,
+        google_service_account_key: drive.key,
+        google_drive_folder_id: drive.folderId
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Could not save')
+    // Drops the pasted key from the page now that it is stored.
+    applyDriveSettings(data)
+    setDriveResult({ ok: true, message: '✅ Saved. Run Test Connection to verify it works.' })
+  } catch (e) {
+    setDriveResult({ ok: false, message: `❌ ${e.message}` })
+  }
+  setSavingDrive(false)
+}
+
+const testDrive = async () => {
+  setTestingDrive(true)
+  setDriveResult(null)
+  // A key or folder typed but not yet saved is tested as it stands; the stored
+  // connection status only moves when the test ran against the saved setup,
+  // since that is what the uploader will actually use.
+  const testingSaved = !drive.key.trim() && drive.folderId.trim() === driveStatus.folderId
+  try {
+    const res = await fetch('/api/drive/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify({ serviceAccountKey: drive.key.trim(), folderId: drive.folderId })
+    })
+    const data = await res.json()
+    setDriveResult(data.success
+      ? { ok: true, message: `✅ Connected to folder "${data.folderName}"` }
+      : { ok: false, message: `❌ ${data.error}` })
+    if (testingSaved) {
+      setDriveStatus(s => ({
+        ...s,
+        connected: !!data.success,
+        connected_at: data.success ? new Date().toISOString() : null
+      }))
+    }
+  } catch (e) {
+    setDriveResult({ ok: false, message: `❌ ${e.message}` })
+  }
+  setTestingDrive(false)
+}
 
 const fetchSubAdmins = async () => {
   if (!schoolId) return
@@ -268,6 +370,8 @@ const startEditSubAdmin = (sa) => {
   setShowSubAdminForm(true)
 }  
   const upiQrUrl = form.upi_id ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${form.upi_id}&pn=${encodeURIComponent(form.upi_name)}`)}`  : null
+
+  const detectedDriveEmail = readServiceAccountEmail(drive.key)
 
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '11px 14px', color: '#fff', fontSize: '14px', outline: 'none', fontFamily: "'DM Sans', sans-serif", marginBottom: '14px' }
 
@@ -723,6 +827,109 @@ const startEditSubAdmin = (sa) => {
     style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
     {savingPolicy ? '⏳ Saving...' : policySaved ? '✅ Policies Saved!' : '💾 Save Policies'}
   </button>
+</div>
+
+{/* ===== GOOGLE DRIVE INTEGRATION ===== */}
+<div className="section">
+  <div className="section-title">📁 Google Drive Integration</div>
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
+    ℹ️ Uploads go to your school's own Google Drive. Create a service account in Google Cloud, paste its JSON key below, then share your Drive folder with the service account email (Editor access).
+    The key is stored securely and never shown again — leave the box blank to keep the saved key.
+  </div>
+
+  {/* Enable toggle */}
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: '18px' }}>
+    <div>
+      <div style={{ fontWeight: '600', marginBottom: '2px' }}>Enable Google Drive uploads</div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>When off, staff cannot upload files to Drive from the app</div>
+    </div>
+    <button type='button' onClick={() => setDrive({ ...drive, enabled: !drive.enabled })}
+      style={{ width: '56px', height: '30px', borderRadius: '20px', border: 'none', cursor: 'pointer', padding: '3px', background: drive.enabled ? 'linear-gradient(135deg, #0ea5e9, #38bdf8)' : 'rgba(255,255,255,0.12)', display: 'flex', justifyContent: drive.enabled ? 'flex-end' : 'flex-start', alignItems: 'center', transition: 'all 0.15s' }}>
+      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#fff', display: 'block' }} />
+    </button>
+  </div>
+
+  {/* Service account JSON */}
+  <div style={{ marginBottom: '16px' }}>
+    <label>
+      Service Account JSON {driveStatus.has_key && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}
+    </label>
+    <textarea
+      value={drive.key}
+      onChange={e => setDrive({ ...drive, key: e.target.value })}
+      placeholder={driveStatus.has_key
+        ? 'Leave blank to keep the saved key, or paste a new key file to replace it'
+        : '{\n  "type": "service_account",\n  "project_id": "...",\n  "client_email": "...@....iam.gserviceaccount.com",\n  "private_key": "-----BEGIN PRIVATE KEY-----\\n..."\n}'}
+      spellCheck={false}
+      style={{ width: '100%', minHeight: '150px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px', color: '#fff', fontSize: '12px', outline: 'none', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical', lineHeight: '1.6' }}
+    />
+  </div>
+
+  {/* Detected service account email */}
+  {(detectedDriveEmail || driveStatus.service_account_email) && (
+    <div style={{ background: detectedDriveEmail?.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${detectedDriveEmail?.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px' }}>
+      {detectedDriveEmail?.error ? (
+        <span style={{ color: '#f87171' }}>⚠️ {detectedDriveEmail.error}</span>
+      ) : (
+        <>
+          <div style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+            {detectedDriveEmail ? '📧 Detected service account email' : '📧 Service account in use'}
+          </div>
+          <div style={{ color: '#34d399', fontWeight: '600', wordBreak: 'break-all', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+            {detectedDriveEmail ? detectedDriveEmail.email : driveStatus.service_account_email}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '6px' }}>
+            Share your Drive folder with this address (Editor) or uploads will fail
+          </div>
+        </>
+      )}
+    </div>
+  )}
+
+  {/* Folder ID */}
+  <div style={{ marginBottom: '18px' }}>
+    <label>Drive Folder ID</label>
+    <input value={drive.folderId} onChange={e => setDrive({ ...drive, folderId: e.target.value })}
+      placeholder='e.g. 1A2b3C4d5E6f7G8h9I0jKlMnOpQr' style={{ ...inputStyle, marginBottom: '6px' }} />
+    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
+      The part of the folder URL after /folders/ — drive.google.com/drive/folders/<b>THIS_PART</b>
+    </div>
+  </div>
+
+  {/* Connection status */}
+  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+    <span style={{ padding: '5px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: driveStatus.connected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: driveStatus.connected ? '#34d399' : '#fbbf24', border: `1px solid ${driveStatus.connected ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+      {driveStatus.connected ? '✅ Connected' : '⚠️ Not connected'}
+    </span>
+    {driveStatus.connected && driveStatus.connected_at && (
+      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+        Last verified {new Date(driveStatus.connected_at).toLocaleString('en-IN')}
+      </span>
+    )}
+    {!driveStatus.connected && (
+      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+        Save your settings, then run Test Connection
+      </span>
+    )}
+  </div>
+
+  {/* Test result */}
+  {driveResult && (
+    <div style={{ background: driveResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${driveResult.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: driveResult.ok ? '#34d399' : '#f87171', lineHeight: '1.6' }}>
+      {driveResult.message}
+    </div>
+  )}
+
+  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+    <button onClick={testDrive} disabled={testingDrive || savingDrive}
+      style={{ padding: '10px 20px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', fontWeight: '600', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+      {testingDrive ? '⏳ Testing...' : '🔌 Test Connection'}
+    </button>
+    <button onClick={saveDrive} disabled={savingDrive || testingDrive}
+      style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+      {savingDrive ? '⏳ Saving...' : '💾 Save Drive Settings'}
+    </button>
+  </div>
 </div>
 
             {/* Save Button */}

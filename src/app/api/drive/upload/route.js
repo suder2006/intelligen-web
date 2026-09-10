@@ -1,25 +1,21 @@
+export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
-import { google } from 'googleapis'
 import { Readable } from 'stream'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
-
-const getAuth = () => {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-  return new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/drive.file']
-  })
-}
+import {
+  serviceClient,
+  schoolFromToken,
+  getIntegration,
+  parseServiceAccountKey,
+  driveFromCredentials,
+  escapeDriveQuery
+} from '@/lib/googleDrive'
 
 const getOrCreateFolder = async (drive, parentId, folderName) => {
   const res = await drive.files.list({
-    q: `name='${folderName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id, name)'
+    q: `name='${escapeDriveQuery(folderName)}' and '${escapeDriveQuery(parentId)}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   })
   if (res.data.files.length > 0) return res.data.files[0].id
   const folder = await drive.files.create({
@@ -28,52 +24,66 @@ const getOrCreateFolder = async (drive, parentId, folderName) => {
       mimeType: 'application/vnd.google-apps.folder',
       parents: [parentId]
     },
-    fields: 'id'
+    fields: 'id',
+    supportsAllDrives: true
   })
   return folder.data.id
 }
 
+// Uploads into the school's own Drive. Credentials come from the school's
+// school_integrations row (configured in Admin > Settings), never from platform
+// env vars, so one school's files can never land in another's Drive.
 export async function POST(request) {
   try {
-    console.log('FOLDER_ID:', process.env.GOOGLE_DRIVE_FOLDER_ID)
-    console.log('KEY exists:', !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-    console.log('KEY length:', process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.length)
-    // Verify auth
-    const authHeader = request.headers.get('authorization')
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error } = await supabase.auth.getUser(token)
-      if (error || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    const supabase = serviceClient()
+
+    // The token identifies the school, so it is required — without it there is
+    // no way to know whose Drive to upload to.
+    const auth = await schoolFromToken(supabase, request)
+    if (auth.error) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    const integration = await getIntegration(supabase, auth.schoolId)
+    if (!integration?.google_drive_enabled) {
+      return NextResponse.json(
+        { error: 'Google Drive is not enabled for this school' },
+        { status: 400 }
+      )
+    }
+    if (!integration.google_service_account_key || !integration.google_drive_folder_id) {
+      return NextResponse.json(
+        { error: 'Google Drive is not fully configured. Add the service account key and folder ID in Settings.' },
+        { status: 400 }
+      )
     }
 
     const formData = await request.formData()
     const file = formData.get('file')
     const program = formData.get('program') || 'General'
-    const month = formData.get('month') || 
+    const month = formData.get('month') ||
       new Date().toLocaleString('en-IN', { month: 'long' })
-    const year = formData.get('year') || 
+    const year = formData.get('year') ||
       new Date().getFullYear().toString()
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    const auth = getAuth()
-    const drive = google.drive({ version: 'v3', auth })
-    const rootFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+    const credentials = parseServiceAccountKey(integration.google_service_account_key)
+    const drive = driveFromCredentials(credentials)
+    const rootFolderId = integration.google_drive_folder_id
 
     // Create folder structure
     const ayFolder = await getOrCreateFolder(
-      drive, rootFolderId, 
+      drive, rootFolderId,
       `${year}-${parseInt(year) + 1}`
     )
     const programFolder = await getOrCreateFolder(
       drive, ayFolder, program
     )
     const monthFolder = await getOrCreateFolder(
-      drive, programFolder, 
+      drive, programFolder,
       `${month} ${year}`
     )
 
@@ -91,7 +101,8 @@ export async function POST(request) {
         mimeType: file.type,
         body: stream
       },
-      fields: 'id, name, webViewLink'
+      fields: 'id, name, webViewLink',
+      supportsAllDrives: true
     })
 
     return NextResponse.json({
