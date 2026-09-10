@@ -16,6 +16,7 @@
     "@capacitor/core": "^7.6.1",
     "@supabase/supabase-js": "^2.98.0",
     "crypto-js": "^4.2.0",
+    "googleapis": "^178.0.0",
     "html5-qrcode": "^2.3.8",
     "https-proxy-agent": "^9.1.0",
     "leaflet": "^1.9.4",
