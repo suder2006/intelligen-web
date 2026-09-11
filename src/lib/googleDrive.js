@@ -53,9 +53,12 @@ export function serviceAccountEmail(raw) {
   }
 }
 
+export function authFromCredentials(credentials) {
+  return new google.auth.GoogleAuth({ credentials, scopes: DRIVE_SCOPES })
+}
+
 export function driveFromCredentials(credentials) {
-  const auth = new google.auth.GoogleAuth({ credentials, scopes: DRIVE_SCOPES })
-  return google.drive({ version: 'v3', auth })
+  return google.drive({ version: 'v3', auth: authFromCredentials(credentials) })
 }
 
 // Reads a JWT's claims without verifying the signature. Only used to log the
