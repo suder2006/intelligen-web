@@ -1,4 +1,7 @@
 export const dynamic = 'force-dynamic'
+// Large video uploads stream slowly; the default 10s serverless timeout cuts
+// them off well before Drive has the whole file.
+export const maxDuration = 60
 import { NextResponse } from 'next/server'
 import { Readable } from 'stream'
 import {
