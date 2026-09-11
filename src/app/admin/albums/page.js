@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 
-// /api/upload rejects POST and DELETE without the signed-in user's token.
+// /api/upload rejects GET, POST and DELETE without the signed-in user's token.
 async function uploadAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession()
   return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
@@ -213,7 +213,8 @@ export default function AdminAlbumsPage() {
 
         if (mediaType === 'video') {
           const presignRes = await fetch(
-            `/api/upload?folder=albums/${selectedAlbum.id}&contentType=${file.type}`
+            `/api/upload?folder=albums/${selectedAlbum.id}&contentType=${file.type}`,
+            { headers: await uploadAuthHeaders() }
           )
           const presignData = await presignRes.json()
           if (presignData.error) throw new Error(presignData.error)

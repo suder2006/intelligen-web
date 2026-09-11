@@ -29,9 +29,18 @@ async function getUserFromRequest(request) {
   return user
 }
 
+// Roles allowed to delete files from R2. Parents and every other role get 403.
+// Object keys carry no school_id, so there is no per-school check here.
+const DELETE_ROLES = ['school_admin', 'teacher']
+
 // GET - Generate presigned URL for direct video upload
 export async function GET(request) {
   try {
+    const user = await getUserFromRequest(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const folder = searchParams.get('folder') || 'uploads'
     const contentType = searchParams.get('contentType') || 'video/mp4'
@@ -97,6 +106,12 @@ export async function DELETE(request) {
     const user = await getUserFromRequest(request)
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+    if (profileError || !DELETE_ROLES.includes(profile?.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { key } = await request.json()
