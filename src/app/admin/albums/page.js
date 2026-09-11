@@ -4,6 +4,12 @@ import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 
+// /api/upload rejects POST and DELETE without the signed-in user's token.
+async function uploadAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
 export default function AdminAlbumsPage() {
   const { schoolId } = useSchool()
   const [loading, setLoading] = useState(true)
@@ -162,7 +168,7 @@ export default function AdminAlbumsPage() {
       const formData = new FormData()
       formData.append('file', thumb)
       formData.append('folder', `${folder}/thumbs`)
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const res = await fetch('/api/upload', { method: 'POST', headers: await uploadAuthHeaders(), body: formData })
       const data = await res.json()
       if (data.error) {
         console.warn('Thumbnail upload failed:', data.error)
@@ -175,10 +181,10 @@ export default function AdminAlbumsPage() {
     }
   }
 
-  const deleteFromR2 = (key) =>
+  const deleteFromR2 = async (key) =>
     fetch('/api/upload', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await uploadAuthHeaders()) },
       body: JSON.stringify({ key })
     })
 
@@ -234,6 +240,7 @@ export default function AdminAlbumsPage() {
 
           const res = await fetch('/api/upload', {
             method: 'POST',
+            headers: await uploadAuthHeaders(),
             body: formData
           })
           const data = await res.json()

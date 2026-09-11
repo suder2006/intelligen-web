@@ -4,6 +4,12 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
 
+// /api/upload rejects POST and DELETE without the signed-in user's token.
+async function uploadAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
 export default function ClassroomMomentsAdmin() {
   const router = useRouter()
   const { schoolId } = useSchool()
@@ -79,6 +85,7 @@ useEffect(() => {
 
       const res = await fetch('/api/upload', {
         method: 'POST',
+        headers: await uploadAuthHeaders(),
         body: formData
       })
       const { publicUrl, key, error: uploadError } = await res.json()
@@ -116,10 +123,10 @@ useEffect(() => {
     }
   }
 
-  const deleteFromR2 = (key) =>
+  const deleteFromR2 = async (key) =>
     fetch('/api/upload', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await uploadAuthHeaders()) },
       body: JSON.stringify({ key })
     })
 

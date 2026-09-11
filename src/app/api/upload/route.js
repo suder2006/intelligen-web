@@ -17,6 +17,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// Resolves the Supabase user behind the request's Bearer token, or returns
+// null when the header is missing or the token is invalid/expired.
+async function getUserFromRequest(request) {
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.slice('Bearer '.length).trim()
+  if (!token) return null
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+  if (error || !user) return null
+  return user
+}
+
 // GET - Generate presigned URL for direct video upload
 export async function GET(request) {
   try {
@@ -45,13 +57,9 @@ export async function GET(request) {
 // POST - Upload photo via server
 export async function POST(request) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error } = await supabase.auth.getUser(token)
-      if (error || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    const user = await getUserFromRequest(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const formData = await request.formData()
@@ -86,6 +94,11 @@ export async function POST(request) {
 // DELETE - Delete file from R2
 export async function DELETE(request) {
   try {
+    const user = await getUserFromRequest(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { key } = await request.json()
     if (!key) {
       return NextResponse.json({ error: 'No key provided' }, { status: 400 })
