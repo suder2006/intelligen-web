@@ -51,3 +51,11 @@ create index if not exists fee_transactions_invoice_id_idx
 
 -- Only the service-role payment routes touch this table.
 alter table public.fee_transactions enable row level security;
+
+-- The hand-made table defaulted status to 'pending', but both payment routes
+-- claim a row with `.eq('status', 'initiated')`. A row left at the default
+-- matched nothing, so settleInstallments() returned at its guard clause and a
+-- successful payment was never credited. /api/getepay/initiate now sets the
+-- status explicitly; this realigns the default for anything that doesn't.
+alter table public.fee_transactions
+  alter column status set default 'initiated';

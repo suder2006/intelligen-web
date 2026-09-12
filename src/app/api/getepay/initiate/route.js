@@ -198,6 +198,11 @@ export async function POST(request) {
       school_id,
       amount: chargeAmount.toFixed(2),
       installment_ids: installmentIds,
+      // Set explicitly rather than leaning on the column default: the callback
+      // claims this row with .eq('status', 'initiated'), and the production
+      // table defaulted to 'pending', so the claim matched nothing and
+      // settlement returned without crediting the payment.
+      status: 'initiated',
     })
     if (txnError) {
       // Log every field Postgres gives back: a bare message like "column ... does
