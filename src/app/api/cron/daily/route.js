@@ -18,6 +18,7 @@ export async function GET(request) {
     yoga: { generated: 0, skipped: 0 },
     stories: { generated: 0, skipped: 0 },
     tips: { generated: 0, skipped: 0 },
+    fee_transactions: { abandoned: 0 },
     errors: []
   }
 
@@ -61,6 +62,13 @@ export async function GET(request) {
   } catch (e) {
     results.errors.push(`Tips error: ${e.message}`)
     console.error('Tips cron error:', e)
+  }
+
+  try {
+    await handleAbandonedTransactions(results)
+  } catch (e) {
+    results.errors.push(`Abandoned transactions error: ${e.message}`)
+    console.error('Abandoned transactions cron error:', e)
   }
 
   return Response.json({ success: true, results })
@@ -1090,4 +1098,40 @@ Return ONLY valid JSON, no other text:
   }
 
   console.log(`Tips cron complete: ${results.tips.generated} sets generated ✅`)
+}
+
+// ═══════════════════════════════════════════════════════════
+// ABANDONED PAYMENT CLEANUP
+// ═══════════════════════════════════════════════════════════
+// A fee_transactions row is written when a parent starts a GetePay payment and
+// claimed by /api/payment/process when the callback settles it. A parent who
+// closes the gateway without paying leaves the row at 'initiated' forever.
+//
+// Those stragglers matter beyond tidiness: when the callback can't match on
+// udf4 it falls back to this invoice's most recent 'initiated' row, so a stale
+// one can be settled in place of the real attempt. Retiring them after
+// 30 minutes keeps that fallback pointing at a live attempt.
+async function handleAbandonedTransactions(results) {
+  // Generous next to a checkout that times out in minutes, so a parent who is
+  // slow through their bank's OTP page is never marked abandoned mid-payment.
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+
+  const { data: abandoned, error } = await supabase
+    .from('fee_transactions')
+    .update({ status: 'abandoned' })
+    .eq('status', 'initiated')
+    .lt('created_at', cutoff)
+    .select('id, merchant_transaction_id, amount, created_at')
+
+  if (error) {
+    console.error('Abandoned transactions update error:', error)
+    results.errors.push(`Abandoned transactions update failed: ${error.message}`)
+    return
+  }
+
+  results.fee_transactions.abandoned = abandoned?.length || 0
+  for (const t of abandoned || []) {
+    console.log(`Abandoned payment ${t.merchant_transaction_id} (₹${t.amount}, started ${t.created_at})`)
+  }
+  console.log(`Abandoned payment cleanup complete: ${results.fee_transactions.abandoned} marked abandoned (older than ${cutoff}) ✅`)
 }
