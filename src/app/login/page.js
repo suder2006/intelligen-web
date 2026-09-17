@@ -36,7 +36,7 @@ export default function LoginPage() {
     if (!forgotEmail.trim()) { setError('Please enter your email address'); return }
     setForgotLoading(true)
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: 'https://intelligenapp.com/reset-password'
+      redirectTo: 'https://www.intelligenapp.com/reset-password'
     })
     if (error) setError(error.message)
     else setForgotSent(true)
