@@ -42,6 +42,7 @@ export default function TasksPage() {
   const [profile, setProfile] = useState(null)
   const [view, setView] = useState('list') // list | calendar | dashboard
   const [selectedDate, setSelectedDate] = useState(null) // 'YYYY-MM-DD' shown in the calendar day panel
+  const [showTodayOnly, setShowTodayOnly] = useState(false) // list view: only tasks due today
   const [showForm, setShowForm] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [showCarryForwardModal, setShowCarryForwardModal] = useState(null)
@@ -362,7 +363,9 @@ export default function TasksPage() {
     setShowForm(true)
   }
 
-  const filteredTasks = applyFilters(getMonthTasks())
+  const todayKey = toDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  const jumpToCurrentMonth = () => { setViewMonth(today.getMonth()); setViewYear(today.getFullYear()) }
+  const filteredTasks = applyFilters(getMonthTasks()).filter(t => !showTodayOnly || t.due_date === todayKey)
   const monthTasks = getMonthTasks()
   const dashStats = {
     total: monthTasks.length,
@@ -380,7 +383,6 @@ export default function TasksPage() {
     if (t.due_date) (acc[t.due_date] ||= []).push(t)
     return acc
   }, {})
-  const todayKey = toDateKey(today.getFullYear(), today.getMonth(), today.getDate())
   const firstWeekday = new Date(viewYear, viewMonth, 1).getDay()
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const calendarCells = [
@@ -590,8 +592,8 @@ const downloadTasks = () => {
               ↩️ Carried Forward
             </button>
 
-            {(filterAssignedTo || filterStatus || filterPriority || filterOverdue || filterCarriedForward || filterRecurring || searchText) && (
-              <button onClick={() => { setFilterAssignedTo(''); setFilterStatus(''); setFilterPriority(''); setFilterOverdue(false); setFilterCarriedForward(false); setFilterRecurring(''); setSearchText('') }}
+            {(filterAssignedTo || filterStatus || filterPriority || filterOverdue || filterCarriedForward || filterRecurring || searchText || showTodayOnly) && (
+              <button onClick={() => { setFilterAssignedTo(''); setFilterStatus(''); setFilterPriority(''); setFilterOverdue(false); setFilterCarriedForward(false); setFilterRecurring(''); setSearchText(''); setShowTodayOnly(false) }}
                 style={{ padding: '5px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '20px', color: '#f87171', fontSize: '12px', cursor: 'pointer' }}>
                 ✕ Clear
               </button>
@@ -609,20 +611,32 @@ const downloadTasks = () => {
 
         {/* Month Navigator */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <button onClick={() => {
+              setShowTodayOnly(false)
               if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1) }
               else setViewMonth(m => m - 1)
             }} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 14px', color: '#fff', cursor: 'pointer' }}>← Prev</button>
             <div style={{ fontSize: '18px', fontWeight: '700', minWidth: '160px', textAlign: 'center' }}>{MONTHS[viewMonth]} {viewYear}</div>
             <button onClick={() => {
+              setShowTodayOnly(false)
               if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1) }
               else setViewMonth(m => m + 1)
             }} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '7px 14px', color: '#fff', cursor: 'pointer' }}>Next →</button>
-            <button onClick={() => { setViewMonth(today.getMonth()); setViewYear(today.getFullYear()) }}
+            <button onClick={() => { setShowTodayOnly(false); jumpToCurrentMonth() }}
               style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', padding: '7px 14px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px' }}>
-              Today
+              This Month
             </button>
+            {view !== 'dashboard' && (
+              <button onClick={() => {
+                jumpToCurrentMonth()
+                if (view === 'calendar') setSelectedDate(todayKey)
+                else setShowTodayOnly(on => !on)
+              }}
+                style={{ background: showTodayOnly && view === 'list' ? '#38bdf8' : 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.4)', borderRadius: '8px', padding: '7px 14px', color: showTodayOnly && view === 'list' ? '#0f172a' : '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                📌 Today
+              </button>
+            )}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
             {view === 'calendar'
