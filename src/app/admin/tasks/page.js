@@ -189,31 +189,33 @@ export default function TasksPage() {
       cur.setDate(cur.getDate() + 1)
     }
   } else if (form.recurrence_type === 'Monthly') {
-    let cur = new Date(start)
-    while (cur <= end) {
-      if (cur.getDay() !== 0) {
-        dates.push(formatDate(cur))
-      } else {
-        // Sunday → move to Monday
-        const next = new Date(cur)
-        next.setDate(next.getDate() + 1)
-        dates.push(formatDate(next))
-      }
-      cur.setMonth(cur.getMonth() + 1)
+    // Each month is computed from the original day, clamped to the month's
+    // last day, so a 31st start gives Feb 28 then Mar 31 rather than drifting.
+    const startDay = start.getDate()
+    for (let i = 0; ; i++) {
+      const lastDay = new Date(start.getFullYear(), start.getMonth() + i + 1, 0).getDate()
+      const cur = new Date(start.getFullYear(), start.getMonth() + i, Math.min(startDay, lastDay), 12)
+      if (cur > end) break
+      // Sunday → move to Monday, or back to Saturday if Monday is next month
+      if (cur.getDay() === 0) cur.setDate(cur.getDate() + (cur.getDate() < lastDay ? 1 : -1))
+      if (cur > end) break
+      dates.push(formatDate(cur))
     }
   }
   return dates
 }
 
   const saveTask = async () => {
-    if (!form.assigned_to || !form.item || !form.due_date) {
-      alert('Please fill Assigned To, Item and Due Date'); return
+    const isRecurring = !editingTask && form.recurrence_type !== 'None'
+    if (!form.assigned_to || !form.item || (!isRecurring && !form.due_date)) {
+      alert(isRecurring ? 'Please fill Assigned To and Item' : 'Please fill Assigned To, Item and Due Date'); return
     }
     if (form.recurrence_type !== 'None' && !form.repeat_until) {
       alert('Please set Repeat Until date for recurring tasks'); return
     }
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
+    let error
 
     if (editingTask) {
       // Update existing task
@@ -228,7 +230,7 @@ export default function TasksPage() {
         date_completed: form.status === 'Completed' ? (editingTask.date_completed || today.toISOString().split('T')[0]) : null,
         updated_at: new Date().toISOString()
       }
-      await supabase.from('tasks').update(updateData).eq('id', editingTask.id)
+      error = (await supabase.from('tasks').update(updateData).eq('id', editingTask.id)).error
     } else {
       // Create new task(s)
       if (form.recurrence_type !== 'None') {
@@ -255,9 +257,9 @@ export default function TasksPage() {
           is_carried_forward: false,
           is_deleted: false
         }))
-        await supabase.from('tasks').insert(taskRows)
+        error = (await supabase.from('tasks').insert(taskRows)).error
       } else {
-        await supabase.from('tasks').insert({
+        error = (await supabase.from('tasks').insert({
           school_id: schoolId,
           date_assigned: form.date_assigned,
           assigned_by: user.id,
@@ -271,8 +273,14 @@ export default function TasksPage() {
           recurrence_type: 'None',
           is_carried_forward: false,
           is_deleted: false
-        })
+        })).error
       }
+    }
+
+    if (error) {
+      alert('Could not save task: ' + error.message)
+      setSaving(false)
+      return
     }
 
     setShowForm(false)
@@ -288,17 +296,20 @@ export default function TasksPage() {
       date_completed: newStatus === 'Completed' ? today.toISOString().split('T')[0] : null,
       updated_at: new Date().toISOString()
     }
-    await supabase.from('tasks').update(updateData).eq('id', task.id)
+    const { error } = await supabase.from('tasks').update(updateData).eq('id', task.id)
+    if (error) alert('Could not update status: ' + error.message)
     await fetchTasks()
   }
 
   const deleteTask = async (task, deleteAll = false) => {
+    let error
     if (deleteAll && task.recurrence_group_id) {
-      await supabase.from('tasks').update({ is_deleted: true }).eq('recurrence_group_id', task.recurrence_group_id)
-        .gte('due_date', task.due_date)
+      error = (await supabase.from('tasks').update({ is_deleted: true }).eq('recurrence_group_id', task.recurrence_group_id)
+        .gte('due_date', task.due_date)).error
     } else {
-      await supabase.from('tasks').update({ is_deleted: true }).eq('id', task.id)
+      error = (await supabase.from('tasks').update({ is_deleted: true }).eq('id', task.id)).error
     }
+    if (error) { alert('Could not delete task: ' + error.message); return }
     setShowDeleteConfirm(null)
     await fetchTasks()
   }
@@ -308,7 +319,7 @@ export default function TasksPage() {
     const task = showCarryForwardModal
     const { data: { user } } = await supabase.auth.getUser()
 
-    await supabase.from('tasks').insert({
+    const { error } = await supabase.from('tasks').insert({
       school_id: schoolId,
       date_assigned: today.toISOString().split('T')[0],
       assigned_by: user.id,
@@ -324,6 +335,7 @@ export default function TasksPage() {
       carried_forward_from: task.id,
       is_deleted: false
     })
+    if (error) { alert('Could not carry forward task: ' + error.message); return }
 
     setShowCarryForwardModal(null)
     setCfForm({ due_date: '', assigned_to: '' })
@@ -915,10 +927,17 @@ const downloadTasks = () => {
               style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }} />
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Due Date *</label>
-                <input type='date' value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} style={inputStyle} />
-              </div>
+              {!editingTask && form.recurrence_type !== 'None' ? (
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Due Date</label>
+                  <div style={{ ...inputStyle, color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>Each task is due on its own day</div>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Due Date *</label>
+                  <input type='date' value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} style={inputStyle} />
+                </div>
+              )}
               <div>
                 <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Priority</label>
                 <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} style={inputStyle}>
