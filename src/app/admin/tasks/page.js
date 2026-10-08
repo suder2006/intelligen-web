@@ -22,6 +22,16 @@ const PRIORITY_COLORS = {
   'Urgent': { bg: 'rgba(239,68,68,0.15)', color: '#f87171' },
 }
 
+const CALENDAR_TONES = {
+  overdue: { label: 'Overdue', bg: 'rgba(239,68,68,0.15)', color: '#f87171' },
+  pending: { label: 'Pending', bg: 'rgba(56,189,248,0.15)', color: '#38bdf8' },
+  completed: { label: 'Completed', bg: 'rgba(16,185,129,0.15)', color: '#34d399' },
+}
+
+const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const toDateKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+
 export default function TasksPage() {
   const today = new Date()
   const { schoolId } = useSchool()
@@ -30,7 +40,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState([])
   const [staff, setStaff] = useState([])
   const [profile, setProfile] = useState(null)
-  const [view, setView] = useState('list') // list | dashboard
+  const [view, setView] = useState('list') // list | calendar | dashboard
+  const [selectedDate, setSelectedDate] = useState(null) // 'YYYY-MM-DD' shown in the calendar day panel
   const [showForm, setShowForm] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [showCarryForwardModal, setShowCarryForwardModal] = useState(null)
@@ -361,6 +372,24 @@ export default function TasksPage() {
     carriedForward: monthTasks.filter(t => t.is_carried_forward).length,
   }
 
+  // Calendar view: every task placed on its due date
+  const getCalendarTone = (task) => isOverdue(task) ? 'overdue' : task.status === 'Completed' ? 'completed' : 'pending'
+  const tasksByDueDate = tasks.reduce((acc, t) => {
+    if (t.due_date) (acc[t.due_date] ||= []).push(t)
+    return acc
+  }, {})
+  const todayKey = toDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+  const calendarCells = [
+    ...Array(firstWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  while (calendarCells.length % 7 !== 0) calendarCells.push(null)
+  const monthKeyPrefix = toDateKey(viewYear, viewMonth, 1).slice(0, 7)
+  const calendarMonthCount = tasks.filter(t => t.due_date?.startsWith(monthKeyPrefix)).length
+  const selectedDateTasks = selectedDate ? (tasksByDueDate[selectedDate] || []) : []
+
   const exportCSV = (headers, rows, filename) => {
   const csv = [
     headers.join(','),
@@ -465,6 +494,30 @@ const downloadTasks = () => {
         .task-row:hover { background: rgba(255,255,255,0.06); }
         .overdue-badge { background: rgba(239,68,68,0.15); color: #f87171; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
         .cf-badge { background: rgba(167,139,250,0.15); color: #a78bfa; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+        .cal-weekday { text-align: center; color: rgba(255,255,255,0.4); font-size: 12px; font-weight: 600; text-transform: uppercase; padding: 6px 0; }
+        .cal-cell { min-height: 104px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 8px; cursor: pointer; text-align: left; color: #fff; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; gap: 4px; transition: background 0.15s, border-color 0.15s; min-width: 0; }
+        .cal-cell:hover { background: rgba(255,255,255,0.06); }
+        .cal-cell.today { border-color: #38bdf8; background: rgba(56,189,248,0.08); }
+        .cal-cell.selected { border-color: rgba(56,189,248,0.6); box-shadow: 0 0 0 1px rgba(56,189,248,0.4); }
+        .cal-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+        .cal-day-num { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }
+        .cal-cell.today .cal-day-num { color: #0f172a; background: #38bdf8; border-radius: 20px; padding: 1px 8px; width: fit-content; }
+        .cal-task { display: flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 6px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cal-task-title { overflow: hidden; text-overflow: ellipsis; }
+        .cal-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .cal-more { font-size: 11px; color: rgba(255,255,255,0.4); padding-left: 6px; }
+        .cal-dots { display: none; gap: 3px; flex-wrap: wrap; }
+        .day-panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 90; }
+        .day-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 100vw; background: #1e293b; border-left: 1px solid rgba(255,255,255,0.1); z-index: 91; display: flex; flex-direction: column; animation: slideInRight 0.22s ease-out; }
+        @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .day-panel-task { width: 100%; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; color: #fff; font-family: 'DM Sans', sans-serif; transition: background 0.15s; }
+        .day-panel-task:hover { background: rgba(255,255,255,0.07); }
+        @media (max-width: 768px) {
+          .cal-cell { min-height: 64px; padding: 6px; }
+          .cal-task, .cal-more { display: none; }
+          .cal-dots { display: flex; }
+        }
         @media (max-width: 768px) { .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
@@ -490,7 +543,7 @@ const downloadTasks = () => {
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
-          {[['list', '📋 Task List'], ['dashboard', '📊 Dashboard']].map(([v, l]) => (
+          {[['list', '📋 List'], ['calendar', '📅 Calendar'], ['dashboard', '📊 Dashboard']].map(([v, l]) => (
             <button key={v} className={`view-tab ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>{l}</button>
           ))}
         </div>
@@ -513,7 +566,9 @@ const downloadTasks = () => {
             </button>
           </div>
           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
+            {view === 'calendar'
+              ? `${calendarMonthCount} task${calendarMonthCount !== 1 ? 's' : ''} due`
+              : `${filteredTasks.length} task${filteredTasks.length !== 1 ? 's' : ''}`}
           </div>
         </div>
 
@@ -568,6 +623,52 @@ const downloadTasks = () => {
                   )
                 })}
               </>
+            )}
+
+            {/* CALENDAR VIEW */}
+            {view === 'calendar' && (
+              <div className="card" style={{ padding: '16px' }}>
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                  {Object.entries(CALENDAR_TONES).map(([key, tone]) => (
+                    <span key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="cal-dot" style={{ background: tone.color }} /> {tone.label}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="cal-grid">
+                  {CALENDAR_WEEKDAYS.map(d => <div key={d} className="cal-weekday">{d}</div>)}
+                  {calendarCells.map((day, i) => {
+                    if (!day) return <div key={`empty-${i}`} className="cal-cell empty" />
+                    const dateKey = toDateKey(viewYear, viewMonth, day)
+                    const dayTasks = tasksByDueDate[dateKey] || []
+                    const classes = ['cal-cell', dateKey === todayKey && 'today', dateKey === selectedDate && 'selected'].filter(Boolean).join(' ')
+                    return (
+                      <button key={dateKey} className={classes} onClick={() => setSelectedDate(dateKey)}>
+                        <span className="cal-day-num">{day}</span>
+                        {dayTasks.slice(0, 3).map(task => {
+                          const tone = CALENDAR_TONES[getCalendarTone(task)]
+                          return (
+                            <span key={task.id} className="cal-task" style={{ background: tone.bg, color: tone.color }} title={task.item}>
+                              <span className="cal-dot" style={{ background: tone.color }} />
+                              <span className="cal-task-title">{task.item}</span>
+                            </span>
+                          )
+                        })}
+                        {dayTasks.length > 3 && <span className="cal-more">+{dayTasks.length - 3} more</span>}
+                        {dayTasks.length > 0 && (
+                          <span className="cal-dots">
+                            {dayTasks.slice(0, 6).map(task => (
+                              <span key={task.id} className="cal-dot" style={{ background: CALENDAR_TONES[getCalendarTone(task)].color }} />
+                            ))}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             )}
 
             {/* LIST VIEW */}
@@ -717,6 +818,55 @@ const downloadTasks = () => {
           </>
         )}
       </div>
+
+      {/* Calendar Day Panel */}
+      {view === 'calendar' && selectedDate && (
+        <>
+          <div className="day-panel-overlay" onClick={() => setSelectedDate(null)} />
+          <div className="day-panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 20px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: '700' }}>
+                  {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h3>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>
+                  {selectedDateTasks.length} task{selectedDateTasks.length !== 1 ? 's' : ''} due
+                </div>
+              </div>
+              <button onClick={() => setSelectedDate(null)} className="btn-secondary" style={{ padding: '6px 12px' }} aria-label='Close'>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+              {selectedDateTasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
+                  No tasks due on this day.
+                </div>
+              ) : selectedDateTasks.map(task => {
+                const overdue = isOverdue(task)
+                const statusStyle = STATUS_COLORS[task.status] || STATUS_COLORS['Not Started']
+                const priorityStyle = PRIORITY_COLORS[task.priority] || PRIORITY_COLORS['Medium']
+                return (
+                  <button key={task.id} className="day-panel-task" onClick={() => openEdit(task)}
+                    style={{ borderColor: overdue ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '6px' }}>
+                      <span className="cal-dot" style={{ background: CALENDAR_TONES[getCalendarTone(task)].color }} />
+                      <span style={{ fontWeight: '700', fontSize: '14px' }}>{task.item}</span>
+                      {overdue && <span className="overdue-badge">🚨 Overdue</span>}
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '8px' }}>
+                      👤 {task.assigned_to_profile?.full_name || 'Unknown'}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span className="badge" style={{ background: statusStyle.bg, color: statusStyle.color }}>{task.status}</span>
+                      <span className="badge" style={{ background: priorityStyle.bg, color: priorityStyle.color }}>{task.priority}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Task Form Modal */}
       {showForm && (
