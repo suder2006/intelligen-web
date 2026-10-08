@@ -544,57 +544,61 @@ const downloadTasks = () => {
         </div>
 
         {/* Search + Filters (shared by list and calendar views) */}
-        <input placeholder='🔍 Search by item, description, assigned to, remarks...'
-          value={searchText} onChange={e => setSearchText(e.target.value)}
-          style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none', marginBottom: '14px' }} />
+        {view !== 'dashboard' && (
+          <>
+          <input placeholder='🔍 Search by item, description, assigned to, remarks...'
+            value={searchText} onChange={e => setSearchText(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#fff', fontSize: '14px', outline: 'none', marginBottom: '14px' }} />
 
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          {/* Assigned To */}
-          <select value={filterAssignedTo} onChange={e => setFilterAssignedTo(e.target.value)}
-            style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterAssignedTo ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
-            <option value=''>👤 All Assignees</option>
-            {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-          </select>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            {/* Assigned To */}
+            <select value={filterAssignedTo} onChange={e => setFilterAssignedTo(e.target.value)}
+              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterAssignedTo ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
+              <option value=''>👤 All Assignees</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            </select>
 
-          {/* Status */}
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterStatus ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
-            <option value=''>📊 All Status</option>
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+            {/* Status */}
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterStatus ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
+              <option value=''>📊 All Status</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
 
-          {/* Priority */}
-          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
-            style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterPriority ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
-            <option value=''>🎯 All Priority</option>
-            {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
+            {/* Priority */}
+            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
+              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterPriority ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
+              <option value=''>🎯 All Priority</option>
+              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
 
-          {/* Recurring */}
-          <select value={filterRecurring} onChange={e => setFilterRecurring(e.target.value)}
-            style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterRecurring ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
-            <option value=''>🔄 All Types</option>
-            <option value='recurring'>Recurring</option>
-            <option value='non-recurring'>Non-Recurring</option>
-          </select>
+            {/* Recurring */}
+            <select value={filterRecurring} onChange={e => setFilterRecurring(e.target.value)}
+              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: filterRecurring ? '#38bdf8' : 'rgba(255,255,255,0.5)', fontSize: '12px', outline: 'none' }}>
+              <option value=''>🔄 All Types</option>
+              <option value='recurring'>Recurring</option>
+              <option value='non-recurring'>Non-Recurring</option>
+            </select>
 
-          <button className={`filter-chip ${filterOverdue ? 'active' : ''}`}
-            onClick={() => setFilterOverdue(!filterOverdue)}>
-            🚨 Overdue
-          </button>
-          <button className={`filter-chip ${filterCarriedForward ? 'active' : ''}`}
-            onClick={() => setFilterCarriedForward(!filterCarriedForward)}>
-            ↩️ Carried Forward
-          </button>
-
-          {(filterAssignedTo || filterStatus || filterPriority || filterOverdue || filterCarriedForward || filterRecurring || searchText) && (
-            <button onClick={() => { setFilterAssignedTo(''); setFilterStatus(''); setFilterPriority(''); setFilterOverdue(false); setFilterCarriedForward(false); setFilterRecurring(''); setSearchText('') }}
-              style={{ padding: '5px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '20px', color: '#f87171', fontSize: '12px', cursor: 'pointer' }}>
-              ✕ Clear
+            <button className={`filter-chip ${filterOverdue ? 'active' : ''}`}
+              onClick={() => setFilterOverdue(!filterOverdue)}>
+              🚨 Overdue
             </button>
-          )}
-        </div>
+            <button className={`filter-chip ${filterCarriedForward ? 'active' : ''}`}
+              onClick={() => setFilterCarriedForward(!filterCarriedForward)}>
+              ↩️ Carried Forward
+            </button>
+
+            {(filterAssignedTo || filterStatus || filterPriority || filterOverdue || filterCarriedForward || filterRecurring || searchText) && (
+              <button onClick={() => { setFilterAssignedTo(''); setFilterStatus(''); setFilterPriority(''); setFilterOverdue(false); setFilterCarriedForward(false); setFilterRecurring(''); setSearchText('') }}
+                style={{ padding: '5px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '20px', color: '#f87171', fontSize: '12px', cursor: 'pointer' }}>
+                ✕ Clear
+              </button>
+            )}
+          </div>
+          </>
+        )}
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
