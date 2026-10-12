@@ -40,7 +40,8 @@ export default function TeacherProgressPage() {
   const router = useRouter()
 
   useEffect(() => { loadTeacher() }, [])
-  useEffect(() => { if (selectedProgram) fetchSkills() }, [selectedProgram, academicYear])
+  useEffect(() => { if (selectedProgram) fetchStudents() }, [selectedProgram])
+  useEffect(() => { if (selectedProgram) fetchSkills() }, [selectedProgram, academicYear, selectedTerm, selectedMonth])
   useEffect(() => { if (selectedStudent) fetchProgress() }, [selectedStudent, selectedTerm, selectedMonth, academicYear])
 
   const loadTeacher = async () => {
@@ -56,20 +57,22 @@ export default function TeacherProgressPage() {
     setLoading(false)
   }
 
+  // Skills are assigned per program + term + month on the admin Skills page.
   const fetchSkills = async () => {
-    // Get skills assigned to this program for this academic year
-    const { data: maps } = await supabase.from('skill_program_map').select('skill_id').eq('program', selectedProgram)
-    const skillIds = maps?.map(m => m.skill_id) || []
+    const { data: maps } = await supabase.from('skill_program_map').select('skill_id')
+      .eq('program', selectedProgram).eq('term', selectedTerm).eq('month', selectedMonth)
+    const skillIds = [...new Set(maps?.map(m => m.skill_id) || [])]
     if (skillIds.length === 0) { setSkills([]); return }
-      const { data: skillsData } = await supabase.from('skill_masters')
+    const { data: skillsData } = await supabase.from('skill_masters')
       .select('*, skill_activities(*)')
       .eq('academic_year', academicYear)
       .eq('school_id', profile.school_id)
       .in('id', skillIds)
       .order('order_index')
     setSkills(skillsData || [])
+  }
 
-    // Fetch students for this program
+  const fetchStudents = async () => {
     const { data: sData } = await supabase.from('students').select('*')
       .eq('status', 'active').eq('program', selectedProgram).eq('school_id', profile.school_id).order('full_name')
     setStudents(sData || [])
@@ -323,7 +326,7 @@ const fetchProgress = async () => {
           <>
             {skills.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>
-                No skills assigned to {selectedProgram} for {academicYear}. Ask admin to assign skills.
+                No skills assigned to {selectedProgram} for {selectedMonth} ({selectedTerm}, {academicYear}). Ask admin to assign skills.
               </div>
             ) : (
               <>
