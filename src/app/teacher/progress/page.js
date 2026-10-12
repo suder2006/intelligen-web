@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation'
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
 const TERM_MONTHS = {
-  'Term 1': ['June', 'July', 'August', 'September'],
-  'Term 2': ['October', 'November', 'December', 'January'],
-  'Term 3': ['February', 'March', 'April', 'May'],
+  'Term 1': ['June', 'July', 'August'],
+  'Term 2': ['September', 'October', 'November', 'December'],
+  'Term 3': ['January', 'February', 'March'],
 }
 const RATINGS = [
   { value: 'emerging', label: '🌱 Emerging', short: '🌱', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)' },
