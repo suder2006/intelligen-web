@@ -96,9 +96,9 @@ export default function ParentPortal() {
   const [passwordChanged, setPasswordChanged] = useState(false)
   const router = useRouter()
   const TERM_MONTHS_PARENT = {
-  'Term 1': ['June', 'July', 'August', 'September'],
-  'Term 2': ['October', 'November', 'December', 'January'],
-  'Term 3': ['February', 'March', 'April', 'May'],
+  'Term 1': ['June', 'July', 'August'],
+  'Term 2': ['September', 'October', 'November', 'December'],
+  'Term 3': ['January', 'February', 'March'],
 }
 
  useEffect(() => { 
