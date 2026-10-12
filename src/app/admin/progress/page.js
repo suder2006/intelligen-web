@@ -7,11 +7,11 @@ import { useSchool } from '@/hooks/useSchool'
 
 const PROGRAMS = ['Playgroup', 'Nursery', 'LKG', 'UKG']
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
-// Same term/month split as the teacher web progress page, so both write the same rows.
+// Same term/month split as the teacher mobile app, so both write the same rows.
 const TERM_MONTHS = {
-  'Term 1': ['June', 'July', 'August', 'September'],
-  'Term 2': ['October', 'November', 'December', 'January'],
-  'Term 3': ['February', 'March', 'April', 'May'],
+  'Term 1': ['June', 'July', 'August'],
+  'Term 2': ['September', 'October', 'November', 'December'],
+  'Term 3': ['January', 'February', 'March'],
 }
 const thisYear = new Date().getFullYear()
 const CURRENT_AY = `${thisYear}-${thisYear + 1}`
