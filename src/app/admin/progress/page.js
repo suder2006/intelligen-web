@@ -49,32 +49,35 @@ export default function AdminProgressPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null) // { saved, skipped, errors: [{ row, name, message }] }
 
-  useEffect(() => { if (schoolId) fetchSkillsAndStudents() }, [schoolId, program, academicYear])
+  useEffect(() => { if (schoolId) fetchStudents() }, [schoolId, program])
+  useEffect(() => { if (schoolId) fetchSkills() }, [schoolId, program, academicYear, term, month])
   useEffect(() => { if (selectedStudent) fetchRatings() }, [selectedStudent, academicYear, term, month])
 
   const indicators = skills.flatMap(skill => (skill.skill_activities || []).map(act => ({ skill, act, header: indicatorHeader(skill, act) })))
 
-  const fetchSkillsAndStudents = async () => {
-    setLoading(true)
+  const fetchStudents = async () => {
     setSelectedStudent(null)
     setRatings({})
+    const { data } = await supabase.from('students').select('*')
+      .eq('status', 'active').eq('program', program).eq('school_id', schoolId).order('full_name')
+    setStudents(data || [])
+  }
+
+  // Skills are assigned per program + term + month on the Skills page.
+  const fetchSkills = async () => {
+    setLoading(true)
     setUploadResult(null)
-    const { data: maps } = await supabase.from('skill_program_map').select('skill_id').eq('program', program)
+    const { data: maps } = await supabase.from('skill_program_map').select('skill_id')
+      .eq('program', program).eq('term', term).eq('month', month)
     const skillIds = [...new Set(maps?.map(m => m.skill_id) || [])]
-    const [skillsRes, studentsRes] = await Promise.all([
-      skillIds.length
-        ? supabase.from('skill_masters').select('*, skill_activities(*)')
-          .eq('academic_year', academicYear).eq('school_id', schoolId).in('id', skillIds).order('order_index')
-        : Promise.resolve({ data: [] }),
-      supabase.from('students').select('*')
-        .eq('status', 'active').eq('program', program).eq('school_id', schoolId).order('full_name')
-    ])
-    const sortedSkills = (skillsRes.data || []).map(s => ({
+    const { data } = skillIds.length
+      ? await supabase.from('skill_masters').select('*, skill_activities(*)')
+        .eq('academic_year', academicYear).eq('school_id', schoolId).in('id', skillIds).order('order_index')
+      : { data: [] }
+    setSkills((data || []).map(s => ({
       ...s,
       skill_activities: [...(s.skill_activities || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    }))
-    setSkills(sortedSkills)
-    setStudents(studentsRes.data || [])
+    })))
     setLoading(false)
   }
 
@@ -121,7 +124,7 @@ export default function AdminProgressPage() {
   // ---------- Bulk upload ----------
 
   const downloadTemplate = () => {
-    if (!indicators.length) { alert(`No skill indicators set up for ${program} in ${academicYear}`); return }
+    if (!indicators.length) { alert(`No skill indicators assigned to ${program} for ${month} (${term}, ${academicYear})`); return }
     const header = ['Student Name', 'Student ID', ...indicators.map(i => i.header)]
     const rows = students.map(s => [s.full_name, s.id, ...indicators.map(() => '')])
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
@@ -254,7 +257,7 @@ export default function AdminProgressPage() {
 
             {skills.length === 0 && (
               <div className="card" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-                No skills mapped to {program} for {academicYear}. Set them up on the Skills page.
+                No skills assigned to {program} for {month} ({term}, {academicYear}). Set them up on the Skills page.
               </div>
             )}
 
