@@ -4,19 +4,6 @@ import { getAnalyses } from '@/lib/analysisGet'
 import { ACADEMIC_MONTHS, termOfMonth } from '@/lib/progressTerms'
 import { fetchRatings, fetchActivities, activityLabels } from '@/lib/progressData'
 
-const CALENDAR_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-// Ages are taken at the end of the assessed month (or today, if that's still ahead), so re-checking
-// an earlier month later in the year doesn't age every child past the threshold.
-function referenceDate(academicYear, month) {
-  const startYear = parseInt(academicYear, 10)
-  const m = CALENDAR_MONTHS.indexOf(month)
-  const year = m >= 5 ? startYear : startYear + 1 // June–December in the first year, January–March in the next
-  const endOfMonth = new Date(Date.UTC(year, m + 1, 0))
-  const today = new Date()
-  return endOfMonth < today ? endOfMonth : today
-}
-
 // Whole months between date_of_birth ('YYYY-MM-DD') and ref.
 function ageInMonths(dob, ref) {
   const [y, m, d] = dob.split('-').map(Number)
@@ -53,7 +40,7 @@ export async function POST(request) {
       .order('full_name')
     if (studentsError) throw new Error(studentsError.message)
 
-    const ref = referenceDate(academic_year, month)
+    const ref = new Date() // ages are as of the day the check is run
     const ratings = (await fetchRatings(supabase, students.map(s => s.id), academic_year, [month]))[month]
     const activities = await fetchActivities(supabase, [...new Set(Object.values(ratings).flatMap(r => Object.keys(r)))])
     const indicator = (activityId) => ({ activity_id: activityId, ...activityLabels(activities[activityId]) })
