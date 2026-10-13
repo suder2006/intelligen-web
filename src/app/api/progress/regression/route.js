@@ -173,7 +173,8 @@ export async function POST(request) {
 
 // ?school_id=..&id=..  → one saved analysis in full
 // ?school_id=..[&program=..] → recent analyses, without the bulky regression rows
-// Admins see every program; teachers/staff only the programs assigned to them (read only).
+// Admins see every program; teachers/staff only the programs assigned to them (read only),
+// and never the AI insights, which are admin only.
 export async function GET(request) {
   try {
     const params = new URL(request.url).searchParams
@@ -181,7 +182,8 @@ export async function GET(request) {
     const auth = await authorizeStaff(request, schoolId)
     if (auth.error) return Response.json({ error: auth.error }, { status: auth.status })
     const { supabase, programs } = auth
-    const allowed = (program) => !programs || programs.includes(program)
+    const isAdmin = !programs
+    const allowed = (program) => isAdmin || programs.includes(program)
 
     const id = params.get('id')
     if (id) {
@@ -189,7 +191,9 @@ export async function GET(request) {
         .eq('id', id).eq('school_id', schoolId).maybeSingle()
       if (error) throw new Error(error.message)
       if (!data || !allowed(data.program)) return Response.json({ error: 'Analysis not found' }, { status: 404 })
-      return Response.json(data)
+      if (isAdmin) return Response.json(data)
+      const { ai_insights, ai_recommendations, generated_at, ...analysis } = data
+      return Response.json(analysis)
     }
 
     let query = supabase.from('progress_insights')
@@ -202,7 +206,7 @@ export async function GET(request) {
     const { data, error } = await query
     if (error) throw new Error(error.message)
     return Response.json({
-      analyses: data.map(({ ai_insights, ...a }) => ({ ...a, has_insights: !!ai_insights })),
+      analyses: data.map(({ ai_insights, generated_at, ...a }) => (isAdmin ? { ...a, generated_at, has_insights: !!ai_insights } : a)),
     })
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 })

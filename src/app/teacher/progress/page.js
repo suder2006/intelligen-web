@@ -280,7 +280,7 @@ const fetchProgress = async () => {
               </div>
             )}
             {selectedProgram && profile?.school_id ? (
-              <RegressionAnalysis readOnly schoolId={profile.school_id} program={selectedProgram}
+              <RegressionAnalysis isAdmin={false} schoolId={profile.school_id} program={selectedProgram}
                 academicYear={academicYear} term={selectedTerm} />
             ) : !loading && (
               <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No programs are assigned to you yet.</div>

@@ -452,7 +452,7 @@ export default function AdminProgressPage() {
 
         {/* Regression Analysis reads ratings server-side, so it doesn't wait on this month's skills loading. */}
         {program && view === 'regression' ? (
-          <RegressionAnalysis schoolId={schoolId} program={program} academicYear={academicYear} term={term}
+          <RegressionAnalysis isAdmin={true} schoolId={schoolId} program={program} academicYear={academicYear} term={term}
             selectStyle={selectStyle} labelStyle={labelStyle} />
         ) : loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>

@@ -34,8 +34,9 @@ async function api(url, options = {}) {
 // Default From/To: the first two months of the selected term.
 const defaultMonths = (term) => TERM_MONTHS[term].slice(0, 2)
 
-// readOnly (teacher view): no Analyse or AI generation; opens the latest saved analysis for the program.
-export default function RegressionAnalysis({ schoolId, program, academicYear, term, selectStyle, labelStyle, readOnly = false }) {
+// isAdmin=false (teacher view): read only, with no Analyse and no AI insights at all; opens the latest
+// saved analysis for the program. The API also leaves the AI fields out for non-admins.
+export default function RegressionAnalysis({ schoolId, program, academicYear, term, selectStyle, labelStyle, isAdmin = false }) {
   const [fromMonth, setFromMonth] = useState(() => defaultMonths(term)[0])
   const [toMonth, setToMonth] = useState(() => defaultMonths(term)[1])
   const [analysis, setAnalysis] = useState(null) // a progress_insights row
@@ -54,7 +55,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
     try {
       const { analyses } = await api(`/api/progress/regression?school_id=${schoolId}&program=${encodeURIComponent(program)}`)
       setHistory(analyses)
-      if (readOnly && analyses.length) openAnalysis(analyses[0].id, false)
+      if (!isAdmin && analyses.length) openAnalysis(analyses[0].id, false)
     } catch (e) {
       setHistory([])
     }
@@ -123,8 +124,8 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
   const rows = data?.rows || []
   const summary = data?.summary || {}
   const shownRows = filter === 'all' ? rows : rows.filter(r => r.type === filter)
-  const insights = parseAi(analysis?.ai_insights)
-  const recs = parseAi(analysis?.ai_recommendations)
+  const insights = isAdmin ? parseAi(analysis?.ai_insights) : null
+  const recs = isAdmin ? parseAi(analysis?.ai_recommendations) : null
 
   const exportExcel = () => {
     const a = analysis
@@ -228,7 +229,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
       `}</style>
 
       {/* From / To + Analyse */}
-      {!readOnly && <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', padding: '16px' }}>
+      {isAdmin && <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', padding: '16px' }}>
         <div>
           <label style={labelStyle}>From Month</label>
           <select value={fromMonth} onChange={e => setFromMonth(e.target.value)} style={selectStyle}>
@@ -341,17 +342,17 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
                 </div>
               </div>
 
-              {/* AI insights: admins generate them; teachers only see ones that exist */}
-              {(!readOnly || insights) && <div className="card ai-card" style={{ padding: '20px' }}>
+              {/* AI insights: admin only */}
+              {isAdmin && <div className="card ai-card" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>✨ AI Insights</div>
                     {insights && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>Generated {formatDate(analysis.generated_at)}</div>}
                   </div>
-                  {!readOnly && <button onClick={generateInsights} disabled={generating} className={insights ? 'btn-secondary' : 'btn-primary'}>
+                  <button onClick={generateInsights} disabled={generating} className={insights ? 'btn-secondary' : 'btn-primary'}>
                     {generating ? <><span className="spinner" style={insights ? { borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#fff' } : undefined} />Generating...</>
                       : insights ? '🔄 Regenerate' : '✨ Generate AI Insights'}
-                  </button>}
+                  </button>
                 </div>
 
                 {!insights && !generating && (
@@ -381,7 +382,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
         <div className="section-label" style={{ marginBottom: '10px' }}>Previous analyses · {program}</div>
         {!history.length ? (
           <div className="card" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-            No analyses yet for {program}.{readOnly && ' Your school admin runs these from the admin Progress page.'}
+            No analyses yet for {program}.{!isAdmin && ' Your school admin runs these from the admin Progress page.'}
           </div>
         ) : history.map(h => (
           <button key={h.id} onClick={() => openAnalysis(h.id)} className={analysis?.id === h.id ? 'history-item history-active' : 'history-item'}>
@@ -393,7 +394,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
               {loadingId === h.id && <span style={{ color: 'rgba(255,255,255,0.4)' }}>Loading...</span>}
               {h.summary && <span style={{ color: '#fca5a5' }}>🔴 {h.summary.regressed_students}</span>}
               {h.summary && <span style={{ color: '#6ee7b7' }}>🟢 {h.summary.improved_students}</span>}
-              {h.has_insights && <span style={{ color: '#a78bfa' }}>✨</span>}
+              {isAdmin && h.has_insights && <span style={{ color: '#a78bfa' }}>✨</span>}
             </span>
           </button>
         ))}
