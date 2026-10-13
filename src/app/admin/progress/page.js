@@ -456,7 +456,7 @@ export default function AdminProgressPage() {
           <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
         ) : !program ? (
           <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.4)' }}>
-            No programs set up yet. Add programs on the Curriculum page.
+            No programs set up yet. Add them under Curriculum → Master Lists → Programs.
           </div>
         ) : view === 'students' ? renderStudentView() : renderBulkView()}
       </div>
