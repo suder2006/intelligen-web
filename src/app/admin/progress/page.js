@@ -26,6 +26,20 @@ const RATINGS = [
 const CODE_TO_RATING = Object.fromEntries(RATINGS.map(r => [r.code, r.value]))
 const RATING_CONFLICT = 'student_id,activity_id,academic_year,term,month'
 
+const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+
+// Groups skills by development_area, in order of first appearance. Skills without one get area: null.
+function groupByArea(skills) {
+  const groups = []
+  skills.forEach(skill => {
+    const area = skill.development_area?.trim() || null
+    let group = groups.find(g => g.area === area)
+    if (!group) { group = { area, skills: [] }; groups.push(group) }
+    group.skills.push(skill)
+  })
+  return groups
+}
+
 // One Excel column per activity, labelled "Skill - Activity".
 const indicatorHeader = (skill, act) => `${skill.name} - ${act.name}`
 
@@ -71,12 +85,14 @@ export default function AdminProgressPage() {
       .eq('program', program).eq('term', term).eq('month', month)
     const skillIds = [...new Set(maps?.map(m => m.skill_id) || [])]
     const { data } = skillIds.length
-      ? await supabase.from('skill_masters').select('*, skill_activities(*)')
+      ? await supabase.from('skill_masters').select('*, skill_activities(*), skill_learning_outcomes(*)')
         .eq('academic_year', academicYear).eq('school_id', schoolId).in('id', skillIds).order('order_index')
       : { data: [] }
-    setSkills((data || []).map(s => ({
+    // Keep skills in development-area order so the screen and the Excel columns match.
+    setSkills(groupByArea(data || []).flatMap(g => g.skills).map(s => ({
       ...s,
-      skill_activities: [...(s.skill_activities || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+      skill_activities: byOrder(s.skill_activities),
+      skill_learning_outcomes: byOrder(s.skill_learning_outcomes)
     })))
     setLoading(false)
   }
@@ -261,31 +277,41 @@ export default function AdminProgressPage() {
               </div>
             )}
 
-            {skills.map(skill => (
-              <div key={skill.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ fontWeight: '700', color: '#a78bfa' }}>{skill.name}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
-                    {skill.skill_activities.filter(a => ratings[a.id]).length}/{skill.skill_activities.length} rated
-                  </div>
-                </div>
-                {skill.skill_activities.map(act => (
-                  <div key={act.id} className="indicator">
-                    <div style={{ flex: 1, minWidth: '180px' }}>
-                      <div style={{ fontSize: '14px' }}>{act.name}</div>
-                      {act.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>{act.description}</div>}
+            {groupByArea(skills).map(group => (
+              <div key={group.area || 'no-area'} style={{ marginBottom: '16px' }}>
+                {group.area && <div className="area-header">🌱 {group.area}</div>}
+                {group.skills.map(skill => (
+                  <div key={skill.id} className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontWeight: '700', color: '#a78bfa' }}>{skill.name}</div>
+                        {skill.skill_learning_outcomes.map(o => (
+                          <div key={o.id} style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontStyle: 'italic', marginTop: '3px' }}>◦ {o.outcome}</div>
+                        ))}
+                      </div>
+                      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        {skill.skill_activities.filter(a => ratings[a.id]).length}/{skill.skill_activities.length} rated
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {RATINGS.map(r => {
-                        const on = ratings[act.id] === r.value
-                        return (
-                          <button key={r.value} onClick={() => toggleRating(act.id, r.value)} className="rating-btn"
-                            style={on ? { background: r.bg, color: r.color, borderColor: r.border } : undefined}>
-                            {r.label}
-                          </button>
-                        )
-                      })}
-                    </div>
+                    {skill.skill_activities.map(act => (
+                      <div key={act.id} className="indicator">
+                        <div style={{ flex: 1, minWidth: '180px' }}>
+                          <div style={{ fontSize: '14px' }}>{act.name}</div>
+                          {act.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>{act.description}</div>}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {RATINGS.map(r => {
+                            const on = ratings[act.id] === r.value
+                            return (
+                              <button key={r.value} onClick={() => toggleRating(act.id, r.value)} className="rating-btn"
+                                style={on ? { background: r.bg, color: r.color, borderColor: r.border } : undefined}>
+                                {r.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -359,6 +385,7 @@ export default function AdminProgressPage() {
         .student { display: block; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 6px; border-radius: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 14px; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.07); }
         .student:hover { background: rgba(255,255,255,0.07); }
         .student-active { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); font-weight: 600; }
+        .area-header { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #34d399; border-radius: 12px; padding: 10px 14px; font-weight: 700; font-size: 14px; margin-bottom: 10px; }
         .indicator { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); }
         .rating-btn { padding: 7px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
         .err-table { width: 100%; border-collapse: collapse; font-size: 13px; }

@@ -17,6 +17,15 @@ const TERM_MONTHS = {
   'Term 3': ['January', 'February', 'March'],
 }
 
+const EMPTY_SKILL_FORM = { name: '', description: '', development_area: '', outcomes: [] }
+
+const TEMPLATE_HEADERS = ['Development Area', 'Skill Name', 'Skill Description', 'Learning Outcome', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month']
+// Column positions in templates downloaded before Development Area / Learning Outcome existed.
+const LEGACY_COLUMNS = { 'skill name': 0, 'skill description': 1, 'activity name': 2, 'activity description': 3, 'program': 4, 'term': 5, 'month': 6 }
+
+const sortedOutcomes = (skill) => [...(skill?.skill_learning_outcomes || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+const splitOutcomes = (text) => text.split(';').map(o => o.trim()).filter(Boolean)
+
 export default function AdminSkillsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -32,7 +41,7 @@ export default function AdminSkillsPage() {
   const [showActivityModal, setShowActivityModal] = useState(null)
   const [editingSkill, setEditingSkill] = useState(null)
   const [editingActivity, setEditingActivity] = useState(null)
-  const [skillForm, setSkillForm] = useState({ name: '', description: '' })
+  const [skillForm, setSkillForm] = useState(EMPTY_SKILL_FORM)
   const [activityForm, setActivityForm] = useState({ name: '', description: '' })
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkPreview, setBulkPreview] = useState([])
@@ -46,7 +55,7 @@ export default function AdminSkillsPage() {
   const fetchAll = async () => {
     setLoading(true)
     const [skillsRes, progsRes, mapsRes, ayRes] = await Promise.all([
-      supabase.from('skill_masters').select(`*, skill_activities(*)`).eq('academic_year', academicYear).eq('school_id', schoolId).order('order_index').order('created_at'),
+      supabase.from('skill_masters').select(`*, skill_activities(*), skill_learning_outcomes(*)`).eq('academic_year', academicYear).eq('school_id', schoolId).order('order_index').order('created_at'),
       supabase.from('curriculum_masters').select('*').eq('type', 'program').eq('school_id', schoolId).order('value'),
       supabase.from('skill_program_map').select('*'),
       supabase.from('skill_masters').select('academic_year').eq('school_id', schoolId)
@@ -59,21 +68,58 @@ export default function AdminSkillsPage() {
     setLoading(false)
   }
 
+  const openSkillModal = (skill) => {
+    setEditingSkill(skill)
+    setSkillForm(skill ? {
+      name: skill.name,
+      description: skill.description || '',
+      development_area: skill.development_area || '',
+      outcomes: sortedOutcomes(skill).map(o => o.outcome)
+    } : EMPTY_SKILL_FORM)
+    setShowSkillModal(true)
+  }
+
+  const setOutcome = (index, value) => setSkillForm(prev => ({ ...prev, outcomes: prev.outcomes.map((o, i) => i === index ? value : o) }))
+  const addOutcome = () => setSkillForm(prev => ({ ...prev, outcomes: [...prev.outcomes, ''] }))
+  const removeOutcome = (index) => setSkillForm(prev => ({ ...prev, outcomes: prev.outcomes.filter((_, i) => i !== index) }))
+
   const saveSkill = async () => {
     if (!skillForm.name.trim()) { alert('Please enter skill name'); return }
     setSaving(true)
-    if (editingSkill) {
-      await supabase.from('skill_masters').update({ name: skillForm.name, description: skillForm.description }).eq('id', editingSkill.id)
-    } else {
-      const { data: newSkill } = await supabase.from('skill_masters').insert({
-        name: skillForm.name, description: skillForm.description,
-        academic_year: academicYear, order_index: skills.length,
-        school_id: schoolId
-      }).select().single()
-      if (newSkill) setExpandedSkill(newSkill.id)
+    const fields = {
+      name: skillForm.name,
+      description: skillForm.description,
+      development_area: skillForm.development_area.trim() || null
     }
+    let skillId = editingSkill?.id
+    if (editingSkill) {
+      const { error } = await supabase.from('skill_masters').update(fields).eq('id', skillId)
+      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+    } else {
+      const { data: newSkill, error } = await supabase.from('skill_masters').insert({
+        ...fields, academic_year: academicYear, order_index: skills.length, school_id: schoolId
+      }).select().single()
+      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+      skillId = newSkill.id
+      setExpandedSkill(skillId)
+    }
+
+    // Replace the skill's outcomes with what's in the form, in form order.
+    const outcomes = skillForm.outcomes.map(o => o.trim()).filter(Boolean)
+    let outcomeError = null
+    if (editingSkill) {
+      const { error } = await supabase.from('skill_learning_outcomes').delete().eq('skill_id', skillId)
+      outcomeError = error
+    }
+    if (!outcomeError && outcomes.length) {
+      const { error } = await supabase.from('skill_learning_outcomes')
+        .insert(outcomes.map((outcome, i) => ({ skill_id: skillId, outcome, order_index: i })))
+      outcomeError = error
+    }
+    if (outcomeError) alert('Skill saved, but learning outcomes failed: ' + outcomeError.message)
+
     setShowSkillModal(false)
-    setSkillForm({ name: '', description: '' })
+    setSkillForm(EMPTY_SKILL_FORM)
     setEditingSkill(null)
     await fetchAll()
     setSaving(false)
@@ -82,6 +128,7 @@ export default function AdminSkillsPage() {
   const deleteSkill = async (id) => {
     if (!confirm('Delete this skill and all its activities?')) return
     await supabase.from('skill_program_map').delete().eq('skill_id', id)
+    await supabase.from('skill_learning_outcomes').delete().eq('skill_id', id)
     await supabase.from('skill_activities').delete().eq('skill_id', id)
     await supabase.from('skill_masters').delete().eq('id', id)
     if (expandedSkill === id) setExpandedSkill(null)
@@ -154,14 +201,14 @@ const getSkillSummary = (skillId) => {
 
     const downloadTemplate = () => {
     const template = [
-      ['Skill Name', 'Skill Description', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month'],
-      ['Fine Motor Skills', 'Hand and finger coordination', 'Holds pencil correctly', 'Check grip position', 'LKG', 'Term 1', 'June'],
-      ['Fine Motor Skills', '', 'Cuts with scissors', 'Straight line cutting', 'LKG', 'Term 1', 'July'],
-      ['Gross Motor Skills', 'Body movement and balance', 'Runs in straight line', '', 'LKG', 'Term 1', 'June'],
+      TEMPLATE_HEADERS,
+      ['Physical Development', 'Fine Motor Skills', 'Hand and finger coordination', 'Uses fingers to hold and control tools; Shows hand-eye coordination', 'Holds pencil correctly', 'Check grip position', 'LKG', 'Term 1', 'June'],
+      ['Physical Development', 'Fine Motor Skills', '', '', 'Cuts with scissors', 'Straight line cutting', 'LKG', 'Term 1', 'June'],
+      ['Physical Development', 'Gross Motor Skills', 'Body movement and balance', 'Moves with balance and control', 'Runs in straight line', '', 'LKG', 'Term 1', 'June'],
     ]
     const ws = XLSX.utils.aoa_to_sheet(template)
     ws['!cols'] = [
-      { wch: 25 }, { wch: 30 }, { wch: 30 }, { wch: 30 },
+      { wch: 28 }, { wch: 25 }, { wch: 30 }, { wch: 45 }, { wch: 30 }, { wch: 30 },
       { wch: 15 }, { wch: 10 }, { wch: 12 }
     ]
     const wb = XLSX.utils.book_new()
@@ -177,21 +224,30 @@ const getSkillSummary = (skillId) => {
       const wb = XLSX.read(data)
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
-      const dataRows = rows.slice(1).filter(r => r[0] || r[2])
-      if (dataRows.length === 0) { alert('No data found in file!'); return }
+      // Columns are found by header name; files from the old template (no Development Area column) use the old positions.
+      const header = (rows[0] || []).map(h => (h || '').toString().trim().toLowerCase())
+      const isLegacy = !header.includes('development area') && !header.includes('learning outcome')
+      const idx = Object.fromEntries(TEMPLATE_HEADERS.map(h => {
+        const key = h.toLowerCase()
+        return [h, isLegacy ? (LEGACY_COLUMNS[key] ?? -1) : header.indexOf(key)]
+      }))
+      const cell = (row, name) => idx[name] < 0 ? '' : (row[idx[name]] ?? '').toString().trim()
       const parsed = []
-      dataRows.forEach(row => {
-        const skillName = (row[0] || '').toString().trim()
-        const skillDesc = (row[1] || '').toString().trim()
-        const actName = (row[2] || '').toString().trim()
-        const actDesc = (row[3] || '').toString().trim()
-        const program = (row[4] || '').toString().trim()
-        const term = (row[5] || '').toString().trim()
-        const month = (row[6] || '').toString().trim()
-        if (skillName || actName) {
-          parsed.push({ skillName, skillDesc, actName, actDesc, program, term, month })
+      rows.slice(1).forEach(row => {
+        const entry = {
+          devArea: cell(row, 'Development Area'),
+          skillName: cell(row, 'Skill Name'),
+          skillDesc: cell(row, 'Skill Description'),
+          outcomes: splitOutcomes(cell(row, 'Learning Outcome')),
+          actName: cell(row, 'Activity Name'),
+          actDesc: cell(row, 'Activity Description'),
+          program: cell(row, 'Program'),
+          term: cell(row, 'Term'),
+          month: cell(row, 'Month')
         }
+        if (entry.skillName || entry.actName) parsed.push(entry)
       })
+      if (parsed.length === 0) { alert('No data found in file!'); return }
       setBulkPreview(parsed)
       setShowBulkModal(true)
     } catch (e) {
@@ -208,8 +264,13 @@ const getSkillSummary = (skillId) => {
       bulkPreview.forEach(row => {
         if (!row.skillName) return
         if (!skillMap[row.skillName]) {
-          skillMap[row.skillName] = { desc: row.skillDesc, activities: [], assignments: [] }
+          skillMap[row.skillName] = { desc: row.skillDesc, devArea: '', outcomes: [], activities: [], assignments: [] }
         }
+        const entry = skillMap[row.skillName]
+        if (row.devArea && !entry.devArea) entry.devArea = row.devArea
+        row.outcomes.forEach(o => {
+          if (!entry.outcomes.some(e => e.toLowerCase() === o.toLowerCase())) entry.outcomes.push(o)
+        })
         if (row.actName && !skillMap[row.skillName].activities.find(a => a.name === row.actName)) {
           skillMap[row.skillName].activities.push({ name: row.actName, description: row.actDesc })
         }
@@ -223,22 +284,38 @@ const getSkillSummary = (skillId) => {
         }
       })
 
-      let skillsCreated = 0, activitiesCreated = 0, assignmentsCreated = 0
+      let skillsCreated = 0, activitiesCreated = 0, assignmentsCreated = 0, outcomesCreated = 0
 
       for (const [skillName, skillData] of Object.entries(skillMap)) {
         let skillId
         const existing = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())
         if (existing) {
           skillId = existing.id
+          if (skillData.devArea && skillData.devArea !== existing.development_area) {
+            const { error } = await supabase.from('skill_masters').update({ development_area: skillData.devArea }).eq('id', skillId)
+            if (error) throw error
+          }
         } else {
           const { data: newSkill, error } = await supabase.from('skill_masters').insert({
             name: skillName, description: skillData.desc || null,
+            development_area: skillData.devArea || null,
             academic_year: academicYear, order_index: skills.length + skillsCreated,
             school_id: schoolId
           }).select().single()
           if (error) throw error
           skillId = newSkill.id
           skillsCreated++
+        }
+
+        // Add outcomes the skill doesn't already have, after its existing ones.
+        const existingOutcomes = sortedOutcomes(existing)
+        const newOutcomes = skillData.outcomes.filter(o => !existingOutcomes.some(e => e.outcome.toLowerCase() === o.toLowerCase()))
+        if (newOutcomes.length) {
+          const { error } = await supabase.from('skill_learning_outcomes').insert(newOutcomes.map((outcome, i) => ({
+            skill_id: skillId, outcome, order_index: existingOutcomes.length + i
+          })))
+          if (error) throw error
+          outcomesCreated += newOutcomes.length
         }
 
         for (let i = 0; i < skillData.activities.length; i++) {
@@ -273,7 +350,7 @@ const getSkillSummary = (skillId) => {
       setShowBulkModal(false)
       setBulkPreview([])
       await fetchAll()
-      alert(`✅ Bulk upload complete!\n\n→ ${skillsCreated} skills created\n→ ${activitiesCreated} activities created\n→ ${assignmentsCreated} assignments created`)
+      alert(`✅ Bulk upload complete!\n\n→ ${skillsCreated} skills created\n→ ${outcomesCreated} learning outcomes created\n→ ${activitiesCreated} activities created\n→ ${assignmentsCreated} assignments created`)
     } catch (e) {
       alert('Error saving: ' + e.message)
     }
@@ -298,7 +375,7 @@ const getSkillSummary = (skillId) => {
         .activity-row:last-child { border-bottom: none; }
         .assign-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 480px; }
+        .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
@@ -308,13 +385,13 @@ const getSkillSummary = (skillId) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: '700' }}>🎯 Skills & Progress Setup</h1>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Add skills → Add activities → Assign to Program + Term</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginTop: '4px' }}>Add skills (with development area &amp; learning outcomes) → Add activities → Assign to Program + Term</p>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input ref={bulkFileRef} type="file" accept=".xlsx,.xls" onChange={handleBulkUpload} style={{ display: 'none' }} />
             <button onClick={downloadTemplate} className="btn-secondary">⬇️ Download Template</button>
             <button onClick={() => bulkFileRef.current?.click()} className="btn-secondary">📤 Bulk Upload</button>
-            <button onClick={() => { setEditingSkill(null); setSkillForm({ name: '', description: '' }); setShowSkillModal(true) }} className="btn-primary">+ Add Skill</button>
+            <button onClick={() => openSkillModal(null)} className="btn-primary">+ Add Skill</button>
           </div>
         </div>
 
@@ -369,10 +446,11 @@ const getSkillSummary = (skillId) => {
                       <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned yet</span>
                     )}
                   </div>
+                  {skill.development_area && <div style={{ color: '#34d399', fontSize: '12px', fontWeight: '600', marginTop: '4px' }}>🌱 {skill.development_area}</div>}
                   {skill.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginTop: '4px' }}>{skill.description}</div>}
                 </div>
                 <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }} onClick={e => e.stopPropagation()}>
-                  <button onClick={() => { setEditingSkill(skill); setSkillForm({ name: skill.name, description: skill.description || '' }); setShowSkillModal(true) }}
+                  <button onClick={() => openSkillModal(skill)}
                     style={{ padding: '6px 10px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
                   <button onClick={() => deleteSkill(skill.id)}
                     style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
@@ -383,6 +461,16 @@ const getSkillSummary = (skillId) => {
               {expandedSkill === skill.id && (
                 <div className="skill-body">
                   <div style={{ paddingTop: '16px' }}>
+                    {/* Learning outcomes */}
+                    {sortedOutcomes(skill).length > 0 && (
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Learning Outcomes</div>
+                        {sortedOutcomes(skill).map(o => (
+                          <div key={o.id} style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontStyle: 'italic', padding: '3px 0' }}>◦ {o.outcome}</div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Activities */}
                     {(skill.skill_activities || []).length === 0 ? (
                       <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', padding: '12px 0', textAlign: 'center' }}>No activities yet. Click "+ Add Activity" below.</div>
@@ -475,6 +563,25 @@ const getSkillSummary = (skillId) => {
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Description (optional)</label>
             <input value={skillForm.description} onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
               placeholder='Brief description' style={inputStyle} />
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Development Area (optional)</label>
+            <input value={skillForm.development_area} onChange={e => setSkillForm({ ...skillForm, development_area: e.target.value })}
+              placeholder='e.g. Personal & Social Development' style={inputStyle} list='development-areas' />
+            <datalist id='development-areas'>
+              {[...new Set(skills.map(s => s.development_area).filter(Boolean))].map(a => <option key={a} value={a} />)}
+            </datalist>
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Learning Outcomes (optional)</label>
+            {skillForm.outcomes.map((outcome, i) => (
+              <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <input value={outcome} onChange={e => setOutcome(i, e.target.value)}
+                  placeholder={`Outcome ${i + 1}`} style={inputStyle} />
+                <button onClick={() => removeOutcome(i)} title='Remove outcome'
+                  style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#f87171', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>Remove</button>
+              </div>
+            ))}
+            <button onClick={addOutcome}
+              style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.08)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '13px', width: '100%', fontFamily: "'DM Sans', sans-serif", marginBottom: '12px' }}>
+              + Add Outcome
+            </button>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button onClick={() => { setShowSkillModal(false); setEditingSkill(null) }} className="btn-secondary">Cancel</button>
               <button onClick={saveSkill} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingSkill ? 'Update' : 'Add Skill'}</button>
@@ -497,7 +604,7 @@ const getSkillSummary = (skillId) => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr>
-                    {['Skill', 'Activity', 'Program', 'Term', 'Month'].map(h => (
+                    {['Area', 'Skill', 'Outcomes', 'Activity', 'Program', 'Term', 'Month'].map(h => (
                       <th key={h} style={{ padding: '8px', textAlign: 'left', color: '#38bdf8', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -505,7 +612,9 @@ const getSkillSummary = (skillId) => {
                 <tbody>
                   {bulkPreview.map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '6px 8px', color: '#34d399' }}>{row.devArea}</td>
                       <td style={{ padding: '6px 8px', color: row.skillName ? '#fff' : 'transparent' }}>{row.skillName || '↑ same'}</td>
+                      <td style={{ padding: '6px 8px', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>{row.outcomes.join('; ')}</td>
                       <td style={{ padding: '6px 8px', color: 'rgba(255,255,255,0.7)' }}>{row.actName}</td>
                       <td style={{ padding: '6px 8px', color: '#a78bfa' }}>{row.program}</td>
                       <td style={{ padding: '6px 8px', color: '#38bdf8' }}>{row.term}</td>
