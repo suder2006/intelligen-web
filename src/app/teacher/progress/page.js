@@ -16,6 +16,20 @@ const RATINGS = [
   { value: 'achieved', label: '🌟 Achieved', short: '🌟', color: '#10b981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.3)' },
 ]
 
+const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+
+// Groups skills by development_area, in order of first appearance. Skills without one get area: null.
+function groupByArea(skills) {
+  const groups = []
+  skills.forEach(skill => {
+    const area = skill.development_area?.trim() || null
+    let group = groups.find(g => g.area === area)
+    if (!group) { group = { area, skills: [] }; groups.push(group) }
+    group.skills.push(skill)
+  })
+  return groups
+}
+
 export default function TeacherProgressPage() {
   const [profile, setProfile] = useState(null)
   const [teacherPrograms, setTeacherPrograms] = useState([])
@@ -64,7 +78,7 @@ export default function TeacherProgressPage() {
     const skillIds = [...new Set(maps?.map(m => m.skill_id) || [])]
     if (skillIds.length === 0) { setSkills([]); return }
     const { data: skillsData } = await supabase.from('skill_masters')
-      .select('*, skill_activities(*)')
+      .select('*, skill_activities(*), skill_learning_outcomes(*)')
       .eq('academic_year', academicYear)
       .eq('school_id', profile.school_id)
       .in('id', skillIds)
@@ -215,6 +229,7 @@ const fetchProgress = async () => {
   return (
     <div style={{ minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
       <style>{`
+        .area-header { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #34d399; border-radius: 12px; padding: 10px 14px; font-weight: 700; font-size: 14px; margin: 4px 0 10px; }
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .header { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
@@ -337,40 +352,52 @@ const fetchProgress = async () => {
                   ))}
                 </div>
 
-                {/* Skills & Activities */}
-                {skills.map(skill => (
-                  <div key={skill.id} className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                      <div style={{ fontWeight: '700', fontSize: '16px' }}>{skill.name}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
-                        {(skill.skill_activities || []).filter(a => ratings[a.id]).length}/{skill.skill_activities?.length || 0} rated
-                      </div>
-                    </div>
-                    {skill.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '12px' }}>{skill.description}</div>}
-                    {(skill.skill_activities || []).sort((a, b) => a.order_index - b.order_index).map(act => {
-                      const currentRating = ratings[act.id]
-                      return (
-                        <div key={act.id} className="activity-row">
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)' }}>{act.name}</div>
-                            {act.description && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '2px' }}>{act.description}</div>}
-                          </div>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            {RATINGS.map(r => (
-                              <button key={r.value} className="rating-btn"
-                                onClick={() => setRating(act.id, r.value)}
-                                style={{
-                                  background: currentRating === r.value ? r.bg : 'transparent',
-                                  border: `1px solid ${currentRating === r.value ? r.border : 'rgba(255,255,255,0.1)'}`,
-                                  color: currentRating === r.value ? r.color : 'rgba(255,255,255,0.3)'
-                                }}>
-                                {r.short}
-                              </button>
-                            ))}
+                {/* Skills & Activities, grouped by development area */}
+                {groupByArea(skills).map(group => (
+                  <div key={group.area || 'no-area'}>
+                    {group.area && <div className="area-header">🌱 {group.area}</div>}
+                    {group.skills.map(skill => (
+                      <div key={skill.id} className="card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                          <div style={{ fontWeight: '700', fontSize: '16px' }}>{skill.name}</div>
+                          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+                            {(skill.skill_activities || []).filter(a => ratings[a.id]).length}/{skill.skill_activities?.length || 0} rated
                           </div>
                         </div>
-                      )
-                    })}
+                        {skill.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '12px' }}>{skill.description}</div>}
+                        {byOrder(skill.skill_learning_outcomes).length > 0 && (
+                          <div style={{ marginTop: '-6px', marginBottom: '12px' }}>
+                            {byOrder(skill.skill_learning_outcomes).map(o => (
+                              <div key={o.id} style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', fontStyle: 'italic', padding: '2px 0' }}>◦ {o.outcome}</div>
+                            ))}
+                          </div>
+                        )}
+                        {byOrder(skill.skill_activities).map(act => {
+                          const currentRating = ratings[act.id]
+                          return (
+                            <div key={act.id} className="activity-row">
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)' }}>{act.name}</div>
+                                {act.description && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '2px' }}>{act.description}</div>}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                {RATINGS.map(r => (
+                                  <button key={r.value} className="rating-btn"
+                                    onClick={() => setRating(act.id, r.value)}
+                                    style={{
+                                      background: currentRating === r.value ? r.bg : 'transparent',
+                                      border: `1px solid ${currentRating === r.value ? r.border : 'rgba(255,255,255,0.1)'}`,
+                                      color: currentRating === r.value ? r.color : 'rgba(255,255,255,0.3)'
+                                    }}>
+                                    {r.short}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
                   </div>
                 ))}
 

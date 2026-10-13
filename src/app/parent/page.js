@@ -18,6 +18,31 @@ const fmtPtmDate = (dateStr, opts = { day: 'numeric', month: 'short', year: 'num
   return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', opts)
 }
 
+const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+
+// Development area -> skill -> rated indicators, in the order the admin set up.
+// Skills without a development area land in a group with area: null.
+function groupRatings(ratings) {
+  const sorted = [...ratings].sort((a, b) =>
+    (a.skill_activities?.skill_masters?.order_index ?? 0) - (b.skill_activities?.skill_masters?.order_index ?? 0) ||
+    (a.skill_activities?.order_index ?? 0) - (b.skill_activities?.order_index ?? 0))
+  const areas = []
+  sorted.forEach(r => {
+    const skill = r.skill_activities?.skill_masters
+    const area = skill?.development_area?.trim() || null
+    let areaGroup = areas.find(g => g.area === area)
+    if (!areaGroup) { areaGroup = { area, skills: [] }; areas.push(areaGroup) }
+    const skillKey = skill?.id || 'general'
+    let skillGroup = areaGroup.skills.find(sg => sg.key === skillKey)
+    if (!skillGroup) {
+      skillGroup = { key: skillKey, name: skill?.name || 'General', outcomes: byOrder(skill?.skill_learning_outcomes), ratings: [] }
+      areaGroup.skills.push(skillGroup)
+    }
+    skillGroup.ratings.push(r)
+  })
+  return areas
+}
+
 export default function ParentPortal() {
   const [moments, setMoments] = useState([])
   const [user, setUser] = useState(null)
@@ -45,6 +70,7 @@ export default function ParentPortal() {
   const [progressSkills, setProgressSkills] = useState([])
   const [selectedProgressTerm, setSelectedProgressTerm] = useState('Term 1')
   const [selectedProgressMonth, setSelectedProgressMonth] = useState('')
+  const [collapsedAreas, setCollapsedAreas] = useState({})
   const [absenceForm, setAbsenceForm] = useState({ student_id: '', absence_date: new Date().toISOString().split('T')[0], reason: '' })
   const [submittingAbsence, setSubmittingAbsence] = useState(false)
   const [myAbsences, setMyAbsences] = useState([])
@@ -242,7 +268,7 @@ export default function ParentPortal() {
         setProgressReports(prData || [])
         if (prData && prData.length > 0) {
           const { data: prRatings } = await supabase.from('progress_ratings')
-            .select('*, skill_activities(*, skill_masters(*))')
+            .select('*, skill_activities(*, skill_masters(*, skill_learning_outcomes(*)))')
             .in('student_id', studentIds)
           setProgressRatings(prRatings || [])
         }
@@ -2250,28 +2276,43 @@ export default function ParentPortal() {
                         r.academic_year === activeReport.academic_year
                       )
 
-                      // Group ratings by skill
-                      const skillsMap = {}
-                      studentRatings.forEach(r => {
-                        const skillName = r.skill_activities?.skill_masters?.name || 'General'
-                        if (!skillsMap[skillName]) skillsMap[skillName] = []
-                        skillsMap[skillName].push(r)
-                      })
-
-                      return Object.entries(skillsMap).map(([skillName, skillRatings]) => (
-                        <div key={skillName} className="card" style={{ marginBottom: '12px' }}>
-                          <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '12px', color: '#38bdf8' }}>{skillName}</div>
-                          {skillRatings.map(r => (
-                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>{r.skill_activities?.name}</div>
-                                {r.skill_activities?.description && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '2px' }}>{r.skill_activities.description}</div>}
+                      // Development Area -> Skill -> Learning Outcomes -> Indicators
+                      return groupRatings(studentRatings).map(group => {
+                        const areaKey = `${child.id}:${group.area}`
+                        const collapsed = group.area && collapsedAreas[areaKey]
+                        return (
+                          <div key={group.area || 'no-area'}>
+                            {group.area && (
+                              <button onClick={() => setCollapsedAreas(prev => ({ ...prev, [areaKey]: !prev[areaKey] }))}
+                                style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px', padding: '12px 16px', marginBottom: '10px', color: '#34d399', fontWeight: '700', fontSize: '15px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", textAlign: 'left' }}>
+                                <span>{group.area}</span>
+                                <span style={{ fontSize: '12px' }}>{collapsed ? '▼' : '▲'}</span>
+                              </button>
+                            )}
+                            {!collapsed && group.skills.map(skillGroup => (
+                              <div key={skillGroup.key} className="card" style={{ marginBottom: '12px' }}>
+                                <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '12px', color: '#38bdf8' }}>{skillGroup.name}</div>
+                                {skillGroup.outcomes.length > 0 && (
+                                  <div style={{ marginTop: '-6px', marginBottom: '10px' }}>
+                                    {skillGroup.outcomes.map(o => (
+                                      <div key={o.id} style={{ color: '#94a3b8', fontSize: '13px', fontStyle: 'italic', padding: '2px 0' }}>• {o.outcome}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                {skillGroup.ratings.map(r => (
+                                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>{r.skill_activities?.name}</div>
+                                      {r.skill_activities?.description && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '2px' }}>{r.skill_activities.description}</div>}
+                                    </div>
+                                    <span style={ratingStyle(r.rating)}>{ratingLabel(r.rating)}</span>
+                                  </div>
+                                ))}
                               </div>
-                              <span style={ratingStyle(r.rating)}>{ratingLabel(r.rating)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ))
+                            ))}
+                          </div>
+                        )
+                      })
                     })()}
 
                     {/* Progress History across months */}
