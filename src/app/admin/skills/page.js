@@ -453,7 +453,7 @@ const getSkillSummary = (skillId) => {
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', width: '64px' }}>Month:</span>
               {['All', ...TERM_MONTHS[filterTerm]].map(m => (
-                <button key={m} onClick={() => setFilterMonth(m)} style={filterBtnStyle(filterMonth === m)}>{m}</button>
+                <button key={m} onClick={() => setFilterMonth(m)} style={filterBtnStyle(filterMonth === m)}>{m === 'All' ? m : m.slice(0, 3)}</button>
               ))}
             </div>
           )}
