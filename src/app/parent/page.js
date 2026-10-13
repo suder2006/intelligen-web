@@ -18,6 +18,44 @@ const fmtPtmDate = (dateStr, opts = { day: 'numeric', month: 'short', year: 'num
   return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', opts)
 }
 
+const TERM_MONTHS_PARENT = {
+  'Term 1': ['June', 'July', 'August'],
+  'Term 2': ['September', 'October', 'November', 'December'],
+  'Term 3': ['January', 'February', 'March'],
+}
+const PROGRESS_TERMS = Object.keys(TERM_MONTHS_PARENT)
+
+// Chronological position of a period, for picking the most recent one.
+const periodRank = (p) =>
+  [p.academic_year || '', PROGRESS_TERMS.indexOf(p.term), (TERM_MONTHS_PARENT[p.term] || []).indexOf(p.month)]
+
+const comparePeriods = (a, b) => {
+  const ra = periodRank(a), rb = periodRank(b)
+  for (let i = 0; i < ra.length; i++) {
+    if (ra[i] < rb[i]) return -1
+    if (ra[i] > rb[i]) return 1
+  }
+  return 0
+}
+
+// Months a parent can see. A month is visible when its report was sent to the parent,
+// or when it has ratings but no report row at all (marks entered from the admin
+// Progress page, which has no draft/send step). Unsent teacher drafts stay hidden.
+function buildPeriods(reports, ratings) {
+  const key = (r) => [r.student_id, r.academic_year, r.term, r.month].join('|')
+  const withReport = new Set(reports.map(key))
+  const periods = new Map()
+  reports.filter(r => r.sent_to_parent && r.month).forEach(r => {
+    periods.set(key(r), { student_id: r.student_id, academic_year: r.academic_year, term: r.term, month: r.month, report: r })
+  })
+  ratings.filter(r => r.month && !withReport.has(key(r))).forEach(r => {
+    if (!periods.has(key(r))) {
+      periods.set(key(r), { student_id: r.student_id, academic_year: r.academic_year, term: r.term, month: r.month, report: null })
+    }
+  })
+  return [...periods.values()].sort(comparePeriods)
+}
+
 const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
 
 // Development area -> skill -> rated indicators, in the order the admin set up.
@@ -65,7 +103,7 @@ export default function ParentPortal() {
   const [paymentModal, setPaymentModal] = useState(null)
   const [notifying, setNotifying] = useState(false)
   const [notified, setNotified] = useState(false)
-  const [progressReports, setProgressReports] = useState([])
+  const [progressPeriods, setProgressPeriods] = useState([])
   const [progressRatings, setProgressRatings] = useState([])
   const [progressSkills, setProgressSkills] = useState([])
   const [selectedProgressTerm, setSelectedProgressTerm] = useState('Term 1')
@@ -121,11 +159,6 @@ export default function ParentPortal() {
   const [changingPassword, setChangingPassword] = useState(false)
   const [passwordChanged, setPasswordChanged] = useState(false)
   const router = useRouter()
-  const TERM_MONTHS_PARENT = {
-  'Term 1': ['June', 'July', 'August'],
-  'Term 2': ['September', 'October', 'November', 'December'],
-  'Term 3': ['January', 'February', 'March'],
-}
 
  useEffect(() => { 
   loadData()
@@ -259,18 +292,22 @@ export default function ParentPortal() {
       .eq('academic_year', currentAY)
       .order('fee_type')
     setFeeStructures(fsData || [])
-    // Load progress reports (only sent ones)
+    // Load progress. All report rows are read, sent or not, so an unsent draft keeps its month hidden.
       if (studentIds.length > 0) {
-        const { data: prData } = await supabase.from('progress_reports').select('*')
-          .in('student_id', studentIds).eq('sent_to_parent', true)
-          .order('academic_year', { ascending: false })
-          .order('term').order('month')
-        setProgressReports(prData || [])
-        if (prData && prData.length > 0) {
-          const { data: prRatings } = await supabase.from('progress_ratings')
+        const [{ data: prData }, { data: prRatings }] = await Promise.all([
+          supabase.from('progress_reports').select('*').in('student_id', studentIds),
+          supabase.from('progress_ratings')
             .select('*, skill_activities(*, skill_masters(*, skill_learning_outcomes(*)))')
             .in('student_id', studentIds)
-          setProgressRatings(prRatings || [])
+        ])
+        const periods = buildPeriods(prData || [], prRatings || [])
+        setProgressPeriods(periods)
+        setProgressRatings(prRatings || [])
+        // Open the most recent month that has progress
+        const latest = periods[periods.length - 1]
+        if (latest) {
+          setSelectedProgressTerm(latest.term)
+          setSelectedProgressMonth(latest.month)
         }
       }
     // Load absence notifications
@@ -2176,11 +2213,8 @@ export default function ParentPortal() {
     <div className="section-title">📊 Progress Reports</div>
 
     {students.map(child => {
-      // Get all sent reports for this child
-      const childReports = progressReports.filter(r => r.student_id === child.id)
-      
-      // Get unique terms that have reports
-      const termsWithReports = [...new Set(childReports.map(r => r.term))]
+      // Months this parent can see for this child
+      const childReports = progressPeriods.filter(p => p.student_id === child.id)
 
       if (childReports.length === 0) return (
         <div key={child.id} className="card" style={{ textAlign: 'center', padding: '24px', marginBottom: '20px' }}>
@@ -2215,9 +2249,9 @@ export default function ParentPortal() {
               return (
                 <button key={term} onClick={() => {
                   setSelectedProgressTerm(term)
-                  // Auto select first available month for this term
-                  const firstReport = childReports.find(r => r.term === term)
-                  setSelectedProgressMonth(firstReport?.month || TERM_MONTHS_PARENT[term][0])
+                  // Auto select the latest available month for this term
+                  const termPeriods = childReports.filter(p => p.term === term)
+                  setSelectedProgressMonth(termPeriods[termPeriods.length - 1]?.month || TERM_MONTHS_PARENT[term][0])
                 }}
                   style={{ padding: '8px 18px', borderRadius: '8px', border: `1px solid ${selectedProgressTerm === term ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, background: selectedProgressTerm === term ? 'rgba(56,189,248,0.15)' : 'transparent', color: selectedProgressTerm === term ? '#38bdf8' : hasReports ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: '13px', fontWeight: '600', position: 'relative' }}>
                   {term}
@@ -2236,9 +2270,11 @@ export default function ParentPortal() {
               </div>
             )
 
-            const availableMonths = termReports.map(r => r.month).filter(Boolean)
-            const activeMonth = selectedProgressMonth || availableMonths[0]
-            const activeReport = termReports.find(r => r.month === activeMonth)
+            const availableMonths = TERM_MONTHS_PARENT[selectedProgressTerm].filter(m => termReports.some(p => p.month === m))
+            const activeMonth = selectedProgressMonth || availableMonths[availableMonths.length - 1]
+            // Latest academic year wins if a month appears in more than one
+            const activePeriod = termReports.filter(p => p.month === activeMonth).pop()
+            const activeReport = activePeriod?.report
 
             return (
               <>
@@ -2257,12 +2293,12 @@ export default function ParentPortal() {
                   })}
                 </div>
 
-                {activeReport && (
+                {activePeriod && (
                   <>
                     {/* Report header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', padding: '10px 14px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px' }}>
                       <div style={{ color: '#34d399', fontWeight: '600', fontSize: '13px' }}>
-                        📊 {selectedProgressTerm} · {activeMonth} · {activeReport.academic_year}
+                        📊 {selectedProgressTerm} · {activeMonth} · {activePeriod.academic_year}
                       </div>
                       <span style={{ padding: '3px 10px', background: 'rgba(16,185,129,0.15)', color: '#34d399', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>✅ Report Ready</span>
                     </div>
@@ -2273,7 +2309,7 @@ export default function ParentPortal() {
                         r.student_id === child.id &&
                         r.term === selectedProgressTerm &&
                         r.month === activeMonth &&
-                        r.academic_year === activeReport.academic_year
+                        r.academic_year === activePeriod.academic_year
                       )
 
                       // Development Area -> Skill -> Learning Outcomes -> Indicators
@@ -2317,14 +2353,15 @@ export default function ParentPortal() {
 
                     {/* Progress History across months */}
                     {(() => {
-                      const allMonthReports = childReports.filter(r => r.term === selectedProgressTerm)
+                      const allMonthReports = termReports.filter(p => p.academic_year === activePeriod.academic_year)
                       if (allMonthReports.length <= 1) return null
 
-                      // Get unique skill names from ratings
+                      // Get unique skill names from ratings in visible months
                       const termRatings = progressRatings.filter(r =>
                         r.student_id === child.id &&
                         r.term === selectedProgressTerm &&
-                        r.academic_year === activeReport.academic_year
+                        r.academic_year === activePeriod.academic_year &&
+                        allMonthReports.some(p => p.month === r.month)
                       )
                       const skillNames = [...new Set(termRatings.map(r => r.skill_activities?.skill_masters?.name).filter(Boolean))]
 
@@ -2376,7 +2413,7 @@ export default function ParentPortal() {
                     })()}
 
                     {/* Teacher Observations */}
-                    {(activeReport.observations || activeReport.strengths || activeReport.areas_to_improve) && (
+                    {activeReport && (activeReport.observations || activeReport.strengths || activeReport.areas_to_improve) && (
                       <div className="card" style={{ marginBottom: '12px' }}>
                         <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '14px' }}>📝 Teacher's Observations</div>
                         {activeReport.observations && (
