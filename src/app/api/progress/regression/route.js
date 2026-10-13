@@ -1,5 +1,5 @@
 export const dynamic = 'force-dynamic'
-import { authorizeAdmin } from '@/lib/adminAuth'
+import { authorizeAdmin, authorizeStaff } from '@/lib/adminAuth'
 import { ACADEMIC_MONTHS, termOfMonth } from '@/lib/progressTerms'
 
 const LEVEL = { emerging: 0, developing: 1, achieved: 2 }
@@ -173,27 +173,32 @@ export async function POST(request) {
 
 // ?school_id=..&id=..  → one saved analysis in full
 // ?school_id=..[&program=..] → recent analyses, without the bulky regression rows
+// Admins see every program; teachers/staff only the programs assigned to them (read only).
 export async function GET(request) {
   try {
     const params = new URL(request.url).searchParams
     const schoolId = params.get('school_id')
-    const auth = await authorizeAdmin(request, schoolId)
+    const auth = await authorizeStaff(request, schoolId)
     if (auth.error) return Response.json({ error: auth.error }, { status: auth.status })
-    const { supabase } = auth
+    const { supabase, programs } = auth
+    const allowed = (program) => !programs || programs.includes(program)
 
     const id = params.get('id')
     if (id) {
       const { data, error } = await supabase.from('progress_insights').select('*')
         .eq('id', id).eq('school_id', schoolId).maybeSingle()
       if (error) throw new Error(error.message)
-      if (!data) return Response.json({ error: 'Analysis not found' }, { status: 404 })
+      if (!data || !allowed(data.program)) return Response.json({ error: 'Analysis not found' }, { status: 404 })
       return Response.json(data)
     }
 
     let query = supabase.from('progress_insights')
       .select('id, program, academic_year, term, from_month, to_month, created_at, generated_at, ai_insights, summary:regression_data->summary')
       .eq('school_id', schoolId).order('created_at', { ascending: false }).limit(30)
-    if (params.get('program')) query = query.eq('program', params.get('program'))
+    const program = params.get('program')
+    if (program && !allowed(program)) return Response.json({ error: 'Forbidden' }, { status: 403 })
+    if (program) query = query.eq('program', program)
+    else if (programs) query = query.in('program', programs)
     const { data, error } = await query
     if (error) throw new Error(error.message)
     return Response.json({

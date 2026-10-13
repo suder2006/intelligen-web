@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 import { TERMS, TERM_MONTHS } from '@/lib/progressTerms'
-import RegressionAnalysis from './RegressionAnalysis'
+import RegressionAnalysis from '@/components/RegressionAnalysis'
 
 // Programs come from curriculum_masters; these set the tab order, and any others follow alphabetically.
 const PROGRAM_ORDER = ['Playgroup', 'Nursery', 'LKG', 'UKG']

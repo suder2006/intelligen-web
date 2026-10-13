@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import RegressionAnalysis from '@/components/RegressionAnalysis'
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
@@ -51,6 +52,7 @@ export default function TeacherProgressPage() {
   const [saved, setSaved] = useState(false)
   const [sent, setSent] = useState(false)
   const [alreadySent, setAlreadySent] = useState(false)
+  const [view, setView] = useState('entry') // 'entry' | 'regression'
   const router = useRouter()
 
   useEffect(() => { loadTeacher() }, [])
@@ -261,6 +263,31 @@ const fetchProgress = async () => {
           <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px' }}>Rate skills and send term reports to parents</p>
         </div>
 
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <button className={`term-btn ${view === 'entry' ? 'active' : ''}`} onClick={() => setView('entry')}>✏️ Progress Entry</button>
+          <button className={`term-btn ${view === 'regression' ? 'active' : ''}`} onClick={() => setView('regression')}>📊 Regression Analysis</button>
+        </div>
+
+        {view === 'regression' ? (
+          <>
+            {teacherPrograms.length > 1 && (
+              <div className="card" style={{ padding: '16px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Program</label>
+                <select value={selectedProgram} onChange={e => setSelectedProgram(e.target.value)}
+                  style={{ ...inputStyle, resize: 'none', maxWidth: '260px' }}>
+                  {teacherPrograms.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            )}
+            {selectedProgram && profile?.school_id ? (
+              <RegressionAnalysis readOnly schoolId={profile.school_id} program={selectedProgram}
+                academicYear={academicYear} term={selectedTerm} />
+            ) : !loading && (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No programs are assigned to you yet.</div>
+            )}
+          </>
+        ) : (<>
+
         {/* Selectors */}
         <div className="card">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
@@ -443,6 +470,7 @@ const fetchProgress = async () => {
             <div>Select a program and student to start entering progress</div>
           </div>
         )}
+        </>)}
       </div>
     </div>
   )

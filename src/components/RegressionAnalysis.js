@@ -34,7 +34,8 @@ async function api(url, options = {}) {
 // Default From/To: the first two months of the selected term.
 const defaultMonths = (term) => TERM_MONTHS[term].slice(0, 2)
 
-export default function RegressionAnalysis({ schoolId, program, academicYear, term, selectStyle, labelStyle }) {
+// readOnly (teacher view): no Analyse or AI generation; opens the latest saved analysis for the program.
+export default function RegressionAnalysis({ schoolId, program, academicYear, term, selectStyle, labelStyle, readOnly = false }) {
   const [fromMonth, setFromMonth] = useState(() => defaultMonths(term)[0])
   const [toMonth, setToMonth] = useState(() => defaultMonths(term)[1])
   const [analysis, setAnalysis] = useState(null) // a progress_insights row
@@ -53,6 +54,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
     try {
       const { analyses } = await api(`/api/progress/regression?school_id=${schoolId}&program=${encodeURIComponent(program)}`)
       setHistory(analyses)
+      if (readOnly && analyses.length) openAnalysis(analyses[0].id, false)
     } catch (e) {
       setHistory([])
     }
@@ -79,13 +81,13 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
     setAnalysing(false)
   }
 
-  const openAnalysis = async (id) => {
+  const openAnalysis = async (id, scroll = true) => {
     setLoadingId(id)
     setError('')
     try {
       setAnalysis(await api(`/api/progress/regression?school_id=${schoolId}&id=${id}`))
       setFilter('all')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e) {
       setError(e.message)
     }
@@ -192,6 +194,13 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
   return (
     <div className="regression">
       <style>{`
+        .regression .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 16px; margin-bottom: 10px; }
+        .regression .tab { padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.07); }
+        .regression .tab-active { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+        .regression .btn-primary { background: linear-gradient(135deg, #a78bfa, #818cf8); border: none; border-radius: 10px; padding: 10px 20px; color: #0f172a; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .regression .btn-primary:disabled { opacity: 0.6; cursor: default; }
+        .regression .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .regression .section-label { color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; text-transform: uppercase; }
         .regression .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
         .regression .stat-card { margin-bottom: 0; }
         .regression .consec-card { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); }
@@ -219,7 +228,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
       `}</style>
 
       {/* From / To + Analyse */}
-      <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', padding: '16px' }}>
+      {!readOnly && <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', padding: '16px' }}>
         <div>
           <label style={labelStyle}>From Month</label>
           <select value={fromMonth} onChange={e => setFromMonth(e.target.value)} style={selectStyle}>
@@ -238,7 +247,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', flexBasis: '100%' }}>
           Compares each student&apos;s ratings on every indicator marked in both months, for {program} · {academicYear}.
         </div>
-      </div>
+      </div>}
 
       {error && <div className="card" style={{ color: '#fca5a5', borderColor: 'rgba(239,68,68,0.3)', fontSize: '13px' }}>{error}</div>}
 
@@ -332,17 +341,17 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
                 </div>
               </div>
 
-              {/* AI insights */}
-              <div className="card ai-card" style={{ padding: '20px' }}>
+              {/* AI insights: admins generate them; teachers only see ones that exist */}
+              {(!readOnly || insights) && <div className="card ai-card" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>✨ AI Insights</div>
                     {insights && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>Generated {formatDate(analysis.generated_at)}</div>}
                   </div>
-                  <button onClick={generateInsights} disabled={generating} className={insights ? 'btn-secondary' : 'btn-primary'}>
+                  {!readOnly && <button onClick={generateInsights} disabled={generating} className={insights ? 'btn-secondary' : 'btn-primary'}>
                     {generating ? <><span className="spinner" style={insights ? { borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#fff' } : undefined} />Generating...</>
                       : insights ? '🔄 Regenerate' : '✨ Generate AI Insights'}
-                  </button>
+                  </button>}
                 </div>
 
                 {!insights && !generating && (
@@ -361,7 +370,7 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
                     {aiList('💬 Parent Communication', recs?.parent_communication)}
                   </div>
                 )}
-              </div>
+              </div>}
             </>
           )}
         </>
@@ -371,7 +380,9 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
       <div style={{ marginTop: '24px' }}>
         <div className="section-label" style={{ marginBottom: '10px' }}>Previous analyses · {program}</div>
         {!history.length ? (
-          <div className="card" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>No analyses yet for {program}.</div>
+          <div className="card" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+            No analyses yet for {program}.{readOnly && ' Your school admin runs these from the admin Progress page.'}
+          </div>
         ) : history.map(h => (
           <button key={h.id} onClick={() => openAnalysis(h.id)} className={analysis?.id === h.id ? 'history-item history-active' : 'history-item'}>
             <span>

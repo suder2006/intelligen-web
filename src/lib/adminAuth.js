@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 const ADMIN_ROLES = ['school_admin', 'center_head', 'super_admin']
+const TEACHER_ROLES = ['teacher', 'staff']
 
 export const serviceSupabase = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,8 +9,9 @@ export const serviceSupabase = () => createClient(
 )
 
 // Routes that run with the service role skip RLS, so they check the caller
-// themselves: a signed-in admin of the requested school (or a super admin).
-export async function authorizeAdmin(request, schoolId) {
+// themselves: a signed-in user of the requested school (super admins: any school)
+// whose role is in `roles`.
+async function authorize(request, schoolId, roles) {
   if (!schoolId) return { error: 'school_id is required', status: 400 }
 
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
@@ -25,8 +27,20 @@ export async function authorizeAdmin(request, schoolId) {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !ADMIN_ROLES.includes(profile.role)) return { error: 'Forbidden', status: 403 }
+  if (!profile || !roles.includes(profile.role)) return { error: 'Forbidden', status: 403 }
   if (profile.role !== 'super_admin' && profile.school_id !== schoolId) return { error: 'Forbidden', status: 403 }
 
-  return { supabase, user }
+  return { supabase, user, profile }
+}
+
+export const authorizeAdmin = (request, schoolId) => authorize(request, schoolId, ADMIN_ROLES)
+
+// Admins, plus teachers/staff limited to the programs assigned to them in
+// staff_programs. `programs` is null for admins (no limit).
+export async function authorizeStaff(request, schoolId) {
+  const auth = await authorize(request, schoolId, [...ADMIN_ROLES, ...TEACHER_ROLES])
+  if (auth.error || ADMIN_ROLES.includes(auth.profile.role)) return { ...auth, programs: null }
+  const { data, error } = await auth.supabase.from('staff_programs').select('program').eq('staff_id', auth.user.id)
+  if (error) return { error: error.message, status: 500 }
+  return { ...auth, programs: data.map(p => p.program) }
 }
