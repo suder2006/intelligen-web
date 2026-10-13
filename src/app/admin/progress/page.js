@@ -4,18 +4,13 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
+import { TERMS, TERM_MONTHS } from '@/lib/progressTerms'
+import RegressionAnalysis from './RegressionAnalysis'
 
 // Programs come from curriculum_masters; these set the tab order, and any others follow alphabetically.
 const PROGRAM_ORDER = ['Playgroup', 'Nursery', 'LKG', 'UKG']
 const programRank = (p) => { const i = PROGRAM_ORDER.indexOf(p); return i < 0 ? PROGRAM_ORDER.length : i }
 const sortPrograms = (list) => [...list].sort((a, b) => programRank(a) - programRank(b) || a.localeCompare(b))
-const TERMS = ['Term 1', 'Term 2', 'Term 3']
-// Same term/month split as the teacher mobile app, so both write the same rows.
-const TERM_MONTHS = {
-  'Term 1': ['June', 'July', 'August'],
-  'Term 2': ['September', 'October', 'November', 'December'],
-  'Term 3': ['January', 'February', 'March'],
-}
 const thisYear = new Date().getFullYear()
 const CURRENT_AY = `${thisYear}-${thisYear + 1}`
 const ACADEMIC_YEARS = [-1, 0, 1].map(o => `${thisYear + o}-${thisYear + o + 1}`)
@@ -53,7 +48,7 @@ export default function AdminProgressPage() {
   const [academicYear, setAcademicYear] = useState(CURRENT_AY)
   const [term, setTerm] = useState(TERMS[0])
   const [month, setMonth] = useState(TERM_MONTHS[TERMS[0]][0])
-  const [view, setView] = useState('students') // 'students' | 'bulk'
+  const [view, setView] = useState('students') // 'students' | 'bulk' | 'regression'
 
   const [skills, setSkills] = useState([])
   const [students, setStudents] = useState([])
@@ -440,19 +435,26 @@ export default function AdminProgressPage() {
               {TERMS.map(t => <option key={t} value={t} style={{ background: '#1e293b' }}>{t}</option>)}
             </select>
           </div>
-          <div>
-            <label style={labelStyle}>Month</label>
-            <select value={month} onChange={e => setMonth(e.target.value)} style={selectStyle}>
-              {TERM_MONTHS[term].map(m => <option key={m} value={m} style={{ background: '#1e293b' }}>{m}</option>)}
-            </select>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+          {view !== 'regression' && (
+            <div>
+              <label style={labelStyle}>Month</label>
+              <select value={month} onChange={e => setMonth(e.target.value)} style={selectStyle}>
+                {TERM_MONTHS[term].map(m => <option key={m} value={m} style={{ background: '#1e293b' }}>{m}</option>)}
+              </select>
+            </div>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             <button onClick={() => setView('students')} className={view === 'students' ? 'tab tab-active' : 'tab'}>👶 Student List</button>
             <button onClick={() => setView('bulk')} className={view === 'bulk' ? 'tab tab-active' : 'tab'}>📥 Bulk Upload</button>
+            <button onClick={() => setView('regression')} className={view === 'regression' ? 'tab tab-active' : 'tab'}>📊 Regression Analysis</button>
           </div>
         </div>
 
-        {loading ? (
+        {/* Regression Analysis reads ratings server-side, so it doesn't wait on this month's skills loading. */}
+        {program && view === 'regression' ? (
+          <RegressionAnalysis schoolId={schoolId} program={program} academicYear={academicYear} term={term}
+            selectStyle={selectStyle} labelStyle={labelStyle} />
+        ) : loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
         ) : !program ? (
           <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.4)' }}>
