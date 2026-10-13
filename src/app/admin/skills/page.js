@@ -35,6 +35,9 @@ export default function AdminSkillsPage() {
   const [programs, setPrograms] = useState([])
   const [skillMaps, setSkillMaps] = useState([]) // {skill_id, program, term}
   const [expandedSkill, setExpandedSkill] = useState(null)
+  const [filterProgram, setFilterProgram] = useState('All')
+  const [filterTerm, setFilterTerm] = useState('All')
+  const [filterMonth, setFilterMonth] = useState('All')
 
   // Modals
   const [showSkillModal, setShowSkillModal] = useState(false)
@@ -185,6 +188,28 @@ const toggleAssignment = async (skillId, program, term, month) => {
   }
   await fetchAll()
 }
+
+// True when an assignment fits the program/term/month filters ('All' matches anything).
+const matchesFilter = (program, term, month) =>
+  (filterProgram === 'All' || program === filterProgram) &&
+  (filterTerm === 'All' || term === filterTerm) &&
+  (filterMonth === 'All' || month === filterMonth)
+
+const filterActive = filterProgram !== 'All'
+const visibleSkills = filterActive
+  // The open skill stays visible so it doesn't vanish while you edit its assignments.
+  ? skills.filter(s => s.id === expandedSkill || skillMaps.some(m => m.skill_id === s.id && matchesFilter(m.program, m.term, m.month)))
+  : skills
+
+const selectProgram = (p) => { setFilterProgram(p); setFilterTerm('All'); setFilterMonth('All') }
+const selectTerm = (t) => { setFilterTerm(t); setFilterMonth('All') }
+
+const filterBtnStyle = (active) => ({
+  padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: "'DM Sans', sans-serif",
+  border: `1px solid ${active ? '#a78bfa' : 'rgba(255,255,255,0.1)'}`,
+  background: active ? 'rgba(167,139,250,0.15)' : 'transparent',
+  color: active ? '#a78bfa' : 'rgba(255,255,255,0.45)'
+})
 
 const getSkillSummary = (skillId) => {
   const maps = skillMaps.filter(m => m.skill_id === skillId)
@@ -408,6 +433,37 @@ const getSkillSummary = (skillId) => {
             style={{ padding: '7px 14px', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px' }}>+ New Year</button>
         </div>
 
+        {/* Program → Term → Month filter */}
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '12px 14px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', width: '64px' }}>Program:</span>
+            {['All', ...programs].map(p => (
+              <button key={p} onClick={() => selectProgram(p)} style={filterBtnStyle(filterProgram === p)}>{p}</button>
+            ))}
+          </div>
+          {filterProgram !== 'All' && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', width: '64px' }}>Term:</span>
+              {['All', ...TERMS].map(t => (
+                <button key={t} onClick={() => selectTerm(t)} style={filterBtnStyle(filterTerm === t)}>{t === 'All' ? 'All Terms' : t}</button>
+              ))}
+            </div>
+          )}
+          {filterProgram !== 'All' && filterTerm !== 'All' && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', width: '64px' }}>Month:</span>
+              {['All', ...TERM_MONTHS[filterTerm]].map(m => (
+                <button key={m} onClick={() => setFilterMonth(m)} style={filterBtnStyle(filterMonth === m)}>{m}</button>
+              ))}
+            </div>
+          )}
+          {filterActive && (
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+              Showing {visibleSkills.length} of {skills.length} skills
+            </div>
+          )}
+        </div>
+
         {/* Guide */}
         <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '12px', padding: '14px 18px', marginBottom: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.8' }}>
           <strong style={{ color: '#38bdf8' }}>How to set up:</strong><br/>
@@ -423,7 +479,14 @@ const getSkillSummary = (skillId) => {
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎯</div>
             <div style={{ fontSize: '16px', marginBottom: '8px' }}>No skills added yet for {academicYear}</div>
           </div>
-        ) : skills.map(skill => {
+        ) : visibleSkills.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+            <div style={{ fontSize: '16px', marginBottom: '8px' }}>
+              No skills assigned to {filterProgram}{filterTerm !== 'All' ? ` · ${filterTerm}` : ''}{filterMonth !== 'All' ? ` · ${filterMonth}` : ''}
+            </div>
+            <button onClick={() => selectProgram('All')} className="btn-secondary" style={{ marginTop: '8px' }}>Show all skills</button>
+          </div>
+        ) : visibleSkills.map(skill => {
           const summary = getSkillSummary(skill.id)
           return (
             <div key={skill.id} className="skill-card">
@@ -436,11 +499,26 @@ const getSkillSummary = (skillId) => {
                     </span>
                     {summary ? (
                       Object.entries(summary).map(([prog, termMap]) => (
-                        Object.entries(termMap).map(([term, months]) => (
-                          <span key={`${prog}-${term}`} style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.2)' }}>
-                            {prog} · {term}: {months.join(', ')}
-                          </span>
-                        ))
+                        Object.entries(termMap).map(([term, months]) => {
+                          // Highlight chips that match the active filter; dim the rest.
+                          const hit = filterActive && months.some(m => matchesFilter(prog, term, m))
+                          const dim = filterActive && !hit
+                          return (
+                            <span key={`${prog}-${term}`} style={{
+                              padding: '2px 8px', borderRadius: '20px', fontSize: '11px',
+                              background: hit ? 'rgba(16,185,129,0.18)' : 'rgba(167,139,250,0.15)',
+                              color: hit ? '#34d399' : '#a78bfa',
+                              border: `1px solid ${hit ? 'rgba(16,185,129,0.4)' : 'rgba(167,139,250,0.2)'}`,
+                              opacity: dim ? 0.45 : 1
+                            }}>
+                              {prog} · {term}: {months.map((m, i) => (
+                                <span key={m} style={{ fontWeight: hit && matchesFilter(prog, term, m) && filterMonth !== 'All' ? '800' : 'inherit' }}>
+                                  {i > 0 ? ', ' : ''}{m}
+                                </span>
+                              ))}
+                            </span>
+                          )
+                        })
                       ))
                     ) : (
                       <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned yet</span>
