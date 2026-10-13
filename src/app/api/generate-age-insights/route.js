@@ -10,33 +10,32 @@ const SYSTEM_PROMPT = 'You are an expert early childhood development specialist 
 
 const indicatorName = (i) => [i.skill_area, i.indicator].filter(Boolean).join(' › ') || 'Unnamed indicator'
 
-function childBlock(child, rating, threshold, intro) {
-  const items = child[rating]
-  const lines = items.slice(0, MAX_INDICATORS).map(i =>
-    `- ${indicatorName(i)}: ${rating === 'emerging' ? `Emerging (Expected by ${threshold} months)` : 'Developing'}`)
+const ageText = (months) => months == null ? 'not recorded' : `${Math.floor(months / 12)} years ${months % 12} months`
+
+// Every indicator the child hasn't achieved this month, Emerging first.
+function childBlock(child) {
+  const items = [
+    ...child.emerging.map(i => `- ${indicatorName(i)}: Emerging`),
+    ...child.developing.map(i => `- ${indicatorName(i)}: Developing`),
+  ]
+  const lines = items.slice(0, MAX_INDICATORS)
   if (items.length > MAX_INDICATORS) lines.push(`- ...and ${items.length - MAX_INDICATORS} more`)
-  return `Student: ${child.student_name}, Age: ${child.age_months} months\n${intro}:\n${lines.join('\n')}`
+  return `Student: ${child.student_name}, Age: ${ageText(child.age_months)}\nIndicators not achieved:\n${lines.join('\n')}`
 }
 
-function concernList(children, rating, threshold, intro) {
-  if (!children.length) return 'None'
-  return children.map(c => childBlock(c, rating, threshold, intro)).join('\n\n')
-}
+const concernList = (children) => children.length ? children.map(childBlock).join('\n\n') : 'None'
 
 function buildPrompt({ program, month, data, high, medium }) {
-  const { min_age_months, max_age_months, upper_threshold } = data.age_range
   const omitted = (data.high?.length || 0) + (data.medium?.length || 0) - high.length - medium.length
-  return `Analyze this age-appropriate assessment for ${program} class for ${month}:
+  return `Analyze this monthly assessment for ${program} class for ${month}.
 
-Program age range: ${min_age_months}-${max_age_months} months
+These children have not achieved their monthly indicators. Every child in ${program} is expected to achieve all of this month's indicators. Please provide immediate intervention strategies.
 
-CHILDREN NEEDING IMMEDIATE ATTENTION:
+HIGH CONCERN (has Emerging indicators - address immediately):
+${concernList(high)}
 
-HIGH CONCERN (Emerging):
-${concernList(high, 'emerging', upper_threshold, 'Indicators not achieved')}
-
-MEDIUM CONCERN (Developing):
-${concernList(medium, 'developing', upper_threshold, 'Indicators in progress')}
+MEDIUM CONCERN (has Developing indicators - monitor and support):
+${concernList(medium)}
 ${omitted > 0 ? `\n(${omitted} more flagged children are not listed here.)\n` : ''}
 Please provide for EACH child:
 1. Immediate classroom strategies

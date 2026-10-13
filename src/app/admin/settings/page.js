@@ -83,7 +83,7 @@ export default function SchoolSettingsPage() {
   const [savingDrive, setSavingDrive] = useState(false)
   const [testingDrive, setTestingDrive] = useState(false)
   const [driveResult, setDriveResult] = useState(null)
-  // Program age ranges (program_settings), used by the Age Check on the progress pages.
+  // Program age ranges (program_settings). Kept for future use; the Age Check does not read them.
   const [ageRanges, setAgeRanges] = useState([])
   const [savingAges, setSavingAges] = useState(false)
   const [agesResult, setAgesResult] = useState(null)
@@ -270,7 +270,7 @@ const setAgeRange = (program, field, value) => {
   setAgesResult(null)
 }
 
-// Same formula as the Age Check: children older than this are expected to be Achieved.
+// The middle of the range, shown for reference.
 const upperThreshold = (r) => {
   const min = Number(r.min_age_months), max = Number(r.max_age_months)
   if (r.min_age_months === '' || r.max_age_months === '' || !(max > min)) return null
@@ -981,8 +981,8 @@ const startEditSubAdmin = (sa) => {
 <div className="section">
   <div className="section-title">🎂 Program Age Ranges</div>
   <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
-    ℹ️ Used by the 🎯 Age Check on the Progress page. Children older than the upper threshold (the middle of the range)
-    are flagged if their indicators are still Emerging or Developing.
+    ℹ️ The expected age range for each program, kept for future use. The 🎯 Age Check on the Progress page does not use these:
+    it flags every child with Emerging or Developing indicators, whatever their age.
   </div>
 
   {ageRanges.length === 0 ? (

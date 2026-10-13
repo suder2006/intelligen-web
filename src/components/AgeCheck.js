@@ -3,39 +3,68 @@ import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { api, formatDate, parseAi, panelCss } from '@/lib/progressClient'
 
-const ageLabel = (months) => months == null ? 'DOB missing' : `${Math.floor(months / 12)}y ${months % 12}m (${months} mo)`
+// Age is shown for reference only; it plays no part in the flagging.
+const ageLabel = (months) => months == null ? '' : `Age ${Math.floor(months / 12)}y ${months % 12}m`
 // "July 2026" from the academic year: June–December fall in its first year, January–March in the next.
 const monthLabel = (month, academicYear) =>
   `${month} ${parseInt(academicYear, 10) + (['January', 'February', 'March'].includes(month) ? 1 : 0)}`
 const indicatorLabel = (i) => [i.development_area, i.skill_area, i.indicator].filter(Boolean).join(' › ') || 'Unnamed indicator'
 
 const CONCERNS = {
-  high: { key: 'emerging', title: '🔴 High Concern', sub: 'Emerging, and older than the upper threshold', badge: 'Needs immediate attention!', ratingLabel: '🌱 Emerging', color: '#fca5a5', cls: 'concern-high' },
-  medium: { key: 'developing', title: '🟡 Medium Concern', sub: 'Still Developing, and older than the upper threshold', badge: 'Monitor closely', ratingLabel: '🌿 Developing', color: '#fcd34d', cls: 'concern-medium' },
+  high: { title: '🔴 High Concern', sub: 'Indicators still Emerging — address immediately', badge: 'Needs immediate attention!', color: '#fca5a5', cls: 'concern-high' },
+  medium: { title: '🟡 Medium Concern', sub: 'Indicators still Developing — monitor and support', badge: 'Monitor and support', color: '#fcd34d', cls: 'concern-medium' },
 }
+const RATING = {
+  emerging: { label: '🌱 Emerging', color: '#fca5a5' },
+  developing: { label: '🌿 Developing', color: '#fcd34d' },
+}
+// Every indicator a child hasn't achieved, Emerging first.
+const unachieved = (child) => [
+  ...child.emerging.map(i => ({ ...i, rating: 'emerging' })),
+  ...child.developing.map(i => ({ ...i, rating: 'developing' })),
+]
 
 // isAdmin=false (teacher view): read only, with no Check button and no AI insights; opens the latest
 // saved check for the program. The API also leaves the AI fields out for non-admins.
 export default function AgeCheck({ schoolId, program, academicYear, term, month, isAdmin = false }) {
-  const [analysis, setAnalysis] = useState(null) // an age_appropriate_insights row
+  const [loaded, setAnalysis] = useState(null) // an age_appropriate_insights row
   const [checking, setChecking] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
   const [loadingId, setLoadingId] = useState(null)
+  // Only show a check for the program currently selected (switching program clears it).
+  const analysis = loaded?.program === program ? loaded : null
 
-  const fetchHistory = async () => {
+  const openAnalysis = async (id, scroll = true) => {
+    setLoadingId(id)
+    setError('')
     try {
-      const { analyses } = await api(`/api/progress/age-check?school_id=${schoolId}&program=${encodeURIComponent(program)}`)
-      setHistory(analyses)
-      if (!isAdmin && analyses.length) openAnalysis(analyses[0].id, false)
+      setAnalysis(await api(`/api/progress/age-check?school_id=${schoolId}&id=${id}`))
+      if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e) {
-      setHistory([])
+      setError(e.message)
     }
+    setLoadingId(null)
   }
 
-  useEffect(() => { setAnalysis(null); setError('') }, [program, academicYear])
-  useEffect(() => { if (schoolId && program) fetchHistory() }, [schoolId, program])
+  const loadHistory = () => api(`/api/progress/age-check?school_id=${schoolId}&program=${encodeURIComponent(program)}`)
+    .then(r => r.analyses).catch(() => [])
+
+  const applyHistory = (analyses) => {
+    setHistory(analyses)
+    setError('')
+    if (!isAdmin && analyses.length) openAnalysis(analyses[0].id, false)
+  }
+
+  const fetchHistory = async () => applyHistory(await loadHistory())
+
+  useEffect(() => {
+    if (!schoolId || !program) return
+    let cancelled = false
+    loadHistory().then(analyses => { if (!cancelled) applyHistory(analyses) })
+    return () => { cancelled = true }
+  }, [schoolId, program])
 
   const runCheck = async () => {
     setChecking(true)
@@ -50,18 +79,6 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
       setError(e.message)
     }
     setChecking(false)
-  }
-
-  const openAnalysis = async (id, scroll = true) => {
-    setLoadingId(id)
-    setError('')
-    try {
-      setAnalysis(await api(`/api/progress/age-check?school_id=${schoolId}&id=${id}`))
-      if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (e) {
-      setError(e.message)
-    }
-    setLoadingId(null)
   }
 
   const generateInsights = async () => {
@@ -90,7 +107,6 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
 
   const data = analysis?.analysis_data
   const summary = data?.summary || {}
-  const range = data?.age_range || {}
   const insights = isAdmin ? parseAi(analysis?.ai_insights) : null
   const recs = isAdmin ? parseAi(analysis?.ai_recommendations) : null
   const flagged = (data?.high?.length || 0) + (data?.medium?.length || 0)
@@ -102,31 +118,29 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
     const summarySheet = XLSX.utils.aoa_to_sheet([
       ['Program', a.program], ['Academic Year', a.academic_year], ['Term', a.term],
       ['Assessment Month', monthLabel(a.month, a.academic_year)], ['Checked On', formatDate(a.created_at)], [],
-      ['Age Range (months)', `${range.min_age_months}-${range.max_age_months}`], ['Upper Threshold (months)', range.upper_threshold],
-      ['Ages Calculated As Of', data.reference_date], [],
-      ['High concern', summary.high_concern], ['Medium concern', summary.medium_concern], ['On track', summary.on_track],
-      ['Not assessed this month', summary.not_assessed], ['Date of birth missing', summary.missing_dob], ['Total students', summary.total_students],
+      ['High concern (Emerging)', summary.high_concern], ['Medium concern (Developing)', summary.medium_concern], ['On track (all Achieved)', summary.on_track],
+      ['Not assessed this month', summary.not_assessed], ['Total students', summary.total_students],
     ])
     summarySheet['!cols'] = [{ wch: 26 }, { wch: 24 }]
     XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary')
 
     const flaggedRows = ['high', 'medium'].flatMap(level => (data[level] || []).flatMap(c =>
-      c[CONCERNS[level].key].map(i => [c.student_name, c.age_months, level === 'high' ? 'High' : 'Medium',
-        i.development_area, i.skill_area, i.indicator, CONCERNS[level].key])))
+      unachieved(c).map(i => [c.student_name, a.program, a.month, level === 'high' ? 'High' : 'Medium',
+        i.development_area, i.skill_area, i.indicator, i.rating === 'emerging' ? 'Emerging' : 'Developing'])))
     const flaggedSheet = XLSX.utils.aoa_to_sheet([
-      ['Student Name', 'Age (months)', 'Concern', 'Development Area', 'Skill Area', 'Indicator', 'Rating'], ...flaggedRows,
+      ['Student Name', 'Program', 'Month', 'Concern', 'Development Area', 'Skill Area', 'Indicator', 'Rating'], ...flaggedRows,
     ])
-    flaggedSheet['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 30 }, { wch: 40 }, { wch: 12 }]
+    flaggedSheet['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 30 }, { wch: 40 }, { wch: 12 }]
     XLSX.utils.book_append_sheet(wb, flaggedSheet, 'Flagged Indicators')
 
-    const statusLabel = { high: 'High concern', medium: 'Medium concern', on_track: 'On track', not_assessed: 'Not assessed', missing_dob: 'DOB missing' }
-    const allStudents = ['high', 'medium', 'on_track', 'not_assessed', 'missing_dob'].flatMap(k => data[k] || [])
+    const statusLabel = { high: 'High concern', medium: 'Medium concern', on_track: 'On track', not_assessed: 'Not assessed' }
+    const allStudents = ['high', 'medium', 'on_track', 'not_assessed'].flatMap(k => data[k] || [])
     const studentsSheet = XLSX.utils.aoa_to_sheet([
-      ['Student Name', 'Date of Birth', 'Age (months)', 'Above Threshold?', 'Status', 'Indicators Rated', 'Achieved', 'Developing', 'Emerging'],
-      ...allStudents.map(s => [s.student_name, s.date_of_birth || '', s.age_months ?? '', s.above_threshold ? 'Yes' : 'No',
-        statusLabel[s.status], s.rated, s.achieved, s.developing.length, s.emerging.length]),
+      ['Student Name', 'Status', 'Indicators Rated', 'Achieved', 'Developing', 'Emerging', 'Age (reference)'],
+      ...allStudents.map(s => [s.student_name, statusLabel[s.status], s.rated, s.achieved, s.developing.length, s.emerging.length,
+        ageLabel(s.age_months).replace('Age ', '')]),
     ])
-    studentsSheet['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 11 }, { wch: 10 }]
+    studentsSheet['!cols'] = [{ wch: 24 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 11 }, { wch: 10 }, { wch: 15 }]
     XLSX.utils.book_append_sheet(wb, studentsSheet, 'All Students')
 
     if (insights) {
@@ -164,24 +178,21 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
     return (
       <div className={`card ${c.cls}`}>
         <div style={{ fontWeight: 700, color: c.color }}>{c.title} · {children.length}</div>
-        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', margin: '2px 0 6px' }}>{c.sub} ({range.upper_threshold} months)</div>
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', margin: '2px 0 6px' }}>{c.sub}</div>
         {children.map(child => (
           <div key={child.student_id} className="child">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div>
                 <span style={{ fontWeight: 700 }}>{child.student_name}</span>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}> · {ageLabel(child.age_months)}</span>
+                {child.age_months != null && <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px' }}> · {ageLabel(child.age_months)}</span>}
               </div>
               <span className={`badge badge-${level}`}>{c.badge}</span>
             </div>
             <ul className="indicators">
-              {child[c.key].map(i => <li key={i.activity_id}><span style={{ color: c.color }}>{c.ratingLabel}</span> {indicatorLabel(i)}</li>)}
+              {unachieved(child).map(i => (
+                <li key={i.activity_id}><span style={{ color: RATING[i.rating].color }}>{RATING[i.rating].label}</span> {indicatorLabel(i)}</li>
+              ))}
             </ul>
-            {level === 'high' && child.developing.length > 0 && (
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '4px' }}>
-                + {child.developing.length} indicator{child.developing.length === 1 ? '' : 's'} still Developing
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -229,7 +240,7 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
       {isAdmin && (
         <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', padding: '16px' }}>
           <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '13px', lineHeight: 1.5 }}>
-            Flags children older than the upper half of the {program} age range whose {month} indicators are still Emerging or Developing.
+            Flags every {program} child whose {month} indicators are still Emerging or Developing. All children are expected to achieve each month&apos;s indicators.
           </div>
           <button onClick={runCheck} disabled={checking} className="btn-primary">
             {checking ? <><span className="spinner" />Checking...</> : '🎯 Check Age Appropriateness'}
@@ -249,9 +260,9 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
           {/* Program info */}
           <div className="card info">
             <div><div className="info-label">Program</div><div className="info-value">{analysis.program}</div></div>
-            <div><div className="info-label">Age Range</div><div className="info-value">{range.min_age_months}-{range.max_age_months} months</div></div>
-            <div><div className="info-label">Upper Threshold</div><div className="info-value">{range.upper_threshold} months</div></div>
             <div><div className="info-label">Assessment Month</div><div className="info-value">{monthLabel(analysis.month, analysis.academic_year)}</div></div>
+            <div><div className="info-label">Term</div><div className="info-value">{analysis.term}</div></div>
+            <div><div className="info-label">Students</div><div className="info-value">{summary.total_students}</div></div>
           </div>
 
           <div className="stats">
@@ -260,9 +271,8 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
             {statCard('🟢', 'On Track', summary.on_track, '#10b981')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', marginBottom: '16px' }}>
-            Ages as of {formatDate(data.reference_date)}.
-            {summary.not_assessed > 0 && ` ${summary.not_assessed} not assessed in ${analysis.month}.`}
-            {summary.missing_dob > 0 && ` ${summary.missing_dob} without a date of birth can't be checked.`}
+            🔴 any indicator Emerging · 🟡 any Developing, none Emerging · 🟢 all Achieved
+            {summary.not_assessed > 0 && ` · ${summary.not_assessed} not assessed in ${analysis.month}`}
           </div>
 
           {concernSection('high')}
@@ -270,11 +280,8 @@ export default function AgeCheck({ schoolId, program, academicYear, term, month,
           {flagged === 0 && (
             <div className="card" style={{ color: '#6ee7b7', fontSize: '13px' }}>✅ No children flagged for {analysis.month}.</div>
           )}
-          {chipList('🟢 On Track', data.on_track, '#6ee7b7', s => s.on_track_reason === 'below_threshold'
-            ? `${ageLabel(s.age_months)}, below threshold`
-            : `${s.achieved}/${s.rated} achieved`)}
+          {chipList('🟢 On Track', data.on_track, '#6ee7b7', s => `${s.achieved}/${s.rated} achieved`)}
           {chipList('⚪ Not Assessed', data.not_assessed, 'rgba(255,255,255,0.6)', s => `no ${analysis.month} ratings`)}
-          {chipList('⚪ Date of Birth Missing', data.missing_dob, 'rgba(255,255,255,0.6)', () => 'add it on the student record')}
 
           {/* AI insights: admin only */}
           {isAdmin && flagged > 0 && (
