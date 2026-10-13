@@ -5,7 +5,10 @@ import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 
-const PROGRAMS = ['Playgroup', 'Nursery', 'LKG', 'UKG']
+// Programs come from curriculum_masters; these set the tab order, and any others follow alphabetically.
+const PROGRAM_ORDER = ['Playgroup', 'Nursery', 'LKG', 'UKG']
+const programRank = (p) => { const i = PROGRAM_ORDER.indexOf(p); return i < 0 ? PROGRAM_ORDER.length : i }
+const sortPrograms = (list) => [...list].sort((a, b) => programRank(a) - programRank(b) || a.localeCompare(b))
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 // Same term/month split as the teacher mobile app, so both write the same rows.
 const TERM_MONTHS = {
@@ -45,7 +48,8 @@ const indicatorHeader = (skill, act) => `${skill.name} - ${act.name}`
 
 export default function AdminProgressPage() {
   const { schoolId, profile } = useSchool()
-  const [program, setProgram] = useState(PROGRAMS[0])
+  const [programs, setPrograms] = useState([])
+  const [program, setProgram] = useState('')
   const [academicYear, setAcademicYear] = useState(CURRENT_AY)
   const [term, setTerm] = useState(TERMS[0])
   const [month, setMonth] = useState(TERM_MONTHS[TERMS[0]][0])
@@ -63,11 +67,21 @@ export default function AdminProgressPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null) // { saved, skipped, errors: [{ row, name, message }] }
 
-  useEffect(() => { if (schoolId) fetchStudents() }, [schoolId, program])
-  useEffect(() => { if (schoolId) fetchSkills() }, [schoolId, program, academicYear, term, month])
+  useEffect(() => { if (schoolId) fetchPrograms() }, [schoolId])
+  useEffect(() => { if (schoolId && program) fetchStudents() }, [schoolId, program])
+  useEffect(() => { if (schoolId && program) fetchSkills() }, [schoolId, program, academicYear, term, month])
   useEffect(() => { if (selectedStudent) fetchRatings() }, [selectedStudent, academicYear, term, month])
 
   const indicators = skills.flatMap(skill => (skill.skill_activities || []).map(act => ({ skill, act, header: indicatorHeader(skill, act) })))
+
+  const fetchPrograms = async () => {
+    const { data } = await supabase.from('curriculum_masters').select('value')
+      .eq('type', 'program').eq('school_id', schoolId)
+    const list = sortPrograms([...new Set((data || []).map(p => p.value).filter(Boolean))])
+    setPrograms(list)
+    if (list.length) setProgram(list[0])
+    else setLoading(false)
+  }
 
   const fetchStudents = async () => {
     setSelectedStudent(null)
@@ -407,7 +421,7 @@ export default function AdminProgressPage() {
 
         {/* Program tabs */}
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          {PROGRAMS.map(p => (
+          {programs.map(p => (
             <button key={p} onClick={() => setProgram(p)} className={program === p ? 'tab tab-active' : 'tab'}>{p}</button>
           ))}
         </div>
@@ -440,6 +454,10 @@ export default function AdminProgressPage() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
+        ) : !program ? (
+          <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.4)' }}>
+            No programs set up yet. Add programs on the Curriculum page.
+          </div>
         ) : view === 'students' ? renderStudentView() : renderBulkView()}
       </div>
     </div>
