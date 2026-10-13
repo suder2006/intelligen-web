@@ -1,10 +1,8 @@
 export const dynamic = 'force-dynamic'
-import { authorizeAdmin, authorizeStaff } from '@/lib/adminAuth'
+import { authorizeAdmin } from '@/lib/adminAuth'
+import { getAnalyses } from '@/lib/analysisGet'
 import { ACADEMIC_MONTHS, termOfMonth } from '@/lib/progressTerms'
-
-const LEVEL = { emerging: 0, developing: 1, achieved: 2 }
-const PAGE = 1000 // PostgREST returns at most 1000 rows per request
-const ID_CHUNK = 100 // keeps the student_id=in.(...) filter well under URL limits
+import { RATING_LEVEL as LEVEL, fetchRatings, fetchActivities, activityLabels } from '@/lib/progressData'
 
 // achieved→developing / developing→emerging = mild, achieved→emerging = severe;
 // emerging→developing / developing→achieved = good, emerging→achieved = excellent.
@@ -13,28 +11,6 @@ function classify(from, to) {
   if (diff === 0) return { type: 'stable', severity: 'stable' }
   if (diff < 0) return { type: 'regression', severity: diff === -1 ? 'mild' : 'severe' }
   return { type: 'improvement', severity: diff === 1 ? 'good' : 'excellent' }
-}
-
-// Every rating for these students in the given months, as { month: { studentId: { activityId: rating } } }.
-async function fetchRatings(supabase, studentIds, academicYear, months) {
-  const byMonth = Object.fromEntries(months.map(m => [m, {}]))
-  for (let i = 0; i < studentIds.length; i += ID_CHUNK) {
-    const ids = studentIds.slice(i, i + ID_CHUNK)
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase.from('progress_ratings')
-        .select('student_id, activity_id, term, month, rating')
-        .in('student_id', ids).eq('academic_year', academicYear).in('month', months)
-        .order('id').range(from, from + PAGE - 1)
-      if (error) throw new Error(error.message)
-      data.forEach(r => {
-        // Rows always carry the term their month belongs to; ignore any that don't.
-        if (!LEVEL.hasOwnProperty(r.rating) || r.term !== termOfMonth(r.month)) return
-        ;(byMonth[r.month][r.student_id] ||= {})[r.activity_id] = r.rating
-      })
-      if (data.length < PAGE) break
-    }
-  }
-  return byMonth
 }
 
 // Per student per activity rated in both months.
@@ -47,18 +23,6 @@ function compare(fromRatings, toRatings) {
     })
   })
   return out
-}
-
-async function fetchActivities(supabase, activityIds) {
-  const map = {}
-  for (let i = 0; i < activityIds.length; i += ID_CHUNK) {
-    const { data, error } = await supabase.from('skill_activities')
-      .select('id, name, skill_masters(name, development_area)')
-      .in('id', activityIds.slice(i, i + ID_CHUNK))
-    if (error) throw new Error(error.message)
-    data.forEach(a => { map[a.id] = a })
-  }
-  return map
 }
 
 export async function POST(request) {
@@ -104,9 +68,7 @@ export async function POST(request) {
       return {
         ...c,
         student_name: studentById[c.student_id]?.full_name || 'Unknown',
-        development_area: act?.skill_masters?.development_area?.trim() || '',
-        skill_area: act?.skill_masters?.name || '',
-        indicator: act?.name || '',
+        ...activityLabels(act),
         consecutive,
         // The student regressed on this exact indicator last period too.
         same_indicator: consecutive && prevRegressed[c.student_id].has(c.activity_id),
@@ -171,44 +133,6 @@ export async function POST(request) {
   }
 }
 
-// ?school_id=..&id=..  → one saved analysis in full
-// ?school_id=..[&program=..] → recent analyses, without the bulky regression rows
-// Admins see every program; teachers/staff only the programs assigned to them (read only),
-// and never the AI insights, which are admin only.
-export async function GET(request) {
-  try {
-    const params = new URL(request.url).searchParams
-    const schoolId = params.get('school_id')
-    const auth = await authorizeStaff(request, schoolId)
-    if (auth.error) return Response.json({ error: auth.error }, { status: auth.status })
-    const { supabase, programs } = auth
-    const isAdmin = !programs
-    const allowed = (program) => isAdmin || programs.includes(program)
-
-    const id = params.get('id')
-    if (id) {
-      const { data, error } = await supabase.from('progress_insights').select('*')
-        .eq('id', id).eq('school_id', schoolId).maybeSingle()
-      if (error) throw new Error(error.message)
-      if (!data || !allowed(data.program)) return Response.json({ error: 'Analysis not found' }, { status: 404 })
-      if (isAdmin) return Response.json(data)
-      const { ai_insights, ai_recommendations, generated_at, ...analysis } = data
-      return Response.json(analysis)
-    }
-
-    let query = supabase.from('progress_insights')
-      .select('id, program, academic_year, term, from_month, to_month, created_at, generated_at, ai_insights, summary:regression_data->summary')
-      .eq('school_id', schoolId).order('created_at', { ascending: false }).limit(30)
-    const program = params.get('program')
-    if (program && !allowed(program)) return Response.json({ error: 'Forbidden' }, { status: 403 })
-    if (program) query = query.eq('program', program)
-    else if (programs) query = query.in('program', programs)
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return Response.json({
-      analyses: data.map(({ ai_insights, generated_at, ...a }) => (isAdmin ? { ...a, generated_at, has_insights: !!ai_insights } : a)),
-    })
-  } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 })
-  }
-}
+export const GET = (request) => getAnalyses(request, {
+  table: 'progress_insights', dataColumn: 'regression_data', periodColumns: 'from_month, to_month',
+})

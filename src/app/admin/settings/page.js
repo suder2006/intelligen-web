@@ -83,7 +83,11 @@ export default function SchoolSettingsPage() {
   const [savingDrive, setSavingDrive] = useState(false)
   const [testingDrive, setTestingDrive] = useState(false)
   const [driveResult, setDriveResult] = useState(null)
-      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins(); fetchDriveSettings() } }, [schoolId])
+  // Program age ranges (program_settings), used by the Age Check on the progress pages.
+  const [ageRanges, setAgeRanges] = useState([])
+  const [savingAges, setSavingAges] = useState(false)
+  const [agesResult, setAgesResult] = useState(null)
+      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins(); fetchDriveSettings(); fetchAgeRanges() } }, [schoolId])
 
 
   const authHeader = async () => {
@@ -248,6 +252,47 @@ const testDrive = async () => {
     setDriveResult({ ok: false, message: `❌ ${e.message}` })
   }
   setTestingDrive(false)
+}
+
+const fetchAgeRanges = async () => {
+  try {
+    const res = await fetch(`/api/admin/program-settings?school_id=${schoolId}`, { headers: await authHeader() })
+    if (!res.ok) return
+    const { programs } = await res.json()
+    setAgeRanges(programs.map(p => ({ program: p.program, min_age_months: p.min_age_months ?? '', max_age_months: p.max_age_months ?? '' })))
+  } catch (e) {
+    // Leave the section empty; the rest of the page still works.
+  }
+}
+
+const setAgeRange = (program, field, value) => {
+  setAgeRanges(rows => rows.map(r => r.program === program ? { ...r, [field]: value } : r))
+  setAgesResult(null)
+}
+
+// Same formula as the Age Check: children older than this are expected to be Achieved.
+const upperThreshold = (r) => {
+  const min = Number(r.min_age_months), max = Number(r.max_age_months)
+  if (r.min_age_months === '' || r.max_age_months === '' || !(max > min)) return null
+  return min + (max - min) / 2
+}
+
+const saveAgeRanges = async () => {
+  setSavingAges(true)
+  setAgesResult(null)
+  try {
+    const res = await fetch('/api/admin/program-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify({ school_id: schoolId, settings: ageRanges })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Could not save')
+    setAgesResult({ ok: true, message: '✅ Age ranges saved' })
+  } catch (e) {
+    setAgesResult({ ok: false, message: `❌ ${e.message}` })
+  }
+  setSavingAges(false)
 }
 
 const fetchSubAdmins = async () => {
@@ -930,6 +975,67 @@ const startEditSubAdmin = (sa) => {
       {savingDrive ? '⏳ Saving...' : '💾 Save Drive Settings'}
     </button>
   </div>
+</div>
+
+{/* ===== PROGRAM AGE RANGES ===== */}
+<div className="section">
+  <div className="section-title">🎂 Program Age Ranges</div>
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
+    ℹ️ Used by the 🎯 Age Check on the Progress page. Children older than the upper threshold (the middle of the range)
+    are flagged if their indicators are still Emerging or Developing.
+  </div>
+
+  {ageRanges.length === 0 ? (
+    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '16px' }}>
+      No programs yet. Add them under Curriculum → Master Lists → Programs.
+    </div>
+  ) : (
+    <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: '480px' }}>
+        <thead>
+          <tr style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', textAlign: 'left' }}>
+            <th style={{ padding: '8px', fontWeight: 600 }}>Program</th>
+            <th style={{ padding: '8px', fontWeight: 600 }}>Min age (months)</th>
+            <th style={{ padding: '8px', fontWeight: 600 }}>Max age (months)</th>
+            <th style={{ padding: '8px', fontWeight: 600 }}>Upper threshold</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ageRanges.map(r => {
+            const threshold = upperThreshold(r)
+            const invalid = r.min_age_months !== '' && r.max_age_months !== '' && threshold == null
+            return (
+              <tr key={r.program} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <td style={{ padding: '8px', fontWeight: 600 }}>{r.program}</td>
+                <td style={{ padding: '8px' }}>
+                  <input type='number' min='0' step='1' value={r.min_age_months} onChange={e => setAgeRange(r.program, 'min_age_months', e.target.value)}
+                    placeholder='e.g. 48' style={{ ...inputStyle, marginBottom: 0, maxWidth: '120px' }} />
+                </td>
+                <td style={{ padding: '8px' }}>
+                  <input type='number' min='0' step='1' value={r.max_age_months} onChange={e => setAgeRange(r.program, 'max_age_months', e.target.value)}
+                    placeholder='e.g. 60' style={{ ...inputStyle, marginBottom: 0, maxWidth: '120px' }} />
+                </td>
+                <td style={{ padding: '8px', color: invalid ? '#f87171' : threshold == null ? 'rgba(255,255,255,0.3)' : '#34d399', fontWeight: 600 }}>
+                  {invalid ? 'Max must be more than min' : threshold == null ? '—' : `${threshold} months`}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  {agesResult && (
+    <div style={{ background: agesResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${agesResult.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: agesResult.ok ? '#34d399' : '#f87171' }}>
+      {agesResult.message}
+    </div>
+  )}
+
+  <button onClick={saveAgeRanges} disabled={savingAges || ageRanges.length === 0}
+    style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+    {savingAges ? '⏳ Saving...' : '💾 Save Age Ranges'}
+  </button>
 </div>
 
             {/* Save Button */}

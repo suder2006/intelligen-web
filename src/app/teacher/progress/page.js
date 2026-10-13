@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import RegressionAnalysis from '@/components/RegressionAnalysis'
+import AgeCheck from '@/components/AgeCheck'
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
@@ -52,7 +53,7 @@ export default function TeacherProgressPage() {
   const [saved, setSaved] = useState(false)
   const [sent, setSent] = useState(false)
   const [alreadySent, setAlreadySent] = useState(false)
-  const [view, setView] = useState('entry') // 'entry' | 'regression'
+  const [view, setView] = useState('entry') // 'entry' | 'regression' | 'age'
   const router = useRouter()
 
   useEffect(() => { loadTeacher() }, [])
@@ -266,9 +267,10 @@ const fetchProgress = async () => {
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <button className={`term-btn ${view === 'entry' ? 'active' : ''}`} onClick={() => setView('entry')}>✏️ Progress Entry</button>
           <button className={`term-btn ${view === 'regression' ? 'active' : ''}`} onClick={() => setView('regression')}>📊 Regression Analysis</button>
+          <button className={`term-btn ${view === 'age' ? 'active' : ''}`} onClick={() => setView('age')}>🎯 Age Check</button>
         </div>
 
-        {view === 'regression' ? (
+        {view === 'regression' || view === 'age' ? (
           <>
             {teacherPrograms.length > 1 && (
               <div className="card" style={{ padding: '16px' }}>
@@ -280,8 +282,13 @@ const fetchProgress = async () => {
               </div>
             )}
             {selectedProgram && profile?.school_id ? (
-              <RegressionAnalysis isAdmin={false} schoolId={profile.school_id} program={selectedProgram}
-                academicYear={academicYear} term={selectedTerm} />
+              view === 'regression' ? (
+                <RegressionAnalysis isAdmin={false} schoolId={profile.school_id} program={selectedProgram}
+                  academicYear={academicYear} term={selectedTerm} />
+              ) : (
+                <AgeCheck isAdmin={false} schoolId={profile.school_id} program={selectedProgram}
+                  academicYear={academicYear} term={selectedTerm} month={selectedMonth} />
+              )
             ) : !loading && (
               <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>No programs are assigned to you yet.</div>
             )}

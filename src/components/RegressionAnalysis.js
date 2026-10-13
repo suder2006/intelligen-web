@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/supabase'
+import { api, formatDate, parseAi, panelCss } from '@/lib/progressClient'
 import { ACADEMIC_MONTHS, TERM_MONTHS } from '@/lib/progressTerms'
 
 const RATING_LABEL = { emerging: '🌱 Emerging', developing: '🌿 Developing', achieved: '🌟 Achieved' }
@@ -10,26 +10,6 @@ const CHANGE_LABEL = {
   mild: '⬇️ Mild', severe: '⬇️⬇️ Severe', good: '⬆️ Good', excellent: '⬆️⬆️ Excellent', stable: '➡️ Stable',
 }
 const FILTERS = [['all', 'All'], ['regression', 'Regressions'], ['improvement', 'Improvements']]
-
-const formatDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
-
-// ai_insights / ai_recommendations are text columns holding JSON; older or hand-edited rows may be plain text.
-const parseAi = (text) => {
-  if (!text) return null
-  try { return JSON.parse(text) } catch { return { summary: text } }
-}
-
-const authHeader = async () => {
-  const { data: { session } } = await supabase.auth.getSession()
-  return { Authorization: `Bearer ${session?.access_token || ''}` }
-}
-
-async function api(url, options = {}) {
-  const res = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(await authHeader()), ...options.headers } })
-  const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`)
-  return json
-}
 
 // Default From/To: the first two months of the selected term.
 const defaultMonths = (term) => TERM_MONTHS[term].slice(0, 2)
@@ -195,19 +175,9 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
   return (
     <div className="regression">
       <style>{`
-        .regression .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 16px; margin-bottom: 10px; }
-        .regression .tab { padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.07); }
-        .regression .tab-active { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
-        .regression .btn-primary { background: linear-gradient(135deg, #a78bfa, #818cf8); border: none; border-radius: 10px; padding: 10px 20px; color: #0f172a; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .regression .btn-primary:disabled { opacity: 0.6; cursor: default; }
-        .regression .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .regression .section-label { color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; text-transform: uppercase; }
-        .regression .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
-        .regression .stat-card { margin-bottom: 0; }
+        ${panelCss('.regression')}
         .regression .consec-card { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); }
         .regression .consec-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid rgba(239,68,68,0.15); }
-        .regression .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-        .regression .badge-red { background: rgba(239,68,68,0.18); color: #fca5a5; border: 1px solid rgba(239,68,68,0.35); }
         .regression .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px; }
         .regression .cmp-table th { text-align: left; color: rgba(255,255,255,0.4); font-weight: 600; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
         .regression .cmp-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
@@ -216,16 +186,6 @@ export default function RegressionAnalysis({ schoolId, program, academicYear, te
         .regression .row-improvement { background: rgba(16,185,129,0.07); }
         .regression .row-improvement td:first-child { box-shadow: inset 3px 0 0 #10b981; }
         .regression .row-stable { color: rgba(255,255,255,0.55); }
-        .regression .ai-card { border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.06); }
-        .regression .ai-heading { color: #a78bfa; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-        .regression .ai-list { padding-left: 18px; color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6; }
-        .regression .ai-list li { margin-bottom: 4px; }
-        .regression .history-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 6px; border-radius: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.07); }
-        .regression .history-item:hover { background: rgba(255,255,255,0.07); }
-        .regression .history-active { border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.1); }
-        .regression .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(15,23,42,0.3); border-top-color: #0f172a; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 640px) { .regression .stats { grid-template-columns: 1fr; } }
       `}</style>
 
       {/* From / To + Analyse */}

@@ -6,6 +6,7 @@ import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 import { TERMS, TERM_MONTHS } from '@/lib/progressTerms'
 import RegressionAnalysis from '@/components/RegressionAnalysis'
+import AgeCheck from '@/components/AgeCheck'
 
 // Programs come from curriculum_masters; these set the tab order, and any others follow alphabetically.
 const PROGRAM_ORDER = ['Playgroup', 'Nursery', 'LKG', 'UKG']
@@ -48,7 +49,7 @@ export default function AdminProgressPage() {
   const [academicYear, setAcademicYear] = useState(CURRENT_AY)
   const [term, setTerm] = useState(TERMS[0])
   const [month, setMonth] = useState(TERM_MONTHS[TERMS[0]][0])
-  const [view, setView] = useState('students') // 'students' | 'bulk' | 'regression'
+  const [view, setView] = useState('students') // 'students' | 'bulk' | 'regression' | 'age'
 
   const [skills, setSkills] = useState([])
   const [students, setStudents] = useState([])
@@ -447,13 +448,16 @@ export default function AdminProgressPage() {
             <button onClick={() => setView('students')} className={view === 'students' ? 'tab tab-active' : 'tab'}>👶 Student List</button>
             <button onClick={() => setView('bulk')} className={view === 'bulk' ? 'tab tab-active' : 'tab'}>📥 Bulk Upload</button>
             <button onClick={() => setView('regression')} className={view === 'regression' ? 'tab tab-active' : 'tab'}>📊 Regression Analysis</button>
+            <button onClick={() => setView('age')} className={view === 'age' ? 'tab tab-active' : 'tab'}>🎯 Age Check</button>
           </div>
         </div>
 
-        {/* Regression Analysis reads ratings server-side, so it doesn't wait on this month's skills loading. */}
+        {/* The analysis tabs read ratings server-side, so they don't wait on this month's skills loading. */}
         {program && view === 'regression' ? (
           <RegressionAnalysis isAdmin={true} schoolId={schoolId} program={program} academicYear={academicYear} term={term}
             selectStyle={selectStyle} labelStyle={labelStyle} />
+        ) : program && view === 'age' ? (
+          <AgeCheck isAdmin={true} schoolId={schoolId} program={program} academicYear={academicYear} term={term} month={month} />
         ) : loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
         ) : !program ? (
