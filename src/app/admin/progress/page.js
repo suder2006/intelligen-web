@@ -203,6 +203,23 @@ export default function AdminProgressPage() {
       content: `📊 Progress Report for ${selectedStudent.full_name} for ${month} is now available! Please check the Progress section in the intelliGen app. 🎓`
     }))
     const { error: chatError } = messages.length ? await supabase.from('chat_messages').insert(messages) : {}
+
+    // Push notification, same payload as the teacher apps. A failure here doesn't block the send.
+    if (messages.length) {
+      try {
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userIds: messages.map(m => m.receiver_id),
+            title: '📊 Progress Report Ready',
+            body: `${selectedStudent.full_name}'s ${term} ${month} report is now available`,
+            url: '/parent',
+            data: { type: 'progress' }
+          })
+        })
+      } catch (e) { console.log('Push error:', e) }
+    }
     setSending(false)
     if (chatError) { alert('Report sent, but the chat notification failed: ' + chatError.message); return }
     if (!messages.length) { alert('Report sent, but no parent is linked to this student, so no chat message went out.'); return }
