@@ -5,6 +5,15 @@ import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+
+// Accepts watch, youtu.be, shorts, embed and live URLs, or a bare 11-char ID.
+function extractYouTubeId(url) {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed
+  const match = trimmed.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/)|youtu\.be\/)([\w-]{11})/)
+  return match ? match[1] : null
+}
 const DAY_LABELS = {
   monday: '🌅 Monday',
   tuesday: '🌤️ Tuesday',
@@ -337,6 +346,22 @@ export default function AdminYogaPage() {
                             }))}
                             style={inputStyle}
                           />
+                          <label style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'block', marginBottom: '4px' }}>YouTube Video URL (optional - plays in the app instead of the search)</label>
+                          <input
+                            value={editForm[selectedDay]?.[pose.key]?.youtube_url || ''}
+                            placeholder='https://www.youtube.com/watch?v=...'
+                            onChange={e => setEditForm(prev => ({
+                              ...prev,
+                              [selectedDay]: {
+                                ...prev[selectedDay],
+                                [pose.key]: { ...prev[selectedDay]?.[pose.key], youtube_url: e.target.value }
+                              }
+                            }))}
+                            style={inputStyle}
+                          />
+                          {editForm[selectedDay]?.[pose.key]?.youtube_url?.trim() && !extractYouTubeId(editForm[selectedDay][pose.key].youtube_url) && (
+                            <div style={{ color: '#f87171', fontSize: '12px', marginTop: '-6px', marginBottom: '10px' }}>Not a YouTube video link - parents will see the search instead.</div>
+                          )}
                         </div>
                       ) : poseData ? (
                         <div>
@@ -361,7 +386,14 @@ export default function AdminYogaPage() {
                               <span style={{ color: '#34d399', fontSize: '12px' }}>💪 {poseData.benefit}</span>
                             </div>
                           )}
-                          {poseData.youtube_search && (
+                          {extractYouTubeId(poseData.youtube_url) ? (
+                            <a
+                              href={`https://www.youtube.com/watch?v=${extractYouTubeId(poseData.youtube_url)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', color: '#f87171', fontSize: '12px', fontWeight: '600', textDecoration: 'none', border: '1px solid rgba(239,68,68,0.2)' }}>
+                              ▶️ Watch Video
+                            </a>
+                          ) : poseData.youtube_search && (
                             <a
                               href={`https://www.youtube.com/results?search_query=${encodeURIComponent(poseData.youtube_search)}`}
                               target="_blank" rel="noopener noreferrer"
