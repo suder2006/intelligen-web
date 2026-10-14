@@ -191,9 +191,21 @@ export default function AdminProgressPage() {
     const { data, error } = await supabase.from('progress_reports')
       .update({ sent_to_parent: true, sent_at: new Date().toISOString() })
       .eq('id', report.id).select().single()
-    setSending(false)
-    if (error) { alert('Error: ' + error.message); return }
+    if (error) { setSending(false); alert('Error: ' + error.message); return }
     setReport(data)
+
+    // Chat notification to every parent linked to the student, as the teacher apps do.
+    const { data: ps } = await supabase.from('parent_students').select('parent_id').eq('student_id', selectedStudent.id)
+    const messages = (ps || []).map(({ parent_id }) => ({
+      sender_id: profile.id,
+      receiver_id: parent_id,
+      sender_name: profile.full_name || 'School Admin',
+      content: `📊 Progress Report for ${selectedStudent.full_name} for ${month} is now available! Please check the Progress section in the intelliGen app. 🎓`
+    }))
+    const { error: chatError } = messages.length ? await supabase.from('chat_messages').insert(messages) : {}
+    setSending(false)
+    if (chatError) { alert('Report sent, but the chat notification failed: ' + chatError.message); return }
+    if (!messages.length) { alert('Report sent, but no parent is linked to this student, so no chat message went out.'); return }
     setSavedMsg('✅ Report sent to parents!')
     setTimeout(() => setSavedMsg(''), 3000)
   }
