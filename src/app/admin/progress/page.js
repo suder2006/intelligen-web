@@ -24,6 +24,8 @@ const RATINGS = [
 ]
 const CODE_TO_RATING = Object.fromEntries(RATINGS.map(r => [r.code, r.value]))
 const RATING_CONFLICT = 'student_id,activity_id,academic_year,term,month'
+const EMPTY_NOTES = { observations: '', strengths: '', areas_to_improve: '' }
+const formatSentAt = (iso) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
 
@@ -59,6 +61,9 @@ export default function AdminProgressPage() {
   const [ratings, setRatings] = useState({}) // activity_id -> rating
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
+  const [reportNotes, setReportNotes] = useState(EMPTY_NOTES)
+  const [report, setReport] = useState(null) // progress_reports row for this student + month, or null
+  const [sending, setSending] = useState(false)
 
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null) // { saved, skipped, errors: [{ row, name, message }] }
@@ -66,7 +71,7 @@ export default function AdminProgressPage() {
   useEffect(() => { if (schoolId) fetchPrograms() }, [schoolId])
   useEffect(() => { if (schoolId && program) fetchStudents() }, [schoolId, program])
   useEffect(() => { if (schoolId && program) fetchSkills() }, [schoolId, program, academicYear, term, month])
-  useEffect(() => { if (selectedStudent) fetchRatings() }, [selectedStudent, academicYear, term, month])
+  useEffect(() => { if (selectedStudent) { fetchRatings(); fetchReport() } }, [selectedStudent, academicYear, term, month])
 
   const indicators = skills.flatMap(skill => (skill.skill_activities || []).map(act => ({ skill, act, header: indicatorHeader(skill, act) })))
 
@@ -118,6 +123,19 @@ export default function AdminProgressPage() {
     setRatings(map)
   }
 
+  const fetchReport = async () => {
+    const { data } = await supabase.from('progress_reports').select('*')
+      .eq('student_id', selectedStudent.id)
+      .eq('academic_year', academicYear)
+      .eq('term', term)
+      .eq('month', month)
+      .maybeSingle()
+    setReport(data || null)
+    setReportNotes(data
+      ? { observations: data.observations || '', strengths: data.strengths || '', areas_to_improve: data.areas_to_improve || '' }
+      : EMPTY_NOTES)
+  }
+
   const changeTerm = (t) => { setTerm(t); setMonth(TERM_MONTHS[t][0]) }
 
   const toggleRating = (activityId, value) => {
@@ -136,15 +154,48 @@ export default function AdminProgressPage() {
     updated_at: new Date().toISOString()
   })
 
+  // Saves ratings + notes as a draft. The progress_reports row with sent_to_parent = false
+  // is what keeps this month hidden from parents until "Send to Parent".
   const saveRatings = async () => {
     const rows = Object.entries(ratings).filter(([, r]) => r).map(([activityId, r]) => buildRow(selectedStudent.id, activityId, r))
     if (!rows.length) { alert('Mark at least one indicator first'); return }
     setSaving(true)
+    // Write the draft report first so the month is hidden before any new ratings land.
+    const reportData = {
+      student_id: selectedStudent.id,
+      teacher_id: profile.id,
+      academic_year: academicYear,
+      term,
+      month,
+      ...reportNotes,
+      sent_to_parent: false,
+      sent_at: null,
+      updated_at: new Date().toISOString()
+    }
+    const { data: savedReport, error: reportError } = report
+      ? await supabase.from('progress_reports').update(reportData).eq('id', report.id).select().single()
+      : await supabase.from('progress_reports').insert(reportData).select().single()
+    if (reportError) { setSaving(false); alert('Error: ' + reportError.message); return }
+    setReport(savedReport)
     const { error } = await supabase.from('progress_ratings').upsert(rows, { onConflict: RATING_CONFLICT })
     setSaving(false)
     if (error) { alert('Error: ' + error.message); return }
-    setSavedMsg(`✓ Saved ${rows.length} rating${rows.length === 1 ? '' : 's'}`)
+    setSavedMsg('✅ Saved as draft')
     setTimeout(() => setSavedMsg(''), 2500)
+  }
+
+  const sendToParent = async () => {
+    if (!report) return
+    if (!confirm(`Send the ${month} progress report for ${selectedStudent.full_name} to parents?`)) return
+    setSending(true)
+    const { data, error } = await supabase.from('progress_reports')
+      .update({ sent_to_parent: true, sent_at: new Date().toISOString() })
+      .eq('id', report.id).select().single()
+    setSending(false)
+    if (error) { alert('Error: ' + error.message); return }
+    setReport(data)
+    setSavedMsg('✅ Report sent to parents!')
+    setTimeout(() => setSavedMsg(''), 3000)
   }
 
   // ---------- Bulk upload ----------
@@ -275,9 +326,20 @@ export default function AdminProgressPage() {
                   {term} · {month} · {academicYear} · {ratedCount}/{indicators.length} rated
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 {savedMsg && <span style={{ color: '#10b981', fontSize: '13px' }}>{savedMsg}</span>}
-                <button onClick={saveRatings} disabled={saving} className="btn-primary">{saving ? '⏳ Saving...' : '💾 Save'}</button>
+                {report?.sent_to_parent ? (
+                  <span className="badge badge-sent">
+                    Sent ✅{report.sent_at && <span style={{ fontWeight: 400, opacity: 0.8 }}> · {formatSentAt(report.sent_at)}</span>}
+                  </span>
+                ) : report ? (
+                  <span className="badge badge-draft">Draft</span>
+                ) : null}
+                <button onClick={saveRatings} disabled={saving || sending} className="btn-secondary">{saving ? '⏳ Saving...' : '💾 Save'}</button>
+                <button onClick={sendToParent} disabled={!report || report.sent_to_parent || saving || sending} className="btn-primary"
+                  title={!report ? 'Save first' : report.sent_to_parent ? 'Already sent' : undefined}>
+                  {sending ? '⏳ Sending...' : '📤 Send to Parent'}
+                </button>
               </div>
             </div>
 
@@ -326,6 +388,22 @@ export default function AdminProgressPage() {
                 ))}
               </div>
             ))}
+
+            <div className="card">
+              <div style={{ fontWeight: '700', marginBottom: '12px' }}>📝 Report Notes</div>
+              {[
+                { key: 'observations', label: 'General Observations', rows: 3, placeholder: 'Overall behavior and learning this month...' },
+                { key: 'strengths', label: '🌟 Strengths', rows: 2, placeholder: 'What is the child doing well?' },
+                { key: 'areas_to_improve', label: '🎯 Areas to Improve', rows: 2, placeholder: 'What needs more focus?' },
+              ].map(f => (
+                <div key={f.key} style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>{f.label}</label>
+                  <textarea rows={f.rows} value={reportNotes[f.key]} placeholder={f.placeholder}
+                    onChange={e => setReportNotes(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    style={{ ...selectStyle, width: '100%', resize: 'vertical' }} />
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>
@@ -386,7 +464,10 @@ export default function AdminProgressPage() {
         .main { margin-left: 240px; flex: 1; padding: 32px; min-width: 0; }
         .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 16px; margin-bottom: 10px; }
         .btn-primary { background: linear-gradient(135deg, #a78bfa, #818cf8); border: none; border-radius: 10px; padding: 10px 20px; color: #0f172a; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .btn-primary:disabled { opacity: 0.6; cursor: default; }
+        .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.6; cursor: default; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+        .badge-draft { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+        .badge-sent { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 9px 18px; color: rgba(255,255,255,0.7); font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .tab { padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.07); }
         .tab-active { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
