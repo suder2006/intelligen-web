@@ -4,6 +4,8 @@ import {
   serviceClient,
   userFromRequest,
   getIntegration,
+  credentialsFrom,
+  isConfigured,
   parentVehicles,
   parentPreferences
 } from '@/lib/livepin'
@@ -37,12 +39,12 @@ async function shape(supabase, userId, schoolId) {
     parentPreferences(supabase, userId),
     parentVehicles(supabase, userId, schoolId)
   ])
-  const configured = !!integration?.gps_username
+  const configured = isConfigured(credentialsFrom(integration))
   return {
     school: {
       configured,
-      gps_enabled: configured && integration.gps_enabled !== false,
-      gps_camera_enabled: configured && integration.gps_camera_enabled !== false,
+      gps_enabled: configured && integration?.gps_enabled !== false,
+      gps_camera_enabled: configured && integration?.gps_camera_enabled !== false,
       provider: integration?.gps_provider || null
     },
     preferences: prefs,

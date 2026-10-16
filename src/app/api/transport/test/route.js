@@ -1,12 +1,13 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
-import { serviceClient, requireAdmin, getIntegration, credentialsFrom, getToken } from '@/lib/livepin'
+import { serviceClient, requireAdmin, getIntegration, credentialsFrom, isConfigured, getToken } from '@/lib/livepin'
 
-// Checks that the school's Livepin credentials can log in.
+// Checks that the school's Livepin API key and secret key can log in.
 //
-// Body: { school_id, gps_api_url?, gps_api_key?, gps_username?, gps_password? }.
-// Anything left blank falls back to what is saved, so the button works both for
-// credentials being typed in and for a configuration that is already stored.
+// Body: { school_id, gps_api_url?, gps_api_key?, gps_password? (secret key) }.
+// Anything left blank falls back to what is saved (then to the LIVEPIN_* env
+// vars), so the button works both for credentials being typed in and for a
+// configuration that is already stored.
 // Only a test of exactly the saved configuration updates gps_connected.
 export async function POST(request) {
   try {
@@ -20,15 +21,14 @@ export async function POST(request) {
     const creds = credentialsFrom({
       gps_api_url: (body.gps_api_url || '').trim() || saved?.gps_api_url,
       gps_api_key: (body.gps_api_key || '').trim() || saved?.gps_api_key,
-      gps_username: (body.gps_username || '').trim() || saved?.gps_username,
       gps_password: body.gps_password || saved?.gps_password
     })
     const testingSavedConfig = !!saved &&
       creds.apiUrl === savedCreds.apiUrl && creds.apiKey === savedCreds.apiKey &&
-      creds.username === savedCreds.username && creds.password === savedCreds.password
+      creds.apiSecret === savedCreds.apiSecret
 
-    if (!creds.username || !creds.password) {
-      return NextResponse.json({ success: false, error: 'Enter the Livepin username and password to test' })
+    if (!isConfigured(creds)) {
+      return NextResponse.json({ success: false, error: 'Enter the Livepin API key and secret key to test' })
     }
 
     const setStatus = (connected) => supabase

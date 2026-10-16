@@ -3,13 +3,13 @@ import { NextResponse } from 'next/server'
 import {
   serviceClient,
   authorizeVehicleAccess,
-  credentialsFrom,
-  livepinGet,
-  normalizeLocation,
-  LIVEPIN_PATHS
+  getVehicleLocation,
+  normalizeLocation
 } from '@/lib/livepin'
 
-// Current GPS position of one Livepin vehicle.
+// Current GPS position of one Livepin vehicle. vehicle_id is the vehicle
+// number stored on the route (e.g. TN23DP8800); the lib looks up Livepin's
+// internal id for it.
 // GET ?school_id=&vehicle_id=  →  { lat, lng, speed, status, address, updated_at }
 export async function GET(request) {
   try {
@@ -21,7 +21,7 @@ export async function GET(request) {
     const auth = await authorizeVehicleAccess(supabase, request, schoolId, vehicleId, 'gps')
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-    const json = await livepinGet(credentialsFrom(auth.integration), LIVEPIN_PATHS.location(vehicleId))
+    const json = await getVehicleLocation(auth.creds, vehicleId)
     const location = normalizeLocation(json)
     if (location.lat === null || location.lng === null) {
       return NextResponse.json({ error: 'Livepin returned no position for this vehicle yet' }, { status: 404 })

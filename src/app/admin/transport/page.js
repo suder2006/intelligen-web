@@ -188,7 +188,8 @@ export default function AdminTransportPage() {
 
   const saveGpsVehicleId = async (route) => {
     setSavingGpsRoute(route.id)
-    const value = (gpsIds[route.id] || '').trim() || null
+    // Stored as the registration number Livepin searches by (e.g. TN23DP8800).
+    const value = (gpsIds[route.id] || '').trim().toUpperCase().replace(/\s+/g, '') || null
     const { error } = await supabase.from('transport_routes').update({ gps_vehicle_id: value }).eq('id', route.id)
     setSavingGpsRoute(null)
     if (error) { alert('Could not save: ' + error.message); return }
@@ -1324,11 +1325,11 @@ const cancelTrip = async (trip) => {
                 ) : (
                   <div className="table-wrap" style={{ marginBottom: '20px' }}>
                     <table>
-                      <thead><tr><th>Route</th><th>Vehicle</th><th>GPS Vehicle ID</th><th>Current Location</th></tr></thead>
+                      <thead><tr><th>Route</th><th>Vehicle</th><th>GPS Vehicle No.</th><th>Current Location</th></tr></thead>
                       <tbody>
                         {routes.map(r => {
                           const gl = gpsLocations[r.id]
-                          const dirty = (gpsIds[r.id] || '').trim() !== (r.gps_vehicle_id || '')
+                          const dirty = (gpsIds[r.id] || '').trim().toUpperCase().replace(/\s+/g, '') !== (r.gps_vehicle_id || '')
                           return (
                             <tr key={r.id}>
                               <td>
@@ -1340,7 +1341,7 @@ const cancelTrip = async (trip) => {
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                   <input value={gpsIds[r.id] ?? ''} onChange={e => setGpsIds({ ...gpsIds, [r.id]: e.target.value })}
                                     onKeyDown={e => { if (e.key === 'Enter' && dirty) saveGpsVehicleId(r) }}
-                                    placeholder='e.g. 12345' style={{ ...inputStyle, marginBottom: 0, width: '150px', padding: '7px 10px', fontSize: '13px' }} />
+                                    placeholder='e.g. TN23DP8800' style={{ ...inputStyle, marginBottom: 0, width: '150px', padding: '7px 10px', fontSize: '13px' }} />
                                   <button onClick={() => saveGpsVehicleId(r)} disabled={savingGpsRoute === r.id || !dirty}
                                     className="btn-edit" style={{ opacity: dirty ? 1 : 0.5, whiteSpace: 'nowrap' }}>
                                     {savingGpsRoute === r.id ? '⏳' : gpsSavedRoute === r.id ? '✅ Saved' : '💾 Save'}

@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
-import { serviceClient, requireAdmin, getIntegration, credentialsFrom, getToken } from '@/lib/livepin'
+import { serviceClient, requireAdmin, getIntegration, credentialsFrom, isConfigured, getToken } from '@/lib/livepin'
 
 // Returns the school's Livepin JWT (cached server-side, refreshed when it
 // expires). The token unlocks the whole fleet, so only the school's admins can
@@ -14,12 +14,12 @@ export async function GET(request) {
     const auth = await requireAdmin(supabase, request, schoolId)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-    const integration = await getIntegration(supabase, schoolId)
-    if (!integration?.gps_username) {
+    const creds = credentialsFrom(await getIntegration(supabase, schoolId))
+    if (!isConfigured(creds)) {
       return NextResponse.json({ error: 'GPS is not set up for this school' }, { status: 404 })
     }
 
-    const { token, expiresAt } = await getToken(credentialsFrom(integration), {
+    const { token, expiresAt } = await getToken(creds, {
       force: url.searchParams.get('refresh') === '1'
     })
     return NextResponse.json({ token, expires_at: new Date(expiresAt).toISOString() })

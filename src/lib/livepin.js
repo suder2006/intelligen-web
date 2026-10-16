@@ -1,19 +1,23 @@
-// Server-side helpers for the per-school Livepin GPS & dashcam integration.
+// Server-side helpers for the Livepin GPS & dashcam integration.
 //
-// Each school stores its own Livepin credentials in school_integrations. Like
-// the Drive key, they are only ever read with the service role and never sent
-// back to the browser or the app.
+// Credentials come from the environment:
+//   LIVEPIN_API_URL     e.g. https://api.livepin.in
+//   LIVEPIN_API_KEY
+//   LIVEPIN_SECRET_KEY
+// A school can override them with its own key and secret in
+// school_integrations (gps_api_url, gps_api_key, gps_password), saved from
+// Settings → GPS & Camera Setup. Either way they are only ever read with the
+// service role and never sent back to the browser or the app.
 import { serviceClient } from '@/lib/googleDrive'
 
 export { serviceClient }
 
 export const ADMIN_ROLES = ['school_admin', 'center_head', 'super_admin']
 
-// Every Livepin endpoint the app calls lives here, so a path that differs for a
-// school's Livepin account is a one-line fix. The dashcam path is from
-// Livepin's docs; the auth and location paths follow the same API layout.
+// Every Livepin endpoint the app calls.
 export const LIVEPIN_PATHS = {
-  auth: '/api/auth/login',
+  auth: '/api/user/login-with-api-key',
+  searchByNo: (vehicleNo) => `/api/vehicles/search-by-no?vehicle_no=${encodeURIComponent(vehicleNo)}`,
   location: (vehicleId) => `/api/vehicles/${encodeURIComponent(vehicleId)}/location`,
   stream: (vehicleId) => `/api/vehicles/${encodeURIComponent(vehicleId)}/v2/get-dashcam-stream`
 }
@@ -22,10 +26,15 @@ export const PLAYER_URL = 'https://livepin.in/player_v2.html'
 
 const DEFAULT_API_URL = 'https://api.livepin.in'
 
-// JWTs are cached per credential set for the life of the server instance and
-// refreshed a minute before they expire (or on any 401).
+// Seconds a JWT is requested for. Cached tokens are refreshed a minute before
+// they expire (or on any 401).
+const TOKEN_EXPIRY_S = 3600
 const tokenCache = new Map()
-const DEFAULT_TOKEN_TTL_MS = 30 * 60 * 1000
+
+// vehicle_no → Livepin's internal vehicle id. Vehicle numbers do not move
+// between ids, so an hour is plenty; a 404 on lookup is never cached.
+const vehicleIdCache = new Map()
+const VEHICLE_ID_TTL_MS = 60 * 60 * 1000
 
 export async function getIntegration(supabase, schoolId) {
   const { data, error } = await supabase
@@ -39,12 +48,13 @@ export async function getIntegration(supabase, schoolId) {
 
 export function credentialsFrom(row) {
   return {
-    apiUrl: (row?.gps_api_url || DEFAULT_API_URL).trim().replace(/\/+$/, ''),
-    apiKey: row?.gps_api_key || '',
-    username: row?.gps_username || '',
-    password: row?.gps_password || ''
+    apiUrl: (row?.gps_api_url || process.env.LIVEPIN_API_URL || DEFAULT_API_URL).trim().replace(/\/+$/, ''),
+    apiKey: (row?.gps_api_key || process.env.LIVEPIN_API_KEY || '').trim(),
+    apiSecret: row?.gps_password || process.env.LIVEPIN_SECRET_KEY || ''
   }
 }
+
+export const isConfigured = (creds) => !!(creds.apiKey && creds.apiSecret)
 
 function decodeJwtExp(token) {
   try {
@@ -57,18 +67,13 @@ function decodeJwtExp(token) {
   }
 }
 
-function pickToken(json) {
-  return json?.token || json?.access_token || json?.jwt || json?.accessToken ||
-    json?.data?.token || json?.data?.access_token || json?.data?.jwt || null
-}
-
 function cacheKey(creds) {
-  return `${creds.apiUrl}|${creds.username}|${creds.apiKey}`
+  return `${creds.apiUrl}|${creds.apiKey}`
 }
 
 export async function getToken(creds, { force = false } = {}) {
-  if (!creds.username || !creds.password) {
-    throw new Error('Livepin username and password are not set')
+  if (!isConfigured(creds)) {
+    throw new Error('Livepin API key and secret key are not set')
   }
   const key = cacheKey(creds)
   const cached = tokenCache.get(key)
@@ -81,12 +86,12 @@ export async function getToken(creds, { force = false } = {}) {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(creds.apiKey ? { 'x-api-key': creds.apiKey } : {})
+        'x-api-key': creds.apiKey
       },
       body: JSON.stringify({
-        username: creds.username,
-        password: creds.password,
-        ...(creds.apiKey ? { api_key: creds.apiKey } : {})
+        api_key: creds.apiKey,
+        api_secret: creds.apiSecret,
+        expiry: TOKEN_EXPIRY_S
       }),
       cache: 'no-store'
     })
@@ -97,12 +102,12 @@ export async function getToken(creds, { force = false } = {}) {
   const json = await res.json().catch(() => ({}))
   if (!res.ok) {
     tokenCache.delete(key)
-    throw new Error(`Livepin login failed (${res.status}): ${json?.message || json?.error || 'check username, password and API key'}`)
+    throw new Error(`Livepin login failed (${res.status}): ${json?.message || json?.error || 'check the API key and secret key'}`)
   }
-  const token = pickToken(json)
-  if (!token) throw new Error('Livepin login succeeded but returned no token')
+  const token = json?.jwt
+  if (!token) throw new Error('Livepin login succeeded but returned no jwt')
 
-  const entry = { token, expiresAt: decodeJwtExp(token) || Date.now() + DEFAULT_TOKEN_TTL_MS }
+  const entry = { token, expiresAt: decodeJwtExp(token) || Date.now() + TOKEN_EXPIRY_S * 1000 }
   tokenCache.set(key, entry)
   return entry
 }
@@ -114,20 +119,79 @@ export async function livepinGet(creds, path) {
     const { token } = await getToken(creds, { force: attempt > 0 })
     const res = await fetch(`${creds.apiUrl}${path}`, {
       headers: {
+        'x-api-key': creds.apiKey,
         Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(creds.apiKey ? { 'x-api-key': creds.apiKey } : {})
+        Accept: 'application/json'
       },
       cache: 'no-store'
     })
     if (res.status === 401 && attempt === 0) continue
     const json = await res.json().catch(() => ({}))
     if (!res.ok) {
-      throw new Error(`Livepin request failed (${res.status}): ${json?.message || json?.error || res.statusText}`)
+      const err = new Error(`Livepin request failed (${res.status}): ${json?.message || json?.error || res.statusText}`)
+      err.status = res.status
+      throw err
     }
     return json
   }
 }
+
+// The search response's shape is not pinned down beyond "returns the internal
+// vehicle id", so accept the id at the top level, under data, or as the first
+// match of a list.
+function pickVehicleId(json) {
+  const candidates = [json, json?.data, json?.vehicle, json?.data?.vehicle,
+    Array.isArray(json) ? json[0] : null, Array.isArray(json?.data) ? json.data[0] : null,
+    Array.isArray(json?.vehicles) ? json.vehicles[0] : null]
+  for (const c of candidates) {
+    if (c === null || c === undefined) continue
+    if (typeof c === 'string' || typeof c === 'number') return String(c)
+    const id = c.vehicle_id ?? c.vehicleId ?? c.id ?? c._id
+    if (id !== undefined && id !== null && id !== '') return String(id)
+  }
+  return null
+}
+
+// transport_routes.gps_vehicle_id holds the registration number (e.g.
+// TN23DP8800); Livepin's location and stream endpoints need its internal id.
+export async function resolveVehicleId(creds, vehicleNo) {
+  const no = String(vehicleNo || '').trim().toUpperCase()
+  if (!no) throw new Error('Vehicle number is required')
+  const key = `${cacheKey(creds)}|${no}`
+  const cached = vehicleIdCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.id
+
+  let json
+  try {
+    json = await livepinGet(creds, LIVEPIN_PATHS.searchByNo(no))
+  } catch (e) {
+    if (e.status === 404) throw new Error(`Vehicle ${no} was not found in Livepin`)
+    throw e
+  }
+  const id = pickVehicleId(json)
+  if (!id) throw new Error(`Vehicle ${no} was not found in Livepin`)
+  vehicleIdCache.set(key, { id, expiresAt: Date.now() + VEHICLE_ID_TTL_MS })
+  return id
+}
+
+// Step 1–3 of every vehicle call: look up the internal id by number, then hit
+// the endpoint. If the cached id has gone stale (404), look it up once more.
+async function vehicleGet(creds, vehicleNo, pathFor) {
+  const no = String(vehicleNo || '').trim().toUpperCase()
+  const id = await resolveVehicleId(creds, no)
+  try {
+    return await livepinGet(creds, pathFor(id))
+  } catch (e) {
+    if (e.status !== 404) throw e
+    vehicleIdCache.delete(`${cacheKey(creds)}|${no}`)
+    const freshId = await resolveVehicleId(creds, no)
+    if (freshId === id) throw e
+    return livepinGet(creds, pathFor(freshId))
+  }
+}
+
+export const getVehicleLocation = (creds, vehicleNo) => vehicleGet(creds, vehicleNo, LIVEPIN_PATHS.location)
+export const getVehicleStream = (creds, vehicleNo) => vehicleGet(creds, vehicleNo, LIVEPIN_PATHS.stream)
 
 const num = (v) => {
   const n = typeof v === 'string' ? parseFloat(v) : v
@@ -268,13 +332,14 @@ export async function authorizeVehicleAccess(supabase, request, schoolId, vehicl
   if (auth.error) return auth
 
   const integration = await getIntegration(supabase, schoolId)
-  if (!integration?.gps_username) return { error: 'GPS is not set up for this school', status: 404 }
+  const creds = credentialsFrom(integration)
+  if (!isConfigured(creds)) return { error: 'GPS is not set up for this school', status: 404 }
 
   const { profile, user } = auth
-  if (profile.role === 'super_admin') return { integration }
+  if (profile.role === 'super_admin') return { integration, creds }
 
   if (profile.role === 'parent' || !profile.school_id) {
-    const schoolFlag = feature === 'camera' ? integration.gps_camera_enabled : integration.gps_enabled
+    const schoolFlag = feature === 'camera' ? integration?.gps_camera_enabled : integration?.gps_enabled
     if (schoolFlag === false) {
       return { error: feature === 'camera' ? 'Live camera not available' : 'GPS tracking not available', status: 403 }
     }
@@ -284,12 +349,13 @@ export async function authorizeVehicleAccess(supabase, request, schoolId, vehicl
       return { error: feature === 'camera' ? 'Live camera is turned off in your settings' : 'Live bus tracking is turned off in your settings', status: 403 }
     }
     const vehicles = await parentVehicles(supabase, user.id, schoolId)
-    if (!vehicles.some(v => v.vehicle_id === String(vehicleId).trim())) {
+    const wanted = String(vehicleId).trim().toUpperCase()
+    if (!vehicles.some(v => v.vehicle_id.toUpperCase() === wanted)) {
       return { error: 'This vehicle is not on your child\'s route', status: 403 }
     }
-    return { integration }
+    return { integration, creds }
   }
 
   if (profile.school_id !== schoolId) return { error: 'Forbidden', status: 403 }
-  return { integration }
+  return { integration, creds }
 }

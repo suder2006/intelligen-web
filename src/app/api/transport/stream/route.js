@@ -3,14 +3,13 @@ import { NextResponse } from 'next/server'
 import {
   serviceClient,
   authorizeVehicleAccess,
-  credentialsFrom,
-  livepinGet,
+  getVehicleStream,
   extractFlvUrls,
-  playerUrl,
-  LIVEPIN_PATHS
+  playerUrl
 } from '@/lib/livepin'
 
-// Live dashcam stream URLs for one Livepin vehicle.
+// Live dashcam stream URLs for one Livepin vehicle. vehicle_id is the vehicle
+// number stored on the route (e.g. TN23DP8800).
 // GET ?school_id=&vehicle_id=  →  { urls: [flv...], player_url }
 export async function GET(request) {
   try {
@@ -22,7 +21,7 @@ export async function GET(request) {
     const auth = await authorizeVehicleAccess(supabase, request, schoolId, vehicleId, 'camera')
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-    const json = await livepinGet(credentialsFrom(auth.integration), LIVEPIN_PATHS.stream(vehicleId))
+    const json = await getVehicleStream(auth.creds, vehicleId)
     const urls = extractFlvUrls(json)
     if (urls.length === 0) {
       return NextResponse.json({ error: 'The camera is offline right now. Try again when the bus is running.' }, { status: 404 })

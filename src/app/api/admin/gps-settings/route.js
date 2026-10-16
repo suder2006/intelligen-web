@@ -4,19 +4,20 @@ import { serviceClient, requireAdmin, getIntegration } from '@/lib/livepin'
 
 // school_integrations is closed to the browser (RLS on, no policies), so this
 // route is the only way the settings page reads or writes the Livepin
-// credentials. The API key and password are write-only: the page only learns
-// whether one is saved.
+// credentials. The API key and secret key (stored in gps_password) are
+// write-only: the page only learns whether each is saved, and whether the
+// LIVEPIN_* env vars would be used when the school has none of its own.
 function publicShape(row) {
   return {
     gps_enabled: row?.gps_enabled !== false,
     gps_camera_enabled: row?.gps_camera_enabled !== false,
     gps_provider: row?.gps_provider || '',
     gps_api_url: row?.gps_api_url || '',
-    gps_username: row?.gps_username || '',
     gps_connected: !!row?.gps_connected,
     gps_connected_at: row?.gps_connected_at || null,
     has_key: !!row?.gps_api_key,
-    has_password: !!row?.gps_password
+    has_password: !!row?.gps_password,
+    env_configured: !!(process.env.LIVEPIN_API_KEY && process.env.LIVEPIN_SECRET_KEY)
   }
 }
 
@@ -43,7 +44,6 @@ export async function POST(request) {
     const existing = await getIntegration(supabase, body.school_id)
 
     const apiUrl = (body.gps_api_url || '').trim().replace(/\/+$/, '') || null
-    const username = (body.gps_username || '').trim() || null
     if (apiUrl && !/^https?:\/\//i.test(apiUrl)) {
       return NextResponse.json({ error: 'API URL must start with https://' }, { status: 400 })
     }
@@ -54,7 +54,6 @@ export async function POST(request) {
       gps_camera_enabled: body.gps_camera_enabled !== false,
       gps_provider: (body.gps_provider || '').trim() || null,
       gps_api_url: apiUrl,
-      gps_username: username,
       updated_at: new Date().toISOString()
     }
 
@@ -69,8 +68,7 @@ export async function POST(request) {
     // would be stale. Test Connection sets it again.
     const changed = (apiKey && apiKey !== existing?.gps_api_key) ||
       (password && password !== existing?.gps_password) ||
-      apiUrl !== (existing?.gps_api_url || null) ||
-      username !== (existing?.gps_username || null)
+      apiUrl !== (existing?.gps_api_url || null)
     if (changed || !existing) {
       row.gps_connected = false
       row.gps_connected_at = null
