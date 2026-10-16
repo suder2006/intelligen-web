@@ -1,10 +1,32 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
 import dynamic from 'next/dynamic'
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
+const GpsLiveMap = dynamic(() => import('@/components/GpsLiveMap'), { ssr: false })
+
+const GPS_REFRESH_MS = 30000
+const GPS_STATUS_STYLE = {
+  RUNNING: { bg: 'rgba(16,185,129,0.15)', color: '#34d399', icon: '🟢' },
+  IDLE: { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24', icon: '🟡' },
+  STOPPED: { bg: 'rgba(239,68,68,0.15)', color: '#f87171', icon: '🔴' },
+}
+
+// Livepin's status text varies ("Moving", "Ignition on", "Parked"...), so map
+// it onto the three states the tab shows, falling back to speed.
+const gpsStatusOf = (loc) => {
+  const s = String(loc?.status || '').toLowerCase()
+  const moving = (loc?.speed || 0) > 0
+  if (/run|mov|driv|motion/.test(s)) return 'RUNNING'
+  if (/idl/.test(s)) return 'IDLE'
+  if (/ignition on|engine on|^on$/.test(s)) return moving ? 'RUNNING' : 'IDLE'
+  if (/stop|park|off|halt|inactive/.test(s)) return 'STOPPED'
+  return moving ? 'RUNNING' : 'STOPPED'
+}
+
+const normalizeVehicleNo = (v) => (v || '').trim().toUpperCase().replace(/\s+/g, '')
 
 export default function AdminTransportPage() {
   const { schoolId } = useSchool()
@@ -84,20 +106,34 @@ export default function AdminTransportPage() {
   const [addingChild, setAddingChild] = useState(false)
   const [cancellingTrip, setCancellingTrip] = useState(null)
 
-  // GPS Integration tab (Livepin). Vehicle IDs are typed per route and saved
-  // one route at a time; locations come from /api/transport/location.
+  // GPS Integration tab (Livepin). Vehicle numbers are typed per route and
+  // saved one route at a time. Locations are fetched once per vehicle number
+  // (a bus often runs both a morning and an afternoon route) from
+  // /api/transport/location, and refreshed every 30s while the tab is open.
   const [gpsIds, setGpsIds] = useState({})
   const [savingGpsRoute, setSavingGpsRoute] = useState(null)
   const [gpsSavedRoute, setGpsSavedRoute] = useState(null)
   const [gpsSettings, setGpsSettings] = useState(null)
-  const [gpsLocations, setGpsLocations] = useState({})
-  const [gpsMapRoute, setGpsMapRoute] = useState(null)
+  const [gpsLocations, setGpsLocations] = useState({}) // { vehicleNo: { loc?, error?, fetchedAt } }
+  const [gpsLoading, setGpsLoading] = useState({})     // { vehicleNo: true }
+  const [gpsLastRefresh, setGpsLastRefresh] = useState(null)
+  const [gpsSelected, setGpsSelected] = useState(null)  // vehicleNo shown on the map
+  const [gpsCamera, setGpsCamera] = useState(null)      // { vehicleNo, routeNames, loading?, url?, error? }
 
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
 
   useEffect(() => {
     if (view === 'gps' && schoolId) fetchGpsSettings()
   }, [view, schoolId])
+
+  // Auto refresh every 30s while the GPS tab is open and connected. The ref
+  // keeps the interval calling the latest fetch (routes change as IDs are saved).
+  const gpsRefreshRef = useRef(null)
+  useEffect(() => {
+    if (view !== 'gps' || !gpsSettings?.gps_connected) return
+    const id = setInterval(() => gpsRefreshRef.current?.(), GPS_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [view, gpsSettings?.gps_connected])
 
   useEffect(() => {
     setGpsIds(Object.fromEntries(routes.map(r => [r.id, r.gps_vehicle_id || ''])))
@@ -168,37 +204,62 @@ export default function AdminTransportPage() {
     }
   }
 
-  const fetchGpsLocation = async (route) => {
-    const vehicleId = (route.gps_vehicle_id || '').trim()
-    if (!vehicleId) return
-    setGpsLocations(l => ({ ...l, [route.id]: { ...l[route.id], loading: true } }))
+  const fetchGpsLocation = async (vehicleNo) => {
+    if (!vehicleNo) return
+    setGpsLoading(l => ({ ...l, [vehicleNo]: true }))
     try {
-      const res = await fetch(`/api/transport/location?school_id=${schoolId}&vehicle_id=${encodeURIComponent(vehicleId)}`, { headers: await authHeader() })
+      const res = await fetch(`/api/transport/location?school_id=${schoolId}&vehicle_id=${encodeURIComponent(vehicleNo)}`, { headers: await authHeader() })
       const data = await res.json()
-      setGpsLocations(l => ({ ...l, [route.id]: res.ok ? { loc: data } : { error: data.error || 'Could not get location' } }))
-      if (res.ok) setGpsMapRoute(m => m || route.id)
+      // A failed refresh keeps the last known position on the map, flagged with the error.
+      setGpsLocations(l => ({
+        ...l,
+        [vehicleNo]: res.ok
+          ? { loc: data, fetchedAt: new Date().toISOString() }
+          : { ...l[vehicleNo], error: data.error || 'Could not get location' }
+      }))
+      if (res.ok) setGpsSelected(sel => sel || vehicleNo)
     } catch (e) {
-      setGpsLocations(l => ({ ...l, [route.id]: { error: e.message } }))
+      setGpsLocations(l => ({ ...l, [vehicleNo]: { ...l[vehicleNo], error: e.message } }))
     }
+    setGpsLoading(l => { const { [vehicleNo]: _, ...rest } = l; return rest })
   }
 
-  const fetchGpsLocations = () => {
-    routes.filter(r => (r.gps_vehicle_id || '').trim()).forEach(fetchGpsLocation)
+  const gpsVehicleNos = () => [...new Set(routes.map(r => r.gps_vehicle_id).filter(Boolean))]
+
+  const fetchGpsLocations = async () => {
+    await Promise.all(gpsVehicleNos().map(fetchGpsLocation))
+    setGpsLastRefresh(new Date())
+  }
+  gpsRefreshRef.current = fetchGpsLocations
+
+  const openGpsCamera = async (vehicleNo, routeNames) => {
+    setGpsCamera({ vehicleNo, routeNames, loading: true })
+    try {
+      const res = await fetch(`/api/transport/stream?school_id=${schoolId}&vehicle_id=${encodeURIComponent(vehicleNo)}`, { headers: await authHeader() })
+      const data = await res.json()
+      setGpsCamera(c => c?.vehicleNo !== vehicleNo ? c : res.ok
+        ? { vehicleNo, routeNames, url: data.player_url, streams: data.urls?.length || 0 }
+        : { vehicleNo, routeNames, error: data.error || 'Could not open the camera' })
+    } catch (e) {
+      setGpsCamera(c => c?.vehicleNo !== vehicleNo ? c : { vehicleNo, routeNames, error: e.message })
+    }
   }
 
   const saveGpsVehicleId = async (route) => {
     setSavingGpsRoute(route.id)
     // Stored as the registration number Livepin searches by (e.g. TN23DP8800).
-    const value = (gpsIds[route.id] || '').trim().toUpperCase().replace(/\s+/g, '') || null
+    const value = normalizeVehicleNo(gpsIds[route.id]) || null
     const { error } = await supabase.from('transport_routes').update({ gps_vehicle_id: value }).eq('id', route.id)
     setSavingGpsRoute(null)
     if (error) { alert('Could not save: ' + error.message); return }
     const updated = { ...route, gps_vehicle_id: value }
     setRoutes(rs => rs.map(r => r.id === route.id ? updated : r))
-    setGpsLocations(l => { const { [route.id]: _, ...rest } = l; return rest })
     setGpsSavedRoute(route.id)
     setTimeout(() => setGpsSavedRoute(s => s === route.id ? null : s), 2500)
-    if (value && gpsSettings?.gps_connected) fetchGpsLocation(updated)
+    if (value && gpsSettings?.gps_connected) {
+      fetchGpsLocation(value)
+      setGpsSelected(value)
+    }
   }
 
   const fetchLiveData = async () => {
@@ -1290,29 +1351,72 @@ const cancelTrip = async (trip) => {
 
             {/* ═══════════════════════════════ GPS INTEGRATION ═══════════════════════════════ */}
             {view === 'gps' && (() => {
-              const mapRoute = routes.find(r => r.id === gpsMapRoute)
-              const mapLoc = mapRoute && gpsLocations[mapRoute.id]?.loc
               const connected = !!gpsSettings?.gps_connected
+              const fmtTime = (t) => t ? new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+              const routeNamesFor = (no) => routes.filter(r => r.gps_vehicle_id === no).map(r => r.name).join(' · ')
+              const mapVehicles = Object.entries(gpsLocations)
+                .filter(([no, g]) => g.loc && routes.some(r => r.gps_vehicle_id === no))
+                .map(([no, g]) => ({
+                  vehicleNo: no,
+                  lat: g.loc.lat,
+                  lng: g.loc.lng,
+                  speed: g.loc.speed,
+                  status: gpsStatusOf(g.loc),
+                  address: g.loc.address,
+                  updatedAt: g.loc.updated_at || g.fetchedAt,
+                  routeNames: routeNamesFor(no)
+                }))
+              const anyLoading = Object.keys(gpsLoading).length > 0
+              const counts = mapVehicles.reduce((c, v) => ({ ...c, [v.status]: (c[v.status] || 0) + 1 }), {})
               return (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🚌 GPS Integration</div>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-                      Link each route to its vehicle in {gpsSettings?.gps_provider || 'Livepin'} so parents can track the bus and watch the dashcam
+                      {connected
+                        ? `Live from ${gpsSettings?.gps_provider || 'Livepin'} · ${gpsLastRefresh ? `updated ${fmtTime(gpsLastRefresh)}` : 'loading...'} · auto-refreshes every 30 sec`
+                        : `Link each route to its vehicle number in ${gpsSettings?.gps_provider || 'Livepin'} so parents can track the bus and watch the dashcam`}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span className="badge" style={{ background: connected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: connected ? '#34d399' : '#fbbf24' }}>
                       {connected ? '✅ Connected' : '⚠️ Not connected'}
                     </span>
-                    {connected && <button onClick={fetchGpsLocations} className="btn-secondary">🔄 Refresh Locations</button>}
+                    {connected && (
+                      <button onClick={fetchGpsLocations} disabled={anyLoading} className="btn-secondary">
+                        {anyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {!connected && (
                   <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: '#fbbf24' }}>
-                    ⚠️ GPS provider is not connected. Add your credentials in <a href="/admin/settings" style={{ color: '#38bdf8' }}>Settings → GPS & Camera Setup</a> and run Test Connection. You can still enter vehicle IDs now.
+                    ⚠️ GPS provider is not connected. Add your credentials in <a href="/admin/settings" style={{ color: '#38bdf8' }}>Settings → GPS & Camera Setup</a> and run Test Connection. You can still enter vehicle numbers now.
+                  </div>
+                )}
+
+                {/* Summary */}
+                {connected && mapVehicles.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                    {['RUNNING', 'IDLE', 'STOPPED'].map(st => (
+                      <div key={st} className="card" style={{ marginBottom: 0, padding: '14px 16px' }}>
+                        <div style={{ color: GPS_STATUS_STYLE[st].color, fontSize: '22px', fontWeight: '700' }}>{counts[st] || 0}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>{GPS_STATUS_STYLE[st].icon} {st}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Live map */}
+                {connected && mapVehicles.length > 0 && (
+                  <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(16,185,129,0.2)', marginBottom: '20px' }}>
+                    <div style={{ background: 'rgba(16,185,129,0.06)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ color: '#34d399', fontWeight: '700', fontSize: '14px' }}>🗺️ Live Map — {mapVehicles.length} vehicle{mapVehicles.length > 1 ? 's' : ''}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>Click a marker or a route's 🗺️ button for details</div>
+                    </div>
+                    <GpsLiveMap vehicles={mapVehicles} selected={gpsSelected} onSelect={setGpsSelected} />
                   </div>
                 )}
 
@@ -1325,23 +1429,29 @@ const cancelTrip = async (trip) => {
                 ) : (
                   <div className="table-wrap" style={{ marginBottom: '20px' }}>
                     <table>
-                      <thead><tr><th>Route</th><th>Vehicle</th><th>GPS Vehicle No.</th><th>Current Location</th></tr></thead>
+                      <thead><tr><th>Route</th><th>GPS Vehicle No.</th><th>Status</th><th>Speed</th><th>Current Location</th><th></th></tr></thead>
                       <tbody>
                         {routes.map(r => {
-                          const gl = gpsLocations[r.id]
-                          const dirty = (gpsIds[r.id] || '').trim().toUpperCase().replace(/\s+/g, '') !== (r.gps_vehicle_id || '')
+                          const no = r.gps_vehicle_id
+                          const gl = no ? gpsLocations[no] : null
+                          const loc = gl?.loc
+                          const status = loc ? gpsStatusOf(loc) : null
+                          const st = status && GPS_STATUS_STYLE[status]
+                          const dirty = normalizeVehicleNo(gpsIds[r.id]) !== (r.gps_vehicle_id || '')
+                          const live = connected && no
                           return (
-                            <tr key={r.id}>
+                            <tr key={r.id} style={gpsSelected && gpsSelected === no ? { background: 'rgba(56,189,248,0.05)' } : undefined}>
                               <td>
                                 <div style={{ fontWeight: '600', color: '#fff' }}>{r.route_type === 'morning' ? '🌅' : '🏠'} {r.name}</div>
-                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>{r.status}</div>
+                                <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '2px' }}>
+                                  {r.transport_vehicles ? `${r.transport_vehicles.name} · ${r.transport_vehicles.registration_no}` : r.status}
+                                </div>
                               </td>
-                              <td style={{ color: '#fbbf24' }}>{r.transport_vehicles ? `${r.transport_vehicles.name} · ${r.transport_vehicles.registration_no}` : '—'}</td>
                               <td>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                   <input value={gpsIds[r.id] ?? ''} onChange={e => setGpsIds({ ...gpsIds, [r.id]: e.target.value })}
                                     onKeyDown={e => { if (e.key === 'Enter' && dirty) saveGpsVehicleId(r) }}
-                                    placeholder='e.g. TN23DP8800' style={{ ...inputStyle, marginBottom: 0, width: '150px', padding: '7px 10px', fontSize: '13px' }} />
+                                    placeholder='e.g. TN23DP8800' style={{ ...inputStyle, marginBottom: 0, width: '140px', padding: '7px 10px', fontSize: '13px' }} />
                                   <button onClick={() => saveGpsVehicleId(r)} disabled={savingGpsRoute === r.id || !dirty}
                                     className="btn-edit" style={{ opacity: dirty ? 1 : 0.5, whiteSpace: 'nowrap' }}>
                                     {savingGpsRoute === r.id ? '⏳' : gpsSavedRoute === r.id ? '✅ Saved' : '💾 Save'}
@@ -1349,29 +1459,52 @@ const cancelTrip = async (trip) => {
                                 </div>
                               </td>
                               <td>
-                                {!r.gps_vehicle_id ? (
+                                {st ? (
+                                  <span className="badge" style={{ background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.icon} {status}</span>
+                                ) : live && gpsLoading[no] ? (
+                                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>⏳</span>
+                                ) : (
+                                  <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ whiteSpace: 'nowrap', color: loc ? '#fff' : 'rgba(255,255,255,0.2)', fontWeight: loc ? '600' : '400' }}>
+                                {loc ? `${Math.round(loc.speed || 0)} km/h` : '—'}
+                              </td>
+                              <td style={{ maxWidth: '280px' }}>
+                                {!no ? (
                                   <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>No vehicle linked</span>
                                 ) : !connected ? (
                                   <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>Connect GPS to see location</span>
-                                ) : gl?.loading ? (
-                                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>⏳ Locating...</span>
+                                ) : loc ? (
+                                  <div style={{ fontSize: '12px' }}>
+                                    <div style={{ color: 'rgba(255,255,255,0.7)' }}>
+                                      📍 {loc.address || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}
+                                    </div>
+                                    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>
+                                      Updated {fmtTime(loc.updated_at || gl.fetchedAt)}
+                                    </div>
+                                    {gl.error && <div style={{ color: '#f87171', fontSize: '11px', marginTop: '2px' }}>⚠️ Last refresh failed: {gl.error}</div>}
+                                  </div>
                                 ) : gl?.error ? (
                                   <span style={{ color: '#f87171', fontSize: '12px' }}>⚠️ {gl.error}</span>
-                                ) : gl?.loc ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <div style={{ fontSize: '12px' }}>
-                                      <div style={{ color: '#34d399', fontWeight: '600' }}>
-                                        {gl.loc.status || 'Live'}{gl.loc.speed > 0 ? ` · ${Math.round(gl.loc.speed)} km/h` : ''}
-                                      </div>
-                                      <div style={{ color: 'rgba(255,255,255,0.4)', maxWidth: '240px' }}>
-                                        {gl.loc.address || `${gl.loc.lat.toFixed(5)}, ${gl.loc.lng.toFixed(5)}`}
-                                      </div>
-                                    </div>
-                                    <button onClick={() => setGpsMapRoute(r.id)} className="btn-edit"
-                                      style={gpsMapRoute === r.id ? { background: 'rgba(56,189,248,0.25)' } : undefined}>🗺️ Map</button>
-                                  </div>
+                                ) : gpsLoading[no] ? (
+                                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>⏳ Locating...</span>
                                 ) : (
-                                  <button onClick={() => fetchGpsLocation(r)} className="btn-edit">📍 Locate</button>
+                                  <button onClick={() => fetchGpsLocation(no)} className="btn-edit">📍 Locate</button>
+                                )}
+                              </td>
+                              <td>
+                                {live && (
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                    {loc && (
+                                      <button onClick={() => setGpsSelected(no)} className="btn-edit" title="Show on map"
+                                        style={gpsSelected === no ? { background: 'rgba(56,189,248,0.25)' } : undefined}>🗺️</button>
+                                    )}
+                                    <button onClick={() => openGpsCamera(no, routeNamesFor(no))} className="btn-edit" title="Watch live camera"
+                                      style={{ background: 'rgba(167,139,250,0.12)', borderColor: 'rgba(167,139,250,0.25)', color: '#a78bfa', whiteSpace: 'nowrap' }}>
+                                      📹 Camera
+                                    </button>
+                                  </div>
                                 )}
                               </td>
                             </tr>
@@ -1382,26 +1515,31 @@ const cancelTrip = async (trip) => {
                   </div>
                 )}
 
-                {connected && mapLoc && (
-                  <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <div style={{ background: 'rgba(16,185,129,0.06)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ color: '#34d399', fontWeight: '700', fontSize: '14px' }}>🗺️ {mapRoute.name} — Vehicle {mapRoute.gps_vehicle_id}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-                        {mapLoc.updated_at ? `Updated ${new Date(mapLoc.updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : 'From GPS provider'}
+                {/* Selected vehicle panel: details + Watch Live Camera */}
+                {connected && gpsSelected && gpsLocations[gpsSelected]?.loc && (() => {
+                  const g = gpsLocations[gpsSelected]
+                  const status = gpsStatusOf(g.loc)
+                  const st = GPS_STATUS_STYLE[status]
+                  return (
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🚌 {gpsSelected}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginBottom: '8px' }}>{routeNamesFor(gpsSelected)}</div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', fontSize: '13px' }}>
+                          <span className="badge" style={{ background: st.bg, color: st.color }}>{st.icon} {status}</span>
+                          <span style={{ fontWeight: '600' }}>{Math.round(g.loc.speed || 0)} km/h</span>
+                          <span style={{ color: 'rgba(255,255,255,0.4)' }}>Updated {fmtTime(g.loc.updated_at || g.fetchedAt)}</span>
+                        </div>
+                        {g.loc.address && <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', marginTop: '6px' }}>📍 {g.loc.address}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <a href={`https://www.google.com/maps?q=${g.loc.lat},${g.loc.lng}&z=16`} target="_blank" rel="noopener noreferrer"
+                          className="btn-secondary" style={{ textDecoration: 'none' }}>🗺️ Open in Google Maps</a>
+                        <button onClick={() => openGpsCamera(gpsSelected, routeNamesFor(gpsSelected))} className="btn-primary">📹 Watch Live Camera</button>
                       </div>
                     </div>
-                    <iframe
-                      key={`${mapRoute.id}-${mapLoc.lat}-${mapLoc.lng}`}
-                      width="100%"
-                      height="420"
-                      style={{ border: 'none', display: 'block' }}
-                      loading="lazy"
-                      allowFullScreen
-                      referrerPolicy="no-referrer-when-downgrade"
-                      src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyAkK4Tr8r6339Pm4WDJL5e6wQA5h2yZzvI&q=${mapLoc.lat},${mapLoc.lng}&zoom=15`}
-                    />
-                  </div>
-                )}
+                  )
+                })()}
               </>
               )
             })()}
@@ -1409,6 +1547,49 @@ const cancelTrip = async (trip) => {
           </>
         )}
       </div>
+
+      {/* ═══════════════════════════════ GPS LIVE CAMERA MODAL ═══════════════════════════════ */}
+      {gpsCamera && (
+        <div className="modal-overlay" onClick={() => setGpsCamera(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '960px', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  📹 Live Camera — {gpsCamera.vehicleNo}
+                  {gpsCamera.url && <span className="badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', fontSize: '11px' }}>● LIVE</span>}
+                </h3>
+                {gpsCamera.routeNames && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>{gpsCamera.routeNames}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {gpsCamera.url && (
+                  <a href={gpsCamera.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}>Open in new tab ↗</a>
+                )}
+                <button onClick={() => setGpsCamera(null)} className="btn-secondary">✕ Close</button>
+              </div>
+            </div>
+            {gpsCamera.loading ? (
+              <div style={{ height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', background: '#000', borderRadius: '12px' }}>
+                ⏳ Connecting to camera...
+              </div>
+            ) : gpsCamera.error ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px' }}>
+                <div style={{ fontSize: '40px', marginBottom: '10px' }}>📹</div>
+                <div style={{ color: '#f87171', fontWeight: '600', marginBottom: '14px' }}>{gpsCamera.error}</div>
+                <button onClick={() => openGpsCamera(gpsCamera.vehicleNo, gpsCamera.routeNames)} className="btn-edit">🔄 Try Again</button>
+              </div>
+            ) : (
+              <iframe
+                src={gpsCamera.url}
+                title={`Live camera ${gpsCamera.vehicleNo}`}
+                width="100%"
+                style={{ border: 'none', display: 'block', borderRadius: '12px', background: '#000', aspectRatio: '16 / 9', maxHeight: '70vh' }}
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════ VEHICLE FORM MODAL ═══════════════════════════════ */}
       {showForm && view === 'vehicles' && (
