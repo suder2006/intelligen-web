@@ -83,11 +83,20 @@ export default function SchoolSettingsPage() {
   const [savingDrive, setSavingDrive] = useState(false)
   const [testingDrive, setTestingDrive] = useState(false)
   const [driveResult, setDriveResult] = useState(null)
+  // Livepin GPS & camera integration. The API key and password are write-only
+  // here, like the Drive key: the API only reports whether each is saved.
+  const [gps, setGps] = useState({
+    enabled: true, cameraEnabled: true, provider: 'Livepin', apiUrl: 'https://api.livepin.in', apiKey: '', username: '', password: ''
+  })
+  const [gpsStatus, setGpsStatus] = useState({ connected: false, connected_at: null, has_key: false, has_password: false })
+  const [savingGps, setSavingGps] = useState(false)
+  const [testingGps, setTestingGps] = useState(false)
+  const [gpsResult, setGpsResult] = useState(null)
   // Program age ranges (program_settings). Kept for future use; the Age Check does not read them.
   const [ageRanges, setAgeRanges] = useState([])
   const [savingAges, setSavingAges] = useState(false)
   const [agesResult, setAgesResult] = useState(null)
-      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins(); fetchDriveSettings(); fetchAgeRanges() } }, [schoolId])
+      useEffect(() => { if (schoolId) { fetchSchool(); fetchSubAdmins(); fetchDriveSettings(); fetchGpsSettings(); fetchAgeRanges() } }, [schoolId])
 
 
   const authHeader = async () => {
@@ -252,6 +261,89 @@ const testDrive = async () => {
     setDriveResult({ ok: false, message: `❌ ${e.message}` })
   }
   setTestingDrive(false)
+}
+
+const applyGpsSettings = (data) => {
+  setGpsStatus({
+    connected: data.gps_connected,
+    connected_at: data.gps_connected_at,
+    has_key: data.has_key,
+    has_password: data.has_password
+  })
+  setGps({
+    enabled: data.gps_enabled,
+    cameraEnabled: data.gps_camera_enabled,
+    provider: data.gps_provider || 'Livepin',
+    apiUrl: data.gps_api_url || 'https://api.livepin.in',
+    apiKey: '',
+    username: data.gps_username || '',
+    password: ''
+  })
+}
+
+const fetchGpsSettings = async () => {
+  try {
+    const res = await fetch(`/api/admin/gps-settings?school_id=${schoolId}`, { headers: await authHeader() })
+    if (res.ok) applyGpsSettings(await res.json())
+  } catch (e) {
+    // Leave the GPS fields at their defaults; the rest of the page still works.
+  }
+}
+
+const gpsCredentials = () => ({
+  school_id: schoolId,
+  gps_api_url: gps.apiUrl,
+  gps_api_key: gps.apiKey,
+  gps_username: gps.username,
+  gps_password: gps.password
+})
+
+const saveGps = async () => {
+  setSavingGps(true)
+  setGpsResult(null)
+  try {
+    const res = await fetch('/api/admin/gps-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify({
+        ...gpsCredentials(),
+        gps_enabled: gps.enabled,
+        gps_camera_enabled: gps.cameraEnabled,
+        gps_provider: gps.provider
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Could not save')
+    // Drops the typed secrets from the page now that they are stored.
+    applyGpsSettings(data)
+    setGpsResult({ ok: true, message: data.gps_connected ? '✅ Saved.' : '✅ Saved. Run Test Connection to verify it works.' })
+  } catch (e) {
+    setGpsResult({ ok: false, message: `❌ ${e.message}` })
+  }
+  setSavingGps(false)
+}
+
+const testGps = async () => {
+  setTestingGps(true)
+  setGpsResult(null)
+  try {
+    const res = await fetch('/api/transport/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+      body: JSON.stringify(gpsCredentials())
+    })
+    const data = await res.json()
+    setGpsResult(data.success
+      ? { ok: true, message: data.saved ? '✅ Connected to Livepin' : '✅ These credentials work. Save them to start using them.' }
+      : { ok: false, message: `❌ ${data.error}` })
+    // The stored status only moves when the saved setup was what got tested.
+    if (data.saved) {
+      setGpsStatus(s => ({ ...s, connected: !!data.success, connected_at: data.success ? new Date().toISOString() : null }))
+    }
+  } catch (e) {
+    setGpsResult({ ok: false, message: `❌ ${e.message}` })
+  }
+  setTestingGps(false)
 }
 
 const fetchAgeRanges = async () => {
@@ -973,6 +1065,95 @@ const startEditSubAdmin = (sa) => {
     <button onClick={saveDrive} disabled={savingDrive || testingDrive}
       style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
       {savingDrive ? '⏳ Saving...' : '💾 Save Drive Settings'}
+    </button>
+  </div>
+</div>
+
+{/* ===== GPS & CAMERA (LIVEPIN) ===== */}
+<div className="section">
+  <div className="section-title">🚌 GPS & Camera Setup</div>
+  <div style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.7' }}>
+    ℹ️ Connects your bus GPS provider so parents can see the bus on a map and watch the live dashcam in the app.
+    Set each route's GPS Vehicle ID under Transport → GPS Integration. The API key and password are stored securely and never shown again — leave them blank to keep the saved values.
+  </div>
+
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: '12px' }}>
+    <div>
+      <div style={{ fontWeight: '600', marginBottom: '2px' }}>Enable GPS Tracking for Parents</div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Parents see the bus location in the GPS Track tab</div>
+    </div>
+    <button type='button' onClick={() => setGps({ ...gps, enabled: !gps.enabled })}
+      style={{ width: '56px', height: '30px', borderRadius: '20px', border: 'none', cursor: 'pointer', padding: '3px', background: gps.enabled ? 'linear-gradient(135deg, #0ea5e9, #38bdf8)' : 'rgba(255,255,255,0.12)', display: 'flex', justifyContent: gps.enabled ? 'flex-end' : 'flex-start', alignItems: 'center', transition: 'all 0.15s', flexShrink: 0 }}>
+      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#fff', display: 'block' }} />
+    </button>
+  </div>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', marginBottom: '12px' }}>
+    <div>
+      <div style={{ fontWeight: '600', marginBottom: '2px' }}>Enable Live Camera for Parents</div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Parents can watch the bus dashcam in the Live Camera tab</div>
+    </div>
+    <button type='button' onClick={() => setGps({ ...gps, cameraEnabled: !gps.cameraEnabled })}
+      style={{ width: '56px', height: '30px', borderRadius: '20px', border: 'none', cursor: 'pointer', padding: '3px', background: gps.cameraEnabled ? 'linear-gradient(135deg, #0ea5e9, #38bdf8)' : 'rgba(255,255,255,0.12)', display: 'flex', justifyContent: gps.cameraEnabled ? 'flex-end' : 'flex-start', alignItems: 'center', transition: 'all 0.15s', flexShrink: 0 }}>
+      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#fff', display: 'block' }} />
+    </button>
+  </div>
+
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0 16px', marginTop: '18px' }}>
+    <div>
+      <label>Provider name</label>
+      <input value={gps.provider} onChange={e => setGps({ ...gps, provider: e.target.value })} placeholder='e.g. Livepin' style={inputStyle} />
+    </div>
+    <div>
+      <label>API URL</label>
+      <input value={gps.apiUrl} onChange={e => setGps({ ...gps, apiUrl: e.target.value })} placeholder='e.g. https://api.livepin.in' style={inputStyle} />
+    </div>
+    <div>
+      <label>API Key {gpsStatus.has_key && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
+      <input type='password' autoComplete='new-password' value={gps.apiKey} onChange={e => setGps({ ...gps, apiKey: e.target.value })}
+        placeholder={gpsStatus.has_key ? 'Leave blank to keep the saved key' : 'Livepin API key'} style={inputStyle} />
+    </div>
+    <div>
+      <label>Username</label>
+      <input autoComplete='off' value={gps.username} onChange={e => setGps({ ...gps, username: e.target.value })} placeholder='Livepin login username' style={inputStyle} />
+    </div>
+    <div>
+      <label>Password {gpsStatus.has_password && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
+      <input type='password' autoComplete='new-password' value={gps.password} onChange={e => setGps({ ...gps, password: e.target.value })}
+        placeholder={gpsStatus.has_password ? 'Leave blank to keep the saved password' : 'Livepin login password'} style={inputStyle} />
+    </div>
+  </div>
+
+  {/* Connection status */}
+  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', marginTop: '4px' }}>
+    <span style={{ padding: '5px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: gpsStatus.connected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: gpsStatus.connected ? '#34d399' : '#fbbf24', border: `1px solid ${gpsStatus.connected ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+      {gpsStatus.connected ? '✅ Connected' : '⚠️ Not connected'}
+    </span>
+    {gpsStatus.connected && gpsStatus.connected_at && (
+      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+        Last verified {new Date(gpsStatus.connected_at).toLocaleString('en-IN')}
+      </span>
+    )}
+    {!gpsStatus.connected && (
+      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+        Save your settings, then run Test Connection
+      </span>
+    )}
+  </div>
+
+  {gpsResult && (
+    <div style={{ background: gpsResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${gpsResult.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: gpsResult.ok ? '#34d399' : '#f87171', lineHeight: '1.6' }}>
+      {gpsResult.message}
+    </div>
+  )}
+
+  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+    <button onClick={testGps} disabled={testingGps || savingGps}
+      style={{ padding: '10px 20px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '8px', color: '#38bdf8', fontWeight: '600', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+      {testingGps ? '⏳ Testing...' : '🔌 Test Connection'}
+    </button>
+    <button onClick={saveGps} disabled={savingGps || testingGps}
+      style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: "'DM Sans', sans-serif" }}>
+      {savingGps ? '⏳ Saving...' : '💾 Save GPS Settings'}
     </button>
   </div>
 </div>

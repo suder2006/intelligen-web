@@ -84,7 +84,24 @@ export default function AdminTransportPage() {
   const [addingChild, setAddingChild] = useState(false)
   const [cancellingTrip, setCancellingTrip] = useState(null)
 
+  // GPS Integration tab (Livepin). Vehicle IDs are typed per route and saved
+  // one route at a time; locations come from /api/transport/location.
+  const [gpsIds, setGpsIds] = useState({})
+  const [savingGpsRoute, setSavingGpsRoute] = useState(null)
+  const [gpsSavedRoute, setGpsSavedRoute] = useState(null)
+  const [gpsSettings, setGpsSettings] = useState(null)
+  const [gpsLocations, setGpsLocations] = useState({})
+  const [gpsMapRoute, setGpsMapRoute] = useState(null)
+
   useEffect(() => { if (schoolId) fetchAll() }, [schoolId])
+
+  useEffect(() => {
+    if (view === 'gps' && schoolId) fetchGpsSettings()
+  }, [view, schoolId])
+
+  useEffect(() => {
+    setGpsIds(Object.fromEntries(routes.map(r => [r.id, r.gps_vehicle_id || ''])))
+  }, [routes])
 
   useEffect(() => {
     if (view === 'live') {
@@ -133,6 +150,54 @@ export default function AdminTransportPage() {
       setRoutes(routeData)
     }
     setLoading(false)
+  }
+
+  const authHeader = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return { Authorization: `Bearer ${session?.access_token || ''}` }
+  }
+
+  const fetchGpsSettings = async () => {
+    try {
+      const res = await fetch(`/api/admin/gps-settings?school_id=${schoolId}`, { headers: await authHeader() })
+      const data = res.ok ? await res.json() : null
+      setGpsSettings(data)
+      if (data?.gps_connected) fetchGpsLocations()
+    } catch (e) {
+      setGpsSettings(null)
+    }
+  }
+
+  const fetchGpsLocation = async (route) => {
+    const vehicleId = (route.gps_vehicle_id || '').trim()
+    if (!vehicleId) return
+    setGpsLocations(l => ({ ...l, [route.id]: { ...l[route.id], loading: true } }))
+    try {
+      const res = await fetch(`/api/transport/location?school_id=${schoolId}&vehicle_id=${encodeURIComponent(vehicleId)}`, { headers: await authHeader() })
+      const data = await res.json()
+      setGpsLocations(l => ({ ...l, [route.id]: res.ok ? { loc: data } : { error: data.error || 'Could not get location' } }))
+      if (res.ok) setGpsMapRoute(m => m || route.id)
+    } catch (e) {
+      setGpsLocations(l => ({ ...l, [route.id]: { error: e.message } }))
+    }
+  }
+
+  const fetchGpsLocations = () => {
+    routes.filter(r => (r.gps_vehicle_id || '').trim()).forEach(fetchGpsLocation)
+  }
+
+  const saveGpsVehicleId = async (route) => {
+    setSavingGpsRoute(route.id)
+    const value = (gpsIds[route.id] || '').trim() || null
+    const { error } = await supabase.from('transport_routes').update({ gps_vehicle_id: value }).eq('id', route.id)
+    setSavingGpsRoute(null)
+    if (error) { alert('Could not save: ' + error.message); return }
+    const updated = { ...route, gps_vehicle_id: value }
+    setRoutes(rs => rs.map(r => r.id === route.id ? updated : r))
+    setGpsLocations(l => { const { [route.id]: _, ...rest } = l; return rest })
+    setGpsSavedRoute(route.id)
+    setTimeout(() => setGpsSavedRoute(s => s === route.id ? null : s), 2500)
+    if (value && gpsSettings?.gps_connected) fetchGpsLocation(updated)
   }
 
   const fetchLiveData = async () => {
@@ -545,6 +610,7 @@ const cancelTrip = async (trip) => {
     ['trips', '📅 Daily Trips'],
     ['requests', '📋 Requests'],
     ['live', '🟢 Live Tracking'],
+    ['gps', '🚌 GPS Integration'],
   ]
 
   return (
@@ -1221,6 +1287,123 @@ const cancelTrip = async (trip) => {
               </>
             )}
 
+            {/* ═══════════════════════════════ GPS INTEGRATION ═══════════════════════════════ */}
+            {view === 'gps' && (() => {
+              const mapRoute = routes.find(r => r.id === gpsMapRoute)
+              const mapLoc = mapRoute && gpsLocations[mapRoute.id]?.loc
+              const connected = !!gpsSettings?.gps_connected
+              return (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>🚌 GPS Integration</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                      Link each route to its vehicle in {gpsSettings?.gps_provider || 'Livepin'} so parents can track the bus and watch the dashcam
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span className="badge" style={{ background: connected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: connected ? '#34d399' : '#fbbf24' }}>
+                      {connected ? '✅ Connected' : '⚠️ Not connected'}
+                    </span>
+                    {connected && <button onClick={fetchGpsLocations} className="btn-secondary">🔄 Refresh Locations</button>}
+                  </div>
+                </div>
+
+                {!connected && (
+                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: '#fbbf24' }}>
+                    ⚠️ GPS provider is not connected. Add your credentials in <a href="/admin/settings" style={{ color: '#38bdf8' }}>Settings → GPS & Camera Setup</a> and run Test Connection. You can still enter vehicle IDs now.
+                  </div>
+                )}
+
+                {routes.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🗺️</div>
+                    <div style={{ fontWeight: '600', marginBottom: '8px' }}>No Routes Yet</div>
+                    <div style={{ fontSize: '13px' }}>Create routes in the Routes tab first</div>
+                  </div>
+                ) : (
+                  <div className="table-wrap" style={{ marginBottom: '20px' }}>
+                    <table>
+                      <thead><tr><th>Route</th><th>Vehicle</th><th>GPS Vehicle ID</th><th>Current Location</th></tr></thead>
+                      <tbody>
+                        {routes.map(r => {
+                          const gl = gpsLocations[r.id]
+                          const dirty = (gpsIds[r.id] || '').trim() !== (r.gps_vehicle_id || '')
+                          return (
+                            <tr key={r.id}>
+                              <td>
+                                <div style={{ fontWeight: '600', color: '#fff' }}>{r.route_type === 'morning' ? '🌅' : '🏠'} {r.name}</div>
+                                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', marginTop: '2px' }}>{r.status}</div>
+                              </td>
+                              <td style={{ color: '#fbbf24' }}>{r.transport_vehicles ? `${r.transport_vehicles.name} · ${r.transport_vehicles.registration_no}` : '—'}</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  <input value={gpsIds[r.id] ?? ''} onChange={e => setGpsIds({ ...gpsIds, [r.id]: e.target.value })}
+                                    onKeyDown={e => { if (e.key === 'Enter' && dirty) saveGpsVehicleId(r) }}
+                                    placeholder='e.g. 12345' style={{ ...inputStyle, marginBottom: 0, width: '150px', padding: '7px 10px', fontSize: '13px' }} />
+                                  <button onClick={() => saveGpsVehicleId(r)} disabled={savingGpsRoute === r.id || !dirty}
+                                    className="btn-edit" style={{ opacity: dirty ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+                                    {savingGpsRoute === r.id ? '⏳' : gpsSavedRoute === r.id ? '✅ Saved' : '💾 Save'}
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                {!r.gps_vehicle_id ? (
+                                  <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>No vehicle linked</span>
+                                ) : !connected ? (
+                                  <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>Connect GPS to see location</span>
+                                ) : gl?.loading ? (
+                                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>⏳ Locating...</span>
+                                ) : gl?.error ? (
+                                  <span style={{ color: '#f87171', fontSize: '12px' }}>⚠️ {gl.error}</span>
+                                ) : gl?.loc ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <div style={{ fontSize: '12px' }}>
+                                      <div style={{ color: '#34d399', fontWeight: '600' }}>
+                                        {gl.loc.status || 'Live'}{gl.loc.speed > 0 ? ` · ${Math.round(gl.loc.speed)} km/h` : ''}
+                                      </div>
+                                      <div style={{ color: 'rgba(255,255,255,0.4)', maxWidth: '240px' }}>
+                                        {gl.loc.address || `${gl.loc.lat.toFixed(5)}, ${gl.loc.lng.toFixed(5)}`}
+                                      </div>
+                                    </div>
+                                    <button onClick={() => setGpsMapRoute(r.id)} className="btn-edit"
+                                      style={gpsMapRoute === r.id ? { background: 'rgba(56,189,248,0.25)' } : undefined}>🗺️ Map</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => fetchGpsLocation(r)} className="btn-edit">📍 Locate</button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {connected && mapLoc && (
+                  <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(16,185,129,0.2)' }}>
+                    <div style={{ background: 'rgba(16,185,129,0.06)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ color: '#34d399', fontWeight: '700', fontSize: '14px' }}>🗺️ {mapRoute.name} — Vehicle {mapRoute.gps_vehicle_id}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
+                        {mapLoc.updated_at ? `Updated ${new Date(mapLoc.updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : 'From GPS provider'}
+                      </div>
+                    </div>
+                    <iframe
+                      key={`${mapRoute.id}-${mapLoc.lat}-${mapLoc.lng}`}
+                      width="100%"
+                      height="420"
+                      style={{ border: 'none', display: 'block' }}
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyAkK4Tr8r6339Pm4WDJL5e6wQA5h2yZzvI&q=${mapLoc.lat},${mapLoc.lng}&zoom=15`}
+                    />
+                  </div>
+                )}
+              </>
+              )
+            })()}
 
           </>
         )}
