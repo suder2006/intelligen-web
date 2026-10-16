@@ -199,22 +199,83 @@ const num = (v) => {
 }
 
 // Livepin wraps payloads differently per endpoint ({data}, {data: [..]},
-// {vehicle: {..}}), so look one or two levels down for the record that has
-// coordinates.
+// {location_data: {..}}), and some fields are objects rather than values —
+// location_data / status can be a set of device flags (positioning, running,
+// position_encrypted, load, oil_line_connected, ...). Everything returned
+// from here is a plain string, number, boolean or null, so the apps never
+// render a raw object.
+const LAT_KEYS = ['lat', 'latitude', 'Lat', 'Latitude']
+const LNG_KEYS = ['lng', 'lon', 'long', 'longitude', 'Lng', 'Longitude']
+
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v)
+const first = (obj, keys) => {
+  for (const k of keys) if (obj?.[k] !== undefined && obj[k] !== null) return obj[k]
+  return undefined
+}
+const text = (v) => {
+  if (typeof v === 'string') return v.trim() || null
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+  return null
+}
+const bool = (v) => {
+  if (typeof v === 'boolean') return v
+  if (v === 1 || v === '1' || v === 'true') return true
+  if (v === 0 || v === '0' || v === 'false') return false
+  return null
+}
+
+// Breadth-first search (a few levels deep) for the record holding coordinates.
+function findLocationRecord(json) {
+  const queue = [json?.location_data, json?.data?.location_data, json]
+  const seen = new Set()
+  for (let i = 0; i < queue.length && i < 200; i++) {
+    const node = Array.isArray(queue[i]) ? queue[i][0] : queue[i]
+    if (!isObj(node) || seen.has(node)) continue
+    seen.add(node)
+    if (num(first(node, LAT_KEYS)) !== null && num(first(node, LNG_KEYS)) !== null) return node
+    for (const v of Object.values(node)) if (v && typeof v === 'object') queue.push(v)
+  }
+  return {}
+}
+
+// Status may be a word ("Running", "Idle") or a flags object; read the
+// running / ignition flags out of whichever objects carry them.
+function statusText(rec, json, speed) {
+  const direct = text(first(rec, ['status', 'vehicle_status', 'state', 'status_text']))
+  if (direct) return direct
+  const flagSources = [rec.status, rec.location_data, json?.location_data, json?.data?.location_data,
+    rec.vehicle_status, rec].filter(isObj)
+  for (const f of flagSources) {
+    const running = bool(f.running)
+    if (running === true) return 'Running'
+    const ignition = bool(f.ignition ?? f.acc ?? f.acc_on)
+    if (ignition !== null) return ignition ? (speed > 0 ? 'Running' : 'Ignition on') : 'Ignition off'
+    if (running === false) return speed > 0 ? 'Running' : 'Stopped'
+  }
+  return null
+}
+
+function timeText(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(v < 1e12 ? v * 1000 : v) // seconds or milliseconds
+    return isNaN(d) ? null : d.toISOString()
+  }
+  const s = text(v)
+  if (!s) return null
+  const d = new Date(/^\d+$/.test(s) ? Number(s) * (s.length <= 10 ? 1000 : 1) : s)
+  return isNaN(d) ? null : d.toISOString()
+}
+
 export function normalizeLocation(json) {
-  const candidates = [json, json?.data, json?.data?.[0], json?.vehicle, json?.location,
-    json?.data?.location, json?.data?.vehicle, json?.result]
-  const rec = candidates.find(c => c && typeof c === 'object' && !Array.isArray(c) &&
-    (c.lat ?? c.latitude ?? c.Lat) !== undefined) || {}
-  const lat = num(rec.lat ?? rec.latitude ?? rec.Lat)
-  const lng = num(rec.lng ?? rec.lon ?? rec.long ?? rec.longitude ?? rec.Lng)
+  const rec = findLocationRecord(json)
+  const speed = num(first(rec, ['speed', 'Speed', 'gps_speed'])) ?? 0
   return {
-    lat,
-    lng,
-    speed: num(rec.speed ?? rec.Speed) ?? 0,
-    status: rec.status || rec.vehicle_status || rec.state || (rec.ignition !== undefined ? (rec.ignition ? 'Ignition on' : 'Ignition off') : null),
-    address: rec.address || rec.location_name || rec.place || null,
-    updated_at: rec.updated_at || rec.timestamp || rec.time || rec.gps_time || rec.last_updated || null
+    lat: num(first(rec, LAT_KEYS)),
+    lng: num(first(rec, LNG_KEYS)),
+    speed,
+    status: statusText(rec, json, speed),
+    address: text(first(rec, ['address', 'location_name', 'place', 'formatted_address'])),
+    updated_at: timeText(first(rec, ['updated_at', 'timestamp', 'time', 'gps_time', 'last_updated', 'device_time']))
   }
 }
 
