@@ -16,7 +16,7 @@ function publicShape(row) {
     gps_connected: !!row?.gps_connected,
     gps_connected_at: row?.gps_connected_at || null,
     has_key: !!row?.gps_api_key,
-    has_password: !!row?.gps_password,
+    has_secret_key: !!row?.gps_password,
     env_configured: !!(process.env.LIVEPIN_API_KEY && process.env.LIVEPIN_SECRET_KEY)
   }
 }
@@ -60,14 +60,15 @@ export async function POST(request) {
     // Blank means "keep the saved value" — the form never receives the stored
     // secrets back, so an empty field must not wipe them.
     const apiKey = (body.gps_api_key || '').trim()
-    const password = body.gps_password || ''
+    // The Livepin secret key lives in the gps_password column.
+    const secretKey = (body.gps_secret_key || '').trim()
     if (apiKey) row.gps_api_key = apiKey
-    if (password) row.gps_password = password
+    if (secretKey) row.gps_password = secretKey
 
     // Changed credentials have not been verified yet, so the stored status
     // would be stale. Test Connection sets it again.
     const changed = (apiKey && apiKey !== existing?.gps_api_key) ||
-      (password && password !== existing?.gps_password) ||
+      (secretKey && secretKey !== existing?.gps_password) ||
       apiUrl !== (existing?.gps_api_url || null)
     if (changed || !existing) {
       row.gps_connected = false

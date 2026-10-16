@@ -4,7 +4,7 @@ import { serviceClient, requireAdmin, getIntegration, credentialsFrom, isConfigu
 
 // Checks that the school's Livepin API key and secret key can log in.
 //
-// Body: { school_id, gps_api_url?, gps_api_key?, gps_password? (secret key) }.
+// Body: { school_id, gps_api_url?, gps_api_key?, gps_secret_key? }.
 // Anything left blank falls back to what is saved (then to the LIVEPIN_* env
 // vars), so the button works both for credentials being typed in and for a
 // configuration that is already stored.
@@ -21,7 +21,7 @@ export async function POST(request) {
     const creds = credentialsFrom({
       gps_api_url: (body.gps_api_url || '').trim() || saved?.gps_api_url,
       gps_api_key: (body.gps_api_key || '').trim() || saved?.gps_api_key,
-      gps_password: body.gps_password || saved?.gps_password
+      gps_password: (body.gps_secret_key || '').trim() || saved?.gps_password
     })
     const testingSavedConfig = !!saved &&
       creds.apiUrl === savedCreds.apiUrl && creds.apiKey === savedCreds.apiKey &&

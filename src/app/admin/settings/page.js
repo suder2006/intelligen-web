@@ -87,9 +87,9 @@ export default function SchoolSettingsPage() {
   // here, like the Drive key: the API only reports whether each is saved.
   // The secret key is stored in the gps_password column.
   const [gps, setGps] = useState({
-    enabled: true, cameraEnabled: true, provider: 'Livepin', apiUrl: 'https://api.livepin.in', apiKey: '', password: ''
+    enabled: true, cameraEnabled: true, provider: 'Livepin', apiUrl: 'https://api.livepin.in', apiKey: '', secretKey: ''
   })
-  const [gpsStatus, setGpsStatus] = useState({ connected: false, connected_at: null, has_key: false, has_password: false, env_configured: false })
+  const [gpsStatus, setGpsStatus] = useState({ connected: false, connected_at: null, has_key: false, has_secret_key: false, env_configured: false })
   const [savingGps, setSavingGps] = useState(false)
   const [testingGps, setTestingGps] = useState(false)
   const [gpsResult, setGpsResult] = useState(null)
@@ -269,7 +269,7 @@ const applyGpsSettings = (data) => {
     connected: data.gps_connected,
     connected_at: data.gps_connected_at,
     has_key: data.has_key,
-    has_password: data.has_password,
+    has_secret_key: data.has_secret_key,
     env_configured: data.env_configured
   })
   setGps({
@@ -278,7 +278,7 @@ const applyGpsSettings = (data) => {
     provider: data.gps_provider || 'Livepin',
     apiUrl: data.gps_api_url || 'https://api.livepin.in',
     apiKey: '',
-    password: ''
+    secretKey: ''
   })
 }
 
@@ -295,7 +295,7 @@ const gpsCredentials = () => ({
   school_id: schoolId,
   gps_api_url: gps.apiUrl,
   gps_api_key: gps.apiKey,
-  gps_password: gps.password
+  gps_secret_key: gps.secretKey
 })
 
 const saveGps = async () => {
@@ -1114,9 +1114,9 @@ const startEditSubAdmin = (sa) => {
         placeholder={gpsStatus.has_key ? 'Leave blank to keep the saved key' : 'Livepin API key'} style={inputStyle} />
     </div>
     <div>
-      <label>Secret Key {gpsStatus.has_password && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
-      <input type='password' autoComplete='new-password' value={gps.password} onChange={e => setGps({ ...gps, password: e.target.value })}
-        placeholder={gpsStatus.has_password ? 'Leave blank to keep the saved secret key' : 'Livepin API secret key'} style={inputStyle} />
+      <label>Secret Key {gpsStatus.has_secret_key && <span style={{ color: '#34d399', fontWeight: '600' }}>• saved</span>}</label>
+      <input type='password' autoComplete='new-password' value={gps.secretKey} onChange={e => setGps({ ...gps, secretKey: e.target.value })}
+        placeholder={gpsStatus.has_secret_key ? 'Leave blank to keep the saved secret key' : 'Enter Livepin secret key'} style={inputStyle} />
     </div>
   </div>
 
