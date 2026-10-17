@@ -27,12 +27,12 @@ export async function fetchRatings(supabase, studentIds, academicYear, months) {
   return byMonth
 }
 
-// activity id -> { id, name, skill_masters: { name, development_area } }
+// activity id -> { id, name, skill_masters: { name, development_area, program } }
 export async function fetchActivities(supabase, activityIds) {
   const map = {}
   for (let i = 0; i < activityIds.length; i += ID_CHUNK) {
     const { data, error } = await supabase.from('skill_activities')
-      .select('id, name, skill_masters(name, development_area)')
+      .select('id, name, skill_masters(name, development_area, program)')
       .in('id', activityIds.slice(i, i + ID_CHUNK))
     if (error) throw new Error(error.message)
     data.forEach(a => { map[a.id] = a })

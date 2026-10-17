@@ -87,7 +87,7 @@ export default function TeacherProgressPage() {
       .eq('school_id', profile.school_id)
       .in('id', skillIds)
       .order('order_index')
-    setSkills(filterSkillActivities(skillsData || [], selectedProgram, selectedTerm, selectedMonth))
+    setSkills(filterSkillActivities((skillsData || []).filter(s => !s.program || s.program === selectedProgram), selectedProgram, selectedTerm, selectedMonth))
   }
 
   const fetchStudents = async () => {

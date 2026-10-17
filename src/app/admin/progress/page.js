@@ -115,7 +115,7 @@ export default function AdminProgressPage() {
     if (requestId !== skillsRequest.current) return
     // Keep skills in development-area order so the screen and the Excel columns match.
     // Only this program/term/month's activities are graded.
-    setSkills(groupByArea(filterSkillActivities(data || [], program, term, month)).flatMap(g => g.skills).map(s => ({
+    setSkills(groupByArea(filterSkillActivities((data || []).filter(s => !s.program || s.program === program), program, term, month)).flatMap(g => g.skills).map(s => ({
       ...s,
       skill_activities: byOrder(s.skill_activities),
       skill_learning_outcomes: byOrder(s.skill_learning_outcomes)

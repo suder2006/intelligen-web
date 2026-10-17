@@ -17,7 +17,7 @@ const TERM_MONTHS = {
   'Term 3': ['January', 'February', 'March'],
 }
 
-const EMPTY_SKILL_FORM = { name: '', description: '', development_area: '', outcomes: [] }
+const EMPTY_SKILL_FORM = { name: '', description: '', development_area: '', program: '', outcomes: [] }
 const EMPTY_ACTIVITY_FORM = { name: '', description: '', program: '', term: '', month: '' }
 
 const TEMPLATE_HEADERS = ['Development Area', 'Skill Name', 'Skill Description', 'Learning Outcome', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month']
@@ -80,8 +80,9 @@ export default function AdminSkillsPage() {
       name: skill.name,
       description: skill.description || '',
       development_area: skill.development_area || '',
+      program: skill.program || (skillPrograms(skill).length === 1 ? skillPrograms(skill)[0] : ''),
       outcomes: sortedOutcomes(skill).map(o => o.outcome)
-    } : EMPTY_SKILL_FORM)
+    } : { ...EMPTY_SKILL_FORM, program: filterProgram !== 'All' ? filterProgram : '' })
     setShowSkillModal(true)
   }
 
@@ -91,21 +92,27 @@ export default function AdminSkillsPage() {
 
   const saveSkill = async () => {
     if (!skillForm.name.trim()) { alert('Please enter skill name'); return }
+    if (!skillForm.program) { alert('Please choose a program'); return }
     setSaving(true)
     const fields = {
       name: skillForm.name,
       description: skillForm.description,
-      development_area: skillForm.development_area.trim() || null
+      development_area: skillForm.development_area.trim() || null,
+      program: skillForm.program
     }
+    // skill_masters is unique by school + year + name + program.
+    const saveError = (error) => alert(error.code === '23505'
+      ? `"${skillForm.name}" already exists for ${skillForm.program} in ${academicYear}`
+      : 'Error: ' + error.message)
     let skillId = editingSkill?.id
     if (editingSkill) {
       const { error } = await supabase.from('skill_masters').update(fields).eq('id', skillId)
-      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+      if (error) { saveError(error); setSaving(false); return }
     } else {
       const { data: newSkill, error } = await supabase.from('skill_masters').insert({
         ...fields, academic_year: academicYear, order_index: skills.length, school_id: schoolId
       }).select().single()
-      if (error) { alert('Error: ' + error.message); setSaving(false); return }
+      if (error) { saveError(error); setSaving(false); return }
       skillId = newSkill.id
       setExpandedSkill(skillId)
     }
@@ -141,8 +148,9 @@ export default function AdminSkillsPage() {
     await fetchAll()
   }
 
-  // The programs a skill belongs to, from its assignments and its activities' tags.
-  const skillPrograms = (skill) => [...new Set([
+  // The programs a skill belongs to: its program column, or for skills saved before that
+  // column existed, its assignments and its activities' tags.
+  const skillPrograms = (skill) => skill.program ? [skill.program] : [...new Set([
     ...skillMaps.filter(m => m.skill_id === skill.id).map(m => m.program),
     ...(skill.skill_activities || []).map(a => a.program)
   ].filter(Boolean))]
@@ -227,7 +235,8 @@ const matchesFilter = (program, term, month) =>
 const filterActive = filterProgram !== 'All'
 const visibleSkills = filterActive
   // The open skill stays visible so it doesn't vanish while you edit its assignments.
-  ? skills.filter(s => s.id === expandedSkill || skillMaps.some(m => m.skill_id === s.id && matchesFilter(m.program, m.term, m.month)))
+  ? skills.filter(s => s.id === expandedSkill ||
+    (s.program === filterProgram && filterTerm === 'All') || skillMaps.some(m => m.skill_id === s.id && matchesFilter(m.program, m.term, m.month)))
   : skills
 
 const selectProgram = (p) => { setFilterProgram(p); setFilterTerm('All'); setFilterMonth('All') }
@@ -358,14 +367,17 @@ const getSkillSummary = (skillId) => {
         if (existing) {
           skillId = existing.id
           claimed.add(skillId)
-          if (skillData.devArea && skillData.devArea !== existing.development_area) {
-            const { error } = await supabase.from('skill_masters').update({ development_area: skillData.devArea }).eq('id', skillId)
+          const updates = {}
+          if (skillData.devArea && skillData.devArea !== existing.development_area) updates.development_area = skillData.devArea
+          if (skillData.program && !existing.program) updates.program = skillData.program
+          if (Object.keys(updates).length) {
+            const { error } = await supabase.from('skill_masters').update(updates).eq('id', skillId)
             if (error) throw error
           }
         } else {
           const { data: newSkill, error } = await supabase.from('skill_masters').insert({
             name: skillData.name, description: skillData.desc || null,
-            development_area: skillData.devArea || null,
+            development_area: skillData.devArea || null, program: skillData.program || null,
             academic_year: academicYear, order_index: skills.length + skillsCreated,
             school_id: schoolId
           }).select().single()
@@ -572,7 +584,7 @@ const getSkillSummary = (skillId) => {
                         })
                       ))
                     ) : (
-                      <span style={{ color: '#f59e0b', fontSize: '12px' }}>⚠️ Not assigned yet</span>
+                      <span style={{ color: '#f59e0b', fontSize: '12px' }}>{skill.program ? `${skill.program} · ` : ''}⚠️ Not assigned yet</span>
                     )}
                   </div>
                   {skill.development_area && <div style={{ color: '#34d399', fontSize: '12px', fontWeight: '600', marginTop: '4px' }}>🌱 {skill.development_area}</div>}
@@ -700,6 +712,11 @@ const getSkillSummary = (skillId) => {
             <input value={skillForm.name} onChange={e => setSkillForm({ ...skillForm, name: e.target.value })}
               placeholder='e.g. Fine Motor Skills, Gross Motor Skills...' style={inputStyle} autoFocus
               onKeyDown={e => e.key === 'Enter' && saveSkill()} />
+            <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Program *</label>
+            <select value={skillForm.program} onChange={e => setSkillForm({ ...skillForm, program: e.target.value })} style={inputStyle}>
+              <option value='' style={{ background: '#1e293b' }}>Select program</option>
+              {programs.map(p => <option key={p} value={p} style={{ background: '#1e293b' }}>{p}</option>)}
+            </select>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Description (optional)</label>
             <input value={skillForm.description} onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
               placeholder='Brief description' style={inputStyle} />
