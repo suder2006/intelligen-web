@@ -56,6 +56,7 @@ export default function AdminProgressPage() {
   const [skills, setSkills] = useState([])
   const skillsRequest = useRef(0) // ignores responses from an earlier program/term/month selection
   const [students, setStudents] = useState([])
+  const studentsRequest = useRef(0) // ignores responses from an earlier program selection
   const [loading, setLoading] = useState(true)
 
   const [selectedStudent, setSelectedStudent] = useState(null)
@@ -86,10 +87,13 @@ export default function AdminProgressPage() {
   }
 
   const fetchStudents = async () => {
+    const requestId = ++studentsRequest.current
     setSelectedStudent(null)
     setRatings({})
+    setStudents([])
     const { data } = await supabase.from('students').select('*')
       .eq('status', 'active').eq('program', program).eq('school_id', schoolId).order('full_name')
+    if (requestId !== studentsRequest.current) return
     setStudents(data || [])
   }
 
