@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
+import { TEMPLATE_HEADERS, parseSkillSheet, groupSkillRows } from '@/lib/skillsUpload'
 
 
 
@@ -20,12 +21,7 @@ const TERM_MONTHS = {
 const EMPTY_SKILL_FORM = { name: '', description: '', development_area: '', program: '', outcomes: [] }
 const EMPTY_ACTIVITY_FORM = { name: '', description: '', program: '', term: '', month: '' }
 
-const TEMPLATE_HEADERS = ['Development Area', 'Skill Name', 'Skill Description', 'Learning Outcome', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month']
-// Column positions in templates downloaded before Development Area / Learning Outcome existed.
-const LEGACY_COLUMNS = { 'skill name': 0, 'skill description': 1, 'activity name': 2, 'activity description': 3, 'program': 4, 'term': 5, 'month': 6 }
-
 const sortedOutcomes = (skill) => [...(skill?.skill_learning_outcomes || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-const splitOutcomes = (text) => text.split(';').map(o => o.trim()).filter(Boolean)
 // "LKG · Term 1: June" for an activity's program/term/month tags.
 const activityTag = (act) => [act.program, [act.term, act.month].filter(Boolean).join(': ')].filter(Boolean).join(' · ')
 
@@ -51,6 +47,7 @@ export default function AdminSkillsPage() {
   const [activityForm, setActivityForm] = useState(EMPTY_ACTIVITY_FORM)
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkPreview, setBulkPreview] = useState([])
+  const [bulkErrors, setBulkErrors] = useState([]) // rows that can't be saved with program/term/month
   const [bulkSaving, setBulkSaving] = useState(false)
   const bulkFileRef = useRef(null)
 
@@ -290,32 +287,11 @@ const getSkillSummary = (skillId) => {
       const data = await file.arrayBuffer()
       const wb = XLSX.read(data)
       const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
-      // Columns are found by header name; files from the old template (no Development Area column) use the old positions.
-      const header = (rows[0] || []).map(h => (h || '').toString().trim().toLowerCase())
-      const isLegacy = !header.includes('development area') && !header.includes('learning outcome')
-      const idx = Object.fromEntries(TEMPLATE_HEADERS.map(h => {
-        const key = h.toLowerCase()
-        return [h, isLegacy ? (LEGACY_COLUMNS[key] ?? -1) : header.indexOf(key)]
-      }))
-      const cell = (row, name) => idx[name] < 0 ? '' : (row[idx[name]] ?? '').toString().trim()
-      const parsed = []
-      rows.slice(1).forEach(row => {
-        const entry = {
-          devArea: cell(row, 'Development Area'),
-          skillName: cell(row, 'Skill Name'),
-          skillDesc: cell(row, 'Skill Description'),
-          outcomes: splitOutcomes(cell(row, 'Learning Outcome')),
-          actName: cell(row, 'Activity Name'),
-          actDesc: cell(row, 'Activity Description'),
-          program: cell(row, 'Program'),
-          term: cell(row, 'Term'),
-          month: cell(row, 'Month')
-        }
-        if (entry.skillName || entry.actName) parsed.push(entry)
-      })
-      if (parsed.length === 0) { alert('No data found in file!'); return }
+      const { rows: parsed, errors } = parseSkillSheet(XLSX.utils.sheet_to_json(ws, { header: 1 }), programs)
+      console.log('[skills bulk upload] parsed rows', parsed.length, 'errors', errors)
+      if (parsed.length === 0 && errors.length === 0) { alert('No data found in file!'); return }
       setBulkPreview(parsed)
+      setBulkErrors(errors)
       setShowBulkModal(true)
     } catch (e) {
       alert('Error reading file: ' + e.message)
@@ -324,38 +300,19 @@ const getSkillSummary = (skillId) => {
   }
 
   const saveBulkUpload = async () => {
-    if (!bulkPreview.length) return
+    if (!bulkPreview.length || bulkErrors.length) return
     setBulkSaving(true)
     try {
-      // One skill per name + program: the same skill name in two programs is two separate skills.
-      // Within a skill, activities are kept per term + month.
-      const skillMap = {}
-      bulkPreview.forEach(row => {
-        if (!row.skillName) return
-        const key = `${row.skillName.toLowerCase()}|${row.program}`
-        if (!skillMap[key]) {
-          skillMap[key] = { name: row.skillName, program: row.program, desc: row.skillDesc, devArea: '', outcomes: [], activities: [], assignments: [] }
-        }
-        const entry = skillMap[key]
-        if (row.devArea && !entry.devArea) entry.devArea = row.devArea
-        row.outcomes.forEach(o => {
-          if (!entry.outcomes.some(e => e.toLowerCase() === o.toLowerCase())) entry.outcomes.push(o)
-        })
-        if (row.actName && !entry.activities.some(a =>
-          a.name.toLowerCase() === row.actName.toLowerCase() && a.term === row.term && a.month === row.month
-        )) {
-          entry.activities.push({ name: row.actName, description: row.actDesc, term: row.term, month: row.month })
-        }
-        if (row.program && row.term && row.month &&
-          !entry.assignments.some(a => a.term === row.term && a.month === row.month)) {
-          entry.assignments.push({ program: row.program, term: row.term, month: row.month })
-        }
-      })
+      const skillGroups = groupSkillRows(bulkPreview)
+      console.log('[skills bulk upload] saving', skillGroups.length, 'skills', skillGroups.map(g => ({
+        name: g.name, program: g.program, activities: g.activities.length,
+        months: [...new Set(g.activities.map(a => `${a.term}: ${a.month}`))]
+      })))
 
       let skillsCreated = 0, activitiesCreated = 0, assignmentsCreated = 0, outcomesCreated = 0
       const claimed = new Set() // existing skills already matched to a skill in this upload
 
-      for (const skillData of Object.values(skillMap)) {
+      for (const skillData of skillGroups) {
         let skillId
         // Reuse a same-named skill that belongs only to this program, else an unassigned one.
         // Skills shared across programs are never reused, so their activities don't mix.
@@ -401,23 +358,32 @@ const getSkillSummary = (skillId) => {
         const adopted = new Set()
         let orderIndex = existingActs.length
         for (const act of skillData.activities) {
-          const tags = { program: skillData.program || null, term: act.term || null, month: act.month || null }
+          const tags = { program: act.program, term: act.term, month: act.month }
+          // parseSkillSheet rejects such rows; this guards against ever saving an untagged activity.
+          if (!tags.program || !tags.term || !tags.month) {
+            throw new Error(`Row ${act.rowNum} "${act.name}" has no program/term/month (${JSON.stringify(tags)})`)
+          }
           const sameActName = existingActs.filter(a => !adopted.has(a.id) && a.name.toLowerCase() === act.name.toLowerCase())
-          if (sameActName.some(a => a.program === tags.program && a.term === tags.term && a.month === tags.month)) continue
-          // An activity saved before program/term/month tagging takes this row's tags instead of being duplicated.
-          const untagged = sameActName.find(a => !a.program && !a.term && !a.month)
-          if (untagged) {
-            adopted.add(untagged.id)
-            const { error } = await supabase.from('skill_activities').update(tags).eq('id', untagged.id)
-            if (error) throw error
+          if (sameActName.some(a => a.program === tags.program && a.term === tags.term && a.month === tags.month)) {
+            console.log('[skills bulk upload] skip existing activity', skillData.name, act.name, tags)
             continue
           }
-          const { error } = await supabase.from('skill_activities').insert({
-            skill_id: skillId, name: act.name,
-            description: act.description || null, order_index: orderIndex++, ...tags
-          })
+          // An activity saved before program/term/month tagging takes this row's tags instead of being duplicated.
+          const untagged = sameActName.find(a => !a.program && !a.term && !a.month)
+          const { data: saved, error } = untagged
+            ? await supabase.from('skill_activities').update(tags).eq('id', untagged.id).select('id, name, program, term, month').single()
+            : await supabase.from('skill_activities').insert({
+              skill_id: skillId, name: act.name,
+              description: act.description || null, order_index: orderIndex++, ...tags
+            }).select('id, name, program, term, month').single()
           if (error) throw error
-          activitiesCreated++
+          console.log(`[skills bulk upload] ${untagged ? 'tagged' : 'inserted'} activity`, skillData.name, saved)
+          // Fail loudly if the database didn't keep the tags we sent.
+          if (saved.program !== tags.program || saved.term !== tags.term || saved.month !== tags.month) {
+            throw new Error(`"${act.name}" was saved as ${JSON.stringify({ program: saved.program, term: saved.term, month: saved.month })} instead of ${JSON.stringify(tags)}`)
+          }
+          if (untagged) adopted.add(untagged.id)
+          else activitiesCreated++
         }
 
         for (const assignment of skillData.assignments) {
@@ -437,6 +403,7 @@ const getSkillSummary = (skillId) => {
 
       setShowBulkModal(false)
       setBulkPreview([])
+      setBulkErrors([])
       await fetchAll()
       alert(`✅ Bulk upload complete!\n\n→ ${skillsCreated} skills created\n→ ${outcomesCreated} learning outcomes created\n→ ${activitiesCreated} activities created\n→ ${assignmentsCreated} assignments created`)
     } catch (e) {
@@ -756,6 +723,16 @@ const getSkillSummary = (skillId) => {
               {bulkPreview.length} rows found. Review before saving.
             </p>
 
+            {bulkErrors.length > 0 && (
+              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: '#fca5a5' }}>
+                <div style={{ fontWeight: '700', marginBottom: '6px' }}>⚠️ {bulkErrors.length} row(s) need fixing before import. Every activity needs a Program, Term and Month.</div>
+                {bulkErrors.slice(0, 20).map(e => (
+                  <div key={e.row}>Row {e.row}{e.name ? ` (${e.name})` : ''}: {e.message}</div>
+                ))}
+                {bulkErrors.length > 20 && <div>…and {bulkErrors.length - 20} more</div>}
+              </div>
+            )}
+
             {/* Preview table */}
             <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
@@ -768,7 +745,7 @@ const getSkillSummary = (skillId) => {
                 </thead>
                 <tbody>
                   {bulkPreview.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: bulkErrors.some(e => e.row === row.rowNum) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
                       <td style={{ padding: '6px 8px', color: '#34d399' }}>{row.devArea}</td>
                       <td style={{ padding: '6px 8px', color: row.skillName ? '#fff' : 'transparent' }}>{row.skillName || '↑ same'}</td>
                       <td style={{ padding: '6px 8px', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>{row.outcomes.join('; ')}</td>
@@ -783,8 +760,8 @@ const getSkillSummary = (skillId) => {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowBulkModal(false); setBulkPreview([]) }} className="btn-secondary">Cancel</button>
-              <button onClick={saveBulkUpload} disabled={bulkSaving} className="btn-primary">
+              <button onClick={() => { setShowBulkModal(false); setBulkPreview([]); setBulkErrors([]) }} className="btn-secondary">Cancel</button>
+              <button onClick={saveBulkUpload} disabled={bulkSaving || bulkErrors.length > 0} className="btn-primary" style={bulkErrors.length ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}>
                 {bulkSaving ? '⏳ Saving...' : `✅ Import ${bulkPreview.length} rows`}
               </button>
             </div>
