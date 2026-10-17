@@ -64,7 +64,7 @@ export function parseSkillSheet(rows, programs = []) {
 
 // One skill per name + program: the same skill name in two programs is two separate skills.
 // Within a skill, activities are kept per term + month, each carrying its program/term/month,
-// and each learning outcome carries its program.
+// and each learning outcome carries its program/term/month (outcomes change month to month).
 export function groupSkillRows(parsed) {
   const skillMap = {}
   parsed.forEach(row => {
@@ -76,7 +76,9 @@ export function groupSkillRows(parsed) {
     const entry = skillMap[key]
     if (row.devArea && !entry.devArea) entry.devArea = row.devArea
     row.outcomes.forEach(o => {
-      if (!entry.outcomes.some(e => e.outcome.toLowerCase() === o.toLowerCase())) entry.outcomes.push({ outcome: o, program: row.program })
+      if (!entry.outcomes.some(e => e.outcome.toLowerCase() === o.toLowerCase() && e.term === row.term && e.month === row.month)) {
+        entry.outcomes.push({ outcome: o, program: row.program, term: row.term, month: row.month })
+      }
     })
     if (row.actName && !entry.activities.some(a =>
       a.name.toLowerCase() === row.actName.toLowerCase() && a.term === row.term && a.month === row.month

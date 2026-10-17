@@ -81,19 +81,32 @@ export default function AdminSkillsPage() {
       description: skill.description || '',
       development_area: skill.development_area || '',
       program,
-      outcomes: formOutcomes.map(o => o.outcome),
+      outcomes: formOutcomes.map(o => ({ outcome: o.outcome, term: o.term || '', month: o.month || '' })),
       outcomeIds: formOutcomes.map(o => o.id)
     } : { ...EMPTY_SKILL_FORM, program: filterProgram !== 'All' ? filterProgram : '' })
     setShowSkillModal(true)
   }
 
-  const setOutcome = (index, value) => setSkillForm(prev => ({ ...prev, outcomes: prev.outcomes.map((o, i) => i === index ? value : o) }))
-  const addOutcome = () => setSkillForm(prev => ({ ...prev, outcomes: [...prev.outcomes, ''] }))
+  // Outcomes in the form are { outcome, term, month }; changing the term clears the month.
+  const setOutcome = (index, field, value) => setSkillForm(prev => ({
+    ...prev,
+    outcomes: prev.outcomes.map((o, i) => i !== index ? o : { ...o, [field]: value, ...(field === 'term' ? { month: '' } : {}) })
+  }))
+  const addOutcome = () => setSkillForm(prev => {
+    const last = prev.outcomes[prev.outcomes.length - 1]
+    return { ...prev, outcomes: [...prev.outcomes, {
+      outcome: '',
+      term: last?.term || (filterTerm !== 'All' ? filterTerm : ''),
+      month: last?.month || (filterMonth !== 'All' ? filterMonth : '')
+    }] }
+  })
   const removeOutcome = (index) => setSkillForm(prev => ({ ...prev, outcomes: prev.outcomes.filter((_, i) => i !== index) }))
 
   const saveSkill = async () => {
     if (!skillForm.name.trim()) { alert('Please enter skill name'); return }
     if (!skillForm.program) { alert('Please choose a program'); return }
+    const outcomes = skillForm.outcomes.map(o => ({ ...o, outcome: o.outcome.trim() })).filter(o => o.outcome)
+    if (outcomes.some(o => !o.term || !o.month)) { alert('Please choose a term and month for every learning outcome'); return }
     setSaving(true)
     const fields = {
       name: skillForm.name,
@@ -119,8 +132,7 @@ export default function AdminSkillsPage() {
     }
 
     // Replace the outcomes shown in the form with what's in it, in form order, tagged with the
-    // skill's program. Outcomes of other programs on the same skill are left alone.
-    const outcomes = skillForm.outcomes.map(o => o.trim()).filter(Boolean)
+    // skill's program and each outcome's term/month. Other programs' outcomes are left alone.
     let outcomeError = null
     if (editingSkill && skillForm.outcomeIds?.length) {
       const { error } = await supabase.from('skill_learning_outcomes').delete().in('id', skillForm.outcomeIds)
@@ -128,7 +140,7 @@ export default function AdminSkillsPage() {
     }
     if (!outcomeError && outcomes.length) {
       const { error } = await supabase.from('skill_learning_outcomes')
-        .insert(outcomes.map((outcome, i) => ({ skill_id: skillId, outcome, order_index: i, program: skillForm.program })))
+        .insert(outcomes.map((o, i) => ({ skill_id: skillId, outcome: o.outcome, order_index: i, program: skillForm.program, term: o.term, month: o.month })))
       outcomeError = error
     }
     if (outcomeError) alert('Skill saved, but learning outcomes failed: ' + outcomeError.message)
@@ -348,28 +360,33 @@ const getSkillSummary = (skillId) => {
           skillsCreated++
         }
 
-        // Add outcomes the skill doesn't already have for this program, after its existing ones.
-        // An untagged outcome with the same text takes this program instead of being duplicated.
+        // Add outcomes the skill doesn't already have for this program/term/month, after its
+        // existing ones. An outcome with the same text but no term/month (saved before outcomes
+        // were tagged by month) takes this row's tags instead of being duplicated.
         const existingOutcomes = sortedOutcomes(existing)
+        const retagged = new Set()
         const newOutcomes = []
         for (const o of skillData.outcomes) {
-          const same = existingOutcomes.filter(e => e.outcome.toLowerCase() === o.outcome.toLowerCase())
-          if (same.some(e => e.program === o.program)) continue
-          const untagged = same.find(e => !e.program)
+          const tags = { program: o.program, term: o.term, month: o.month }
+          const same = existingOutcomes.filter(e => !retagged.has(e.id) && e.outcome.toLowerCase() === o.outcome.toLowerCase())
+          if (same.some(e => e.program === tags.program && e.term === tags.term && e.month === tags.month)) continue
+          const untagged = same.find(e => (!e.program || e.program === tags.program) && !e.term && !e.month)
           if (untagged) {
-            const { error } = await supabase.from('skill_learning_outcomes').update({ program: o.program }).eq('id', untagged.id)
+            retagged.add(untagged.id)
+            const { error } = await supabase.from('skill_learning_outcomes').update(tags).eq('id', untagged.id)
             if (error) throw error
             console.log('[skills bulk upload] tagged outcome', skillData.name, o)
           } else newOutcomes.push(o)
         }
         if (newOutcomes.length) {
           const { data: savedOutcomes, error } = await supabase.from('skill_learning_outcomes').insert(newOutcomes.map((o, i) => ({
-            skill_id: skillId, outcome: o.outcome, program: o.program, order_index: existingOutcomes.length + i
-          }))).select('id, outcome, program')
+            skill_id: skillId, outcome: o.outcome, program: o.program, term: o.term, month: o.month,
+            order_index: existingOutcomes.length + i
+          }))).select('id, outcome, program, term, month')
           if (error) throw error
           console.log('[skills bulk upload] inserted outcomes', skillData.name, savedOutcomes)
-          const lost = savedOutcomes.find(s => !s.program)
-          if (lost) throw new Error(`Outcome "${lost.outcome}" was saved without a program`)
+          const lost = savedOutcomes.find(s => !s.program || !s.term || !s.month)
+          if (lost) throw new Error(`Outcome "${lost.outcome}" was saved without a program/term/month`)
           outcomesCreated += newOutcomes.length
         }
 
@@ -590,19 +607,25 @@ const getSkillSummary = (skillId) => {
                   <div style={{ paddingTop: '16px' }}>
                     {/* Learning outcomes */}
                     {(() => {
-                      // Grouped by program; with a filter, only that program's (untagged ones stay visible to fix).
-                      const outcomes = sortedOutcomes(skill).filter(o => !filterActive || !o.program || o.program === filterProgram)
+                      // Grouped by "LKG · Term 1: June"; with a filter, only matching ones (untagged ones stay visible to fix).
+                      const outcomes = sortedOutcomes(skill).filter(o => !filterActive || (
+                        (!o.program || o.program === filterProgram) &&
+                        (filterTerm === 'All' || !o.term || o.term === filterTerm) &&
+                        (filterMonth === 'All' || !o.month || o.month === filterMonth)))
                       if (!outcomes.length) return null
-                      const groups = [...new Set(outcomes.map(o => o.program || ''))].sort((a, b) => !a - !b || a.localeCompare(b))
+                      const monthRank = (o) => o.term && o.month ? TERMS.indexOf(o.term) * 10 + TERM_MONTHS[o.term].indexOf(o.month) : 99
+                      const groups = [...new Set([...outcomes]
+                        .sort((a, b) => (a.program || '~').localeCompare(b.program || '~') || monthRank(a) - monthRank(b))
+                        .map(o => activityTag(o)))]
                       return (
                         <div style={{ marginBottom: '16px' }}>
                           <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Learning Outcomes</div>
-                          {groups.map(prog => (
-                            <div key={prog || 'none'} style={{ marginBottom: '6px' }}>
-                              <div style={{ color: prog ? '#a78bfa' : '#f59e0b', fontSize: '11px', fontWeight: '600', marginBottom: '2px' }}>
-                                {prog || '⚠️ No program'}
+                          {groups.map(tag => (
+                            <div key={tag || 'none'} style={{ marginBottom: '6px' }}>
+                              <div style={{ color: tag.includes(':') ? '#a78bfa' : '#f59e0b', fontSize: '11px', fontWeight: '600', marginBottom: '2px' }}>
+                                {tag.includes(':') ? tag : `⚠️ ${tag ? tag + ' · ' : ''}No term / month`}
                               </div>
-                              {outcomes.filter(o => (o.program || '') === prog).map(o => (
+                              {outcomes.filter(o => activityTag(o) === tag).map(o => (
                                 <div key={o.id} style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontStyle: 'italic', padding: '3px 0' }}>◦ {o.outcome}</div>
                               ))}
                             </div>
@@ -726,12 +749,24 @@ const getSkillSummary = (skillId) => {
               {[...new Set(skills.map(s => s.development_area).filter(Boolean))].map(a => <option key={a} value={a} />)}
             </datalist>
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>Learning Outcomes (optional)</label>
-            {skillForm.outcomes.map((outcome, i) => (
-              <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                <input value={outcome} onChange={e => setOutcome(i, e.target.value)}
-                  placeholder={`Outcome ${i + 1}`} style={inputStyle} />
-                <button onClick={() => removeOutcome(i)} title='Remove outcome'
-                  style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#f87171', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>Remove</button>
+            {skillForm.outcomes.map((o, i) => (
+              <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <input value={o.outcome} onChange={e => setOutcome(i, 'outcome', e.target.value)}
+                    placeholder={`Outcome ${i + 1}`} style={inputStyle} />
+                  <button onClick={() => removeOutcome(i)} title='Remove outcome'
+                    style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#f87171', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>Remove</button>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select value={o.term} onChange={e => setOutcome(i, 'term', e.target.value)} style={inputStyle}>
+                    <option value='' style={{ background: '#1e293b' }}>Term *</option>
+                    {TERMS.map(t => <option key={t} value={t} style={{ background: '#1e293b' }}>{t}</option>)}
+                  </select>
+                  <select value={o.month} disabled={!o.term} onChange={e => setOutcome(i, 'month', e.target.value)} style={inputStyle}>
+                    <option value='' style={{ background: '#1e293b' }}>Month *</option>
+                    {(TERM_MONTHS[o.term] || []).map(m => <option key={m} value={m} style={{ background: '#1e293b' }}>{m}</option>)}
+                  </select>
+                </div>
               </div>
             ))}
             <button onClick={addOutcome}
