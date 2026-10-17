@@ -499,20 +499,20 @@ const getSkillSummary = (skillId) => {
                     </span>
                     {summary ? (
                       Object.entries(summary).map(([prog, termMap]) => (
-                        Object.entries(termMap).map(([term, months]) => {
-                          // Highlight chips that match the active filter; dim the rest.
-                          const hit = filterActive && months.some(m => matchesFilter(prog, term, m))
-                          const dim = filterActive && !hit
+                        Object.entries(termMap).map(([term, allMonths]) => {
+                          // With a filter active, show only the chips (and months) that match it.
+                          const months = filterActive ? allMonths.filter(m => matchesFilter(prog, term, m)) : allMonths
+                          if (months.length === 0) return null
+                          const hit = filterActive
                           return (
                             <span key={`${prog}-${term}`} style={{
                               padding: '2px 8px', borderRadius: '20px', fontSize: '11px',
                               background: hit ? 'rgba(16,185,129,0.18)' : 'rgba(167,139,250,0.15)',
                               color: hit ? '#34d399' : '#a78bfa',
-                              border: `1px solid ${hit ? 'rgba(16,185,129,0.4)' : 'rgba(167,139,250,0.2)'}`,
-                              opacity: dim ? 0.45 : 1
+                              border: `1px solid ${hit ? 'rgba(16,185,129,0.4)' : 'rgba(167,139,250,0.2)'}`
                             }}>
                               {prog} · {term}: {months.map((m, i) => (
-                                <span key={m} style={{ fontWeight: hit && matchesFilter(prog, term, m) && filterMonth !== 'All' ? '800' : 'inherit' }}>
+                                <span key={m} style={{ fontWeight: hit && filterMonth !== 'All' ? '800' : 'inherit' }}>
                                   {i > 0 ? ', ' : ''}{m}
                                 </span>
                               ))}

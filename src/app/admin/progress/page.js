@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
@@ -54,6 +54,7 @@ export default function AdminProgressPage() {
   const [view, setView] = useState('students') // 'students' | 'bulk' | 'regression' | 'age'
 
   const [skills, setSkills] = useState([])
+  const skillsRequest = useRef(0) // ignores responses from an earlier program/term/month selection
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -94,15 +95,20 @@ export default function AdminProgressPage() {
 
   // Skills are assigned per program + term + month on the Skills page.
   const fetchSkills = async () => {
+    const requestId = ++skillsRequest.current
     setLoading(true)
+    setSkills([])
     setUploadResult(null)
-    const { data: maps } = await supabase.from('skill_program_map').select('skill_id')
+    const { data: maps } = await supabase.from('skill_program_map').select('skill_id, program, term, month')
       .eq('program', program).eq('term', term).eq('month', month)
-    const skillIds = [...new Set(maps?.map(m => m.skill_id) || [])]
+    const skillIds = [...new Set((maps || [])
+      .filter(m => m.program === program && m.term === term && m.month === month)
+      .map(m => m.skill_id))]
     const { data } = skillIds.length
       ? await supabase.from('skill_masters').select('*, skill_activities(*), skill_learning_outcomes(*)')
         .eq('academic_year', academicYear).eq('school_id', schoolId).in('id', skillIds).order('order_index')
       : { data: [] }
+    if (requestId !== skillsRequest.current) return
     // Keep skills in development-area order so the screen and the Excel columns match.
     setSkills(groupByArea(data || []).flatMap(g => g.skills).map(s => ({
       ...s,
