@@ -73,12 +73,16 @@ export default function AdminSkillsPage() {
 
   const openSkillModal = (skill) => {
     setEditingSkill(skill)
+    const program = skill ? skill.program || (skillPrograms(skill).length === 1 ? skillPrograms(skill)[0] : '') : ''
+    // The form edits this program's outcomes, plus untagged ones so saving tags them.
+    const formOutcomes = skill ? sortedOutcomes(skill).filter(o => !o.program || o.program === program) : []
     setSkillForm(skill ? {
       name: skill.name,
       description: skill.description || '',
       development_area: skill.development_area || '',
-      program: skill.program || (skillPrograms(skill).length === 1 ? skillPrograms(skill)[0] : ''),
-      outcomes: sortedOutcomes(skill).map(o => o.outcome)
+      program,
+      outcomes: formOutcomes.map(o => o.outcome),
+      outcomeIds: formOutcomes.map(o => o.id)
     } : { ...EMPTY_SKILL_FORM, program: filterProgram !== 'All' ? filterProgram : '' })
     setShowSkillModal(true)
   }
@@ -114,16 +118,17 @@ export default function AdminSkillsPage() {
       setExpandedSkill(skillId)
     }
 
-    // Replace the skill's outcomes with what's in the form, in form order.
+    // Replace the outcomes shown in the form with what's in it, in form order, tagged with the
+    // skill's program. Outcomes of other programs on the same skill are left alone.
     const outcomes = skillForm.outcomes.map(o => o.trim()).filter(Boolean)
     let outcomeError = null
-    if (editingSkill) {
-      const { error } = await supabase.from('skill_learning_outcomes').delete().eq('skill_id', skillId)
+    if (editingSkill && skillForm.outcomeIds?.length) {
+      const { error } = await supabase.from('skill_learning_outcomes').delete().in('id', skillForm.outcomeIds)
       outcomeError = error
     }
     if (!outcomeError && outcomes.length) {
       const { error } = await supabase.from('skill_learning_outcomes')
-        .insert(outcomes.map((outcome, i) => ({ skill_id: skillId, outcome, order_index: i })))
+        .insert(outcomes.map((outcome, i) => ({ skill_id: skillId, outcome, order_index: i, program: skillForm.program })))
       outcomeError = error
     }
     if (outcomeError) alert('Skill saved, but learning outcomes failed: ' + outcomeError.message)
@@ -343,14 +348,28 @@ const getSkillSummary = (skillId) => {
           skillsCreated++
         }
 
-        // Add outcomes the skill doesn't already have, after its existing ones.
+        // Add outcomes the skill doesn't already have for this program, after its existing ones.
+        // An untagged outcome with the same text takes this program instead of being duplicated.
         const existingOutcomes = sortedOutcomes(existing)
-        const newOutcomes = skillData.outcomes.filter(o => !existingOutcomes.some(e => e.outcome.toLowerCase() === o.toLowerCase()))
+        const newOutcomes = []
+        for (const o of skillData.outcomes) {
+          const same = existingOutcomes.filter(e => e.outcome.toLowerCase() === o.outcome.toLowerCase())
+          if (same.some(e => e.program === o.program)) continue
+          const untagged = same.find(e => !e.program)
+          if (untagged) {
+            const { error } = await supabase.from('skill_learning_outcomes').update({ program: o.program }).eq('id', untagged.id)
+            if (error) throw error
+            console.log('[skills bulk upload] tagged outcome', skillData.name, o)
+          } else newOutcomes.push(o)
+        }
         if (newOutcomes.length) {
-          const { error } = await supabase.from('skill_learning_outcomes').insert(newOutcomes.map((outcome, i) => ({
-            skill_id: skillId, outcome, order_index: existingOutcomes.length + i
-          })))
+          const { data: savedOutcomes, error } = await supabase.from('skill_learning_outcomes').insert(newOutcomes.map((o, i) => ({
+            skill_id: skillId, outcome: o.outcome, program: o.program, order_index: existingOutcomes.length + i
+          }))).select('id, outcome, program')
           if (error) throw error
+          console.log('[skills bulk upload] inserted outcomes', skillData.name, savedOutcomes)
+          const lost = savedOutcomes.find(s => !s.program)
+          if (lost) throw new Error(`Outcome "${lost.outcome}" was saved without a program`)
           outcomesCreated += newOutcomes.length
         }
 
@@ -570,14 +589,27 @@ const getSkillSummary = (skillId) => {
                 <div className="skill-body">
                   <div style={{ paddingTop: '16px' }}>
                     {/* Learning outcomes */}
-                    {sortedOutcomes(skill).length > 0 && (
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Learning Outcomes</div>
-                        {sortedOutcomes(skill).map(o => (
-                          <div key={o.id} style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontStyle: 'italic', padding: '3px 0' }}>◦ {o.outcome}</div>
-                        ))}
-                      </div>
-                    )}
+                    {(() => {
+                      // Grouped by program; with a filter, only that program's (untagged ones stay visible to fix).
+                      const outcomes = sortedOutcomes(skill).filter(o => !filterActive || !o.program || o.program === filterProgram)
+                      if (!outcomes.length) return null
+                      const groups = [...new Set(outcomes.map(o => o.program || ''))].sort((a, b) => !a - !b || a.localeCompare(b))
+                      return (
+                        <div style={{ marginBottom: '16px' }}>
+                          <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Learning Outcomes</div>
+                          {groups.map(prog => (
+                            <div key={prog || 'none'} style={{ marginBottom: '6px' }}>
+                              <div style={{ color: prog ? '#a78bfa' : '#f59e0b', fontSize: '11px', fontWeight: '600', marginBottom: '2px' }}>
+                                {prog || '⚠️ No program'}
+                              </div>
+                              {outcomes.filter(o => (o.program || '') === prog).map(o => (
+                                <div key={o.id} style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', fontStyle: 'italic', padding: '3px 0' }}>◦ {o.outcome}</div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
 
                     {/* Activities */}
                     {(() => {

@@ -16,7 +16,15 @@ export const activityMatches = (act, program, term, month) =>
   act.term === term &&
   act.month === month
 
-// Applies activityMatches to each skill's activities, dropping skills left with none.
+// Learning outcomes belong to one program. Outcomes with a null program never match.
+export const filterOutcomes = (outcomes, program) => (outcomes || []).filter(o => o.program === program)
+
+// Applies activityMatches to each skill's activities and filterOutcomes to its learning
+// outcomes, dropping skills left with no activities.
 export const filterSkillActivities = (skills, program, term, month) => skills
-  .map(s => ({ ...s, skill_activities: (s.skill_activities || []).filter(a => activityMatches(a, program, term, month)) }))
+  .map(s => ({
+    ...s,
+    skill_activities: (s.skill_activities || []).filter(a => activityMatches(a, program, term, month)),
+    skill_learning_outcomes: filterOutcomes(s.skill_learning_outcomes, program)
+  }))
   .filter((s, i) => s.skill_activities.length > 0 || !(skills[i].skill_activities || []).length)

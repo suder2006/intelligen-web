@@ -60,7 +60,9 @@ const byOrder = (rows) => [...(rows || [])].sort((a, b) => (a.order_index ?? 0) 
 
 // Development area -> skill -> rated indicators, in the order the admin set up.
 // Skills without a development area land in a group with area: null.
-function groupRatings(ratings) {
+// Learning outcomes are the ones tagged with the program the indicator was graded in
+// (its activity's program, else the child's program); untagged outcomes never show.
+function groupRatings(ratings, childProgram) {
   const sorted = [...ratings].sort((a, b) =>
     (a.skill_activities?.skill_masters?.order_index ?? 0) - (b.skill_activities?.skill_masters?.order_index ?? 0) ||
     (a.skill_activities?.order_index ?? 0) - (b.skill_activities?.order_index ?? 0))
@@ -73,7 +75,9 @@ function groupRatings(ratings) {
     const skillKey = skill?.id || 'general'
     let skillGroup = areaGroup.skills.find(sg => sg.key === skillKey)
     if (!skillGroup) {
-      skillGroup = { key: skillKey, name: skill?.name || 'General', outcomes: byOrder(skill?.skill_learning_outcomes), ratings: [] }
+      const program = r.skill_activities?.program || childProgram
+      const outcomes = (skill?.skill_learning_outcomes || []).filter(o => o.program === program)
+      skillGroup = { key: skillKey, name: skill?.name || 'General', outcomes: byOrder(outcomes), ratings: [] }
       areaGroup.skills.push(skillGroup)
     }
     skillGroup.ratings.push(r)
@@ -2313,7 +2317,7 @@ export default function ParentPortal() {
                       )
 
                       // Development Area -> Skill -> Learning Outcomes -> Indicators
-                      return groupRatings(studentRatings).map(group => {
+                      return groupRatings(studentRatings, child.program).map(group => {
                         const areaKey = `${child.id}:${group.area}`
                         const collapsed = group.area && collapsedAreas[areaKey]
                         return (
