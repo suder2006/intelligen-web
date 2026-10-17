@@ -9,12 +9,12 @@ export const TERM_MONTHS = {
 export const ACADEMIC_MONTHS = TERMS.flatMap(t => TERM_MONTHS[t])
 export const termOfMonth = (month) => TERMS.find(t => TERM_MONTHS[t].includes(month)) || null
 
-// True when a skill activity belongs to this program/term/month. Activities created before
-// skill_activities carried program/term/month have nulls there and match every selection.
+// True when a skill activity belongs to exactly this program/term/month.
+// Activities with a null program, term or month never match.
 export const activityMatches = (act, program, term, month) =>
-  (!act.program || act.program === program) &&
-  (!act.term || act.term === term) &&
-  (!act.month || act.month === month)
+  act.program === program &&
+  act.term === term &&
+  act.month === month
 
 // Applies activityMatches to each skill's activities, dropping skills left with none.
 export const filterSkillActivities = (skills, program, term, month) => skills
