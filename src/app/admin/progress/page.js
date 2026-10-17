@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
-import { TERMS, TERM_MONTHS } from '@/lib/progressTerms'
+import { TERMS, TERM_MONTHS, filterSkillActivities } from '@/lib/progressTerms'
 import RegressionAnalysis from '@/components/RegressionAnalysis'
 import AgeCheck from '@/components/AgeCheck'
 
@@ -114,7 +114,8 @@ export default function AdminProgressPage() {
       : { data: [] }
     if (requestId !== skillsRequest.current) return
     // Keep skills in development-area order so the screen and the Excel columns match.
-    setSkills(groupByArea(data || []).flatMap(g => g.skills).map(s => ({
+    // Only this program/term/month's activities are graded.
+    setSkills(groupByArea(filterSkillActivities(data || [], program, term, month)).flatMap(g => g.skills).map(s => ({
       ...s,
       skill_activities: byOrder(s.skill_activities),
       skill_learning_outcomes: byOrder(s.skill_learning_outcomes)

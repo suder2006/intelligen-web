@@ -18,6 +18,7 @@ const TERM_MONTHS = {
 }
 
 const EMPTY_SKILL_FORM = { name: '', description: '', development_area: '', outcomes: [] }
+const EMPTY_ACTIVITY_FORM = { name: '', description: '', program: '', term: '', month: '' }
 
 const TEMPLATE_HEADERS = ['Development Area', 'Skill Name', 'Skill Description', 'Learning Outcome', 'Activity Name', 'Activity Description', 'Program', 'Term', 'Month']
 // Column positions in templates downloaded before Development Area / Learning Outcome existed.
@@ -25,6 +26,8 @@ const LEGACY_COLUMNS = { 'skill name': 0, 'skill description': 1, 'activity name
 
 const sortedOutcomes = (skill) => [...(skill?.skill_learning_outcomes || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
 const splitOutcomes = (text) => text.split(';').map(o => o.trim()).filter(Boolean)
+// "LKG · Term 1: June" for an activity's program/term/month tags.
+const activityTag = (act) => [act.program, [act.term, act.month].filter(Boolean).join(': ')].filter(Boolean).join(' · ')
 
 export default function AdminSkillsPage() {
   const [loading, setLoading] = useState(true)
@@ -45,7 +48,7 @@ export default function AdminSkillsPage() {
   const [editingSkill, setEditingSkill] = useState(null)
   const [editingActivity, setEditingActivity] = useState(null)
   const [skillForm, setSkillForm] = useState(EMPTY_SKILL_FORM)
-  const [activityForm, setActivityForm] = useState({ name: '', description: '' })
+  const [activityForm, setActivityForm] = useState(EMPTY_ACTIVITY_FORM)
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkPreview, setBulkPreview] = useState([])
   const [bulkSaving, setBulkSaving] = useState(false)
@@ -138,21 +141,47 @@ export default function AdminSkillsPage() {
     await fetchAll()
   }
 
+  // The programs a skill belongs to, from its assignments and its activities' tags.
+  const skillPrograms = (skill) => [...new Set([
+    ...skillMaps.filter(m => m.skill_id === skill.id).map(m => m.program),
+    ...(skill.skill_activities || []).map(a => a.program)
+  ].filter(Boolean))]
+
+  const openActivityModal = (skill, act) => {
+    setEditingActivity(act)
+    const progs = skillPrograms(skill)
+    const firstMap = skillMaps.find(m => m.skill_id === skill.id)
+    setActivityForm(act ? {
+      name: act.name, description: act.description || '',
+      program: act.program || (progs.length === 1 ? progs[0] : ''),
+      term: act.term || '', month: act.month || ''
+    } : {
+      ...EMPTY_ACTIVITY_FORM,
+      program: filterProgram !== 'All' ? filterProgram : progs.length === 1 ? progs[0] : '',
+      term: filterTerm !== 'All' ? filterTerm : firstMap?.term || '',
+      month: filterMonth !== 'All' ? filterMonth : firstMap?.month || ''
+    })
+    setShowActivityModal(skill.id)
+  }
+
   const saveActivity = async (skillId) => {
     if (!activityForm.name.trim()) { alert('Please enter activity name'); return }
+    const { program, term, month } = activityForm
+    if (!program || !term || !month) { alert('Please choose program, term and month'); return }
     setSaving(true)
     const skill = skills.find(s => s.id === skillId)
     const actCount = skill?.skill_activities?.length || 0
-    if (editingActivity) {
-      await supabase.from('skill_activities').update({ name: activityForm.name, description: activityForm.description }).eq('id', editingActivity.id)
-    } else {
-      await supabase.from('skill_activities').insert({
-        skill_id: skillId, name: activityForm.name,
-        description: activityForm.description, order_index: actCount
-      })
+    const fields = { name: activityForm.name, description: activityForm.description, program, term, month }
+    const { error } = editingActivity
+      ? await supabase.from('skill_activities').update(fields).eq('id', editingActivity.id)
+      : await supabase.from('skill_activities').insert({ ...fields, skill_id: skillId, order_index: actCount })
+    if (error) alert('Error: ' + error.message)
+    // The skill must be assigned to this program/term/month for the activity to show up for grading.
+    else if (!isAssigned(skillId, program, term, month)) {
+      await supabase.from('skill_program_map').insert({ skill_id: skillId, program, term, month })
     }
     setShowActivityModal(null)
-    setActivityForm({ name: '', description: '' })
+    setActivityForm(EMPTY_ACTIVITY_FORM)
     setEditingActivity(null)
     await fetchAll()
     setSaving(false)
@@ -210,6 +239,10 @@ const filterBtnStyle = (active) => ({
   background: active ? 'rgba(167,139,250,0.15)' : 'transparent',
   color: active ? '#a78bfa' : 'rgba(255,255,255,0.45)'
 })
+
+// Program choices in the activity form: the open skill's own program, or every program if it has none yet.
+const activitySkill = skills.find(s => s.id === showActivityModal)
+const activityPrograms = activitySkill && skillPrograms(activitySkill).length ? skillPrograms(activitySkill) : programs
 
 const getSkillSummary = (skillId) => {
   const maps = skillMaps.filter(m => m.skill_id === skillId)
@@ -285,44 +318,53 @@ const getSkillSummary = (skillId) => {
     if (!bulkPreview.length) return
     setBulkSaving(true)
     try {
+      // One skill per name + program: the same skill name in two programs is two separate skills.
+      // Within a skill, activities are kept per term + month.
       const skillMap = {}
       bulkPreview.forEach(row => {
         if (!row.skillName) return
-        if (!skillMap[row.skillName]) {
-          skillMap[row.skillName] = { desc: row.skillDesc, devArea: '', outcomes: [], activities: [], assignments: [] }
+        const key = `${row.skillName.toLowerCase()}|${row.program}`
+        if (!skillMap[key]) {
+          skillMap[key] = { name: row.skillName, program: row.program, desc: row.skillDesc, devArea: '', outcomes: [], activities: [], assignments: [] }
         }
-        const entry = skillMap[row.skillName]
+        const entry = skillMap[key]
         if (row.devArea && !entry.devArea) entry.devArea = row.devArea
         row.outcomes.forEach(o => {
           if (!entry.outcomes.some(e => e.toLowerCase() === o.toLowerCase())) entry.outcomes.push(o)
         })
-        if (row.actName && !skillMap[row.skillName].activities.find(a => a.name === row.actName)) {
-          skillMap[row.skillName].activities.push({ name: row.actName, description: row.actDesc })
+        if (row.actName && !entry.activities.some(a =>
+          a.name.toLowerCase() === row.actName.toLowerCase() && a.term === row.term && a.month === row.month
+        )) {
+          entry.activities.push({ name: row.actName, description: row.actDesc, term: row.term, month: row.month })
         }
-        if (row.program && row.term && row.month) {
-          const exists = skillMap[row.skillName].assignments.find(
-            a => a.program === row.program && a.term === row.term && a.month === row.month
-          )
-          if (!exists) {
-            skillMap[row.skillName].assignments.push({ program: row.program, term: row.term, month: row.month })
-          }
+        if (row.program && row.term && row.month &&
+          !entry.assignments.some(a => a.term === row.term && a.month === row.month)) {
+          entry.assignments.push({ program: row.program, term: row.term, month: row.month })
         }
       })
 
       let skillsCreated = 0, activitiesCreated = 0, assignmentsCreated = 0, outcomesCreated = 0
+      const claimed = new Set() // existing skills already matched to a skill in this upload
 
-      for (const [skillName, skillData] of Object.entries(skillMap)) {
+      for (const skillData of Object.values(skillMap)) {
         let skillId
-        const existing = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())
+        // Reuse a same-named skill that belongs only to this program, else an unassigned one.
+        // Skills shared across programs are never reused, so their activities don't mix.
+        const sameName = skills.filter(s => !claimed.has(s.id) && s.name.toLowerCase() === skillData.name.toLowerCase())
+        const existing = sameName.find(s => {
+          const progs = skillPrograms(s)
+          return skillData.program ? progs.length === 1 && progs[0] === skillData.program : progs.length === 0
+        }) || (skillData.program ? sameName.find(s => skillPrograms(s).length === 0) : undefined)
         if (existing) {
           skillId = existing.id
+          claimed.add(skillId)
           if (skillData.devArea && skillData.devArea !== existing.development_area) {
             const { error } = await supabase.from('skill_masters').update({ development_area: skillData.devArea }).eq('id', skillId)
             if (error) throw error
           }
         } else {
           const { data: newSkill, error } = await supabase.from('skill_masters').insert({
-            name: skillName, description: skillData.desc || null,
+            name: skillData.name, description: skillData.desc || null,
             development_area: skillData.devArea || null,
             academic_year: academicYear, order_index: skills.length + skillsCreated,
             school_id: schoolId
@@ -343,18 +385,27 @@ const getSkillSummary = (skillId) => {
           outcomesCreated += newOutcomes.length
         }
 
-        for (let i = 0; i < skillData.activities.length; i++) {
-          const act = skillData.activities[i]
-          const existingAct = existing?.skill_activities?.find(
-            a => a.name.toLowerCase() === act.name.toLowerCase()
-          )
-          if (!existingAct) {
-            await supabase.from('skill_activities').insert({
-              skill_id: skillId, name: act.name,
-              description: act.description || null, order_index: i
-            })
-            activitiesCreated++
+        const existingActs = existing?.skill_activities || []
+        const adopted = new Set()
+        let orderIndex = existingActs.length
+        for (const act of skillData.activities) {
+          const tags = { program: skillData.program || null, term: act.term || null, month: act.month || null }
+          const sameActName = existingActs.filter(a => !adopted.has(a.id) && a.name.toLowerCase() === act.name.toLowerCase())
+          if (sameActName.some(a => a.program === tags.program && a.term === tags.term && a.month === tags.month)) continue
+          // An activity saved before program/term/month tagging takes this row's tags instead of being duplicated.
+          const untagged = sameActName.find(a => !a.program && !a.term && !a.month)
+          if (untagged) {
+            adopted.add(untagged.id)
+            const { error } = await supabase.from('skill_activities').update(tags).eq('id', untagged.id)
+            if (error) throw error
+            continue
           }
+          const { error } = await supabase.from('skill_activities').insert({
+            skill_id: skillId, name: act.name,
+            description: act.description || null, order_index: orderIndex++, ...tags
+          })
+          if (error) throw error
+          activitiesCreated++
         }
 
         for (const assignment of skillData.assignments) {
@@ -550,19 +601,28 @@ const getSkillSummary = (skillId) => {
                     )}
 
                     {/* Activities */}
-                    {(skill.skill_activities || []).length === 0 ? (
+                    {(() => {
+                    // With a filter active, show only that program/term/month's activities (untagged ones match any).
+                    const acts = (skill.skill_activities || []).filter(a => !filterActive || (
+                      (!a.program || a.program === filterProgram) &&
+                      (filterTerm === 'All' || !a.term || a.term === filterTerm) &&
+                      (filterMonth === 'All' || !a.month || a.month === filterMonth)))
+                    return acts.length === 0 ? (
                       <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', padding: '12px 0', textAlign: 'center' }}>No activities yet. Click "+ Add Activity" below.</div>
                     ) : (
                       <>
                         <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Activities</div>
-                        {(skill.skill_activities || []).sort((a, b) => a.order_index - b.order_index).map(act => (
+                        {acts.sort((a, b) => a.order_index - b.order_index).map(act => (
                           <div key={act.id} className="activity-row">
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: '14px', fontWeight: '500', color: 'rgba(255,255,255,0.85)' }}>• {act.name}</div>
                               {act.description && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginTop: '2px', paddingLeft: '12px' }}>{act.description}</div>}
+                              <div style={{ color: activityTag(act) ? '#a78bfa' : '#f59e0b', fontSize: '11px', marginTop: '3px', paddingLeft: '12px' }}>
+                                {activityTag(act) || '⚠️ No program / term / month'}
+                              </div>
                             </div>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                              <button onClick={() => { setEditingActivity(act); setActivityForm({ name: act.name, description: act.description || '' }); setShowActivityModal(skill.id) }}
+                              <button onClick={() => openActivityModal(skill, act)}
                                 style={{ padding: '4px 8px', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '6px', color: '#38bdf8', cursor: 'pointer', fontSize: '11px' }}>✏️</button>
                               <button onClick={() => deleteActivity(act.id)}
                                 style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
@@ -570,9 +630,10 @@ const getSkillSummary = (skillId) => {
                           </div>
                         ))}
                       </>
-                    )}
+                    )
+                    })()}
 
-                    <button onClick={() => { setEditingActivity(null); setActivityForm({ name: '', description: '' }); setShowActivityModal(skill.id) }}
+                    <button onClick={() => openActivityModal(skill, null)}
                       style={{ marginTop: '12px', padding: '10px 16px', background: 'rgba(16,185,129,0.08)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '13px', width: '100%', fontFamily: "'DM Sans', sans-serif" }}>
                       + Add Activity under "{skill.name}"
                     </button>
@@ -583,7 +644,8 @@ const getSkillSummary = (skillId) => {
                         Assign to Program, Term & Month
                       </div>
 
-                      {programs.map(prog => (
+                      {/* A skill belongs to one program; only unassigned skills offer every program. */}
+                      {(skillPrograms(skill).length ? skillPrograms(skill) : programs).map(prog => (
                         <div key={prog} style={{ marginBottom: '20px' }}>
                           <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
                             📚 {prog}
@@ -726,6 +788,23 @@ const getSkillSummary = (skillId) => {
             <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>What to observe (optional)</label>
             <input value={activityForm.description} onChange={e => setActivityForm({ ...activityForm, description: e.target.value })}
               placeholder='What should the teacher look for?' style={inputStyle} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[
+                { key: 'program', label: 'Program *', options: activityPrograms },
+                { key: 'term', label: 'Term *', options: TERMS },
+                { key: 'month', label: 'Month *', options: TERM_MONTHS[activityForm.term] || [] },
+              ].map(f => (
+                <div key={f.key} style={{ flex: 1 }}>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '6px' }}>{f.label}</label>
+                  <select value={activityForm[f.key]} disabled={f.key === 'month' && !activityForm.term}
+                    onChange={e => setActivityForm({ ...activityForm, [f.key]: e.target.value, ...(f.key === 'term' ? { month: '' } : {}) })}
+                    style={inputStyle}>
+                    <option value='' style={{ background: '#1e293b' }}>Select</option>
+                    {f.options.map(o => <option key={o} value={o} style={{ background: '#1e293b' }}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button onClick={() => { setShowActivityModal(null); setEditingActivity(null) }} className="btn-secondary">Cancel</button>
               <button onClick={() => saveActivity(showActivityModal)} disabled={saving} className="btn-primary">{saving ? 'Saving...' : editingActivity ? 'Update' : 'Add Activity'}</button>

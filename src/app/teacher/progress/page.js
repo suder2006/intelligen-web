@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import RegressionAnalysis from '@/components/RegressionAnalysis'
 import AgeCheck from '@/components/AgeCheck'
+import { filterSkillActivities } from '@/lib/progressTerms'
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3']
 const CURRENT_AY = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
@@ -86,7 +87,7 @@ export default function TeacherProgressPage() {
       .eq('school_id', profile.school_id)
       .in('id', skillIds)
       .order('order_index')
-    setSkills(skillsData || [])
+    setSkills(filterSkillActivities(skillsData || [], selectedProgram, selectedTerm, selectedMonth))
   }
 
   const fetchStudents = async () => {
