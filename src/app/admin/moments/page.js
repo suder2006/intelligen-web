@@ -3,8 +3,9 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useSchool } from '@/hooks/useSchool'
+import { deleteMoments } from '@/lib/deleteMoments'
 
-// /api/upload rejects POST and DELETE without the signed-in user's token.
+// /api/upload rejects POST without the signed-in user's token.
 async function uploadAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession()
   return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
@@ -123,26 +124,6 @@ useEffect(() => {
     }
   }
 
-  const deleteFromR2 = async (key) =>
-    fetch('/api/upload', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', ...(await uploadAuthHeaders()) },
-      body: JSON.stringify({ key })
-    })
-
-  // R2 keys are the URL path, so a stored public URL maps straight back to its object
-  const keyFromUrl = (url) => {
-    if (!url) return null
-    try {
-      return decodeURIComponent(new URL(url).pathname).replace(/^\//, '')
-    } catch {
-      return null
-    }
-  }
-
-  // A video also has a poster frame in R2 that has to go with it
-  const r2KeysFor = (m) => [m.storage_path, keyFromUrl(m.thumbnail_url)].filter(Boolean)
-
   async function downloadMoment(m) {
     const url = mediaUrl(m)
     if (!url) throw new Error('This item has no file to download')
@@ -179,24 +160,9 @@ useEffect(() => {
     if (!confirm(`Delete ALL ${items.length} photos from ${date}?\nThis cannot be undone!`)) return
     
     try {
-      // Delete from storage (media plus any video poster frames)
-      const keys = items.flatMap(r2KeysFor)
-
-      if (keys.length > 0) {
-        await Promise.all(keys.map(key =>
-          deleteFromR2(key).catch(e => console.log('R2 delete error:', e))
-        ))
-      }
-
-      // Soft delete from database
-      const ids = items.map(m => m.id)
-      await supabase
-        .from('classroom_moments')
-        .update({ deleted_at: new Date().toISOString() })
-        .in('id', ids)
-
+      await deleteMoments(items.map(m => m.id))
       await fetchMoments()
-      alert(`✅ Deleted ${items.length} photos from ${date}!`)
+      alert(`✅ Permanently deleted ${items.length} photos from ${date} and freed storage!`)
     } catch (e) {
       alert('Error: ' + e.message)
     }
@@ -205,11 +171,10 @@ useEffect(() => {
   async function deleteMoment(m) {
     if (!confirm(m.media_type === 'video' ? 'Delete this video?' : 'Delete this photo?')) return
     try {
-      await Promise.all(r2KeysFor(m).map(key => deleteFromR2(key)))
-    } catch (e) { console.log('R2 delete error:', e) }
-    await supabase.from('classroom_moments')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', m.id)
+      await deleteMoments([m.id])
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
     fetchMoments()
   }
 

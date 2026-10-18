@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
+import { deleteMoments } from '@/lib/deleteMoments'
 import { useRouter } from 'next/navigation'
 import { registerPushNotifications } from '@/lib/pushNotifications'
 import { todayIST, isPastDate, fetchStudentHolidays, getBlockReason, pastDateWarning } from '@/lib/attendanceRules'
@@ -399,11 +400,15 @@ const fetchMessages = async () => {
     setUploadingMoment(false)
   }
 
-  const deleteMoment = async (id, storagePath) => {
-    if (!confirm('Delete this photo?')) return
-    await supabase.storage.from('classroom-moments').remove([storagePath])
-    await supabase.from('classroom_moments').delete().eq('id', id)
-    fetchMoments()
+  // Teachers can only delete photos they uploaded; the API enforces this too
+  const deleteMoment = async (id) => {
+    if (!confirm('Delete this photo? It will be permanently removed.')) return
+    try {
+      await deleteMoments([id])
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+    fetchMoments(profile?.school_id)
   }
 
   const fetchCurriculum = async (teacherPrograms = []) => {
@@ -1123,7 +1128,9 @@ const fetchMessages = async () => {
                           <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>📚 {m.class_name} · {m.moment_date}</div>
                           <div style={{ display: 'flex', gap: '6px' }}>
                             <a href={m.photo_url} target='_blank' download style={{ flex: 1, padding: '5px', backgroundColor: 'rgba(56,189,248,0.15)', color: '#38bdf8', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', textAlign: 'center' }}>⬇️ Save</a>
-                            <button onClick={() => deleteMoment(m.id, m.storage_path)} style={{ flex: 1, padding: '5px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>🗑️ Del</button>
+                            {m.uploaded_by === profile?.id && (
+                              <button onClick={() => deleteMoment(m.id)} style={{ flex: 1, padding: '5px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>🗑️ Del</button>
+                            )}
                           </div>
                         </div>
                       </div>

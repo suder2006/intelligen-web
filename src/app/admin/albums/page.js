@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
+import { deleteMoments } from '@/lib/deleteMoments'
 
 // /api/upload rejects GET, POST and DELETE without the signed-in user's token.
 async function uploadAuthHeaders() {
@@ -317,16 +318,7 @@ export default function AdminAlbumsPage() {
     if (!confirm('Delete this photo/video?')) return
     setDeleting(media.id)
     try {
-      if (media.storage_path) {
-        await deleteFromR2(media.storage_path)
-      }
-      const thumbKey = keyFromUrl(media.thumbnail_url)
-      if (thumbKey) {
-        await deleteFromR2(thumbKey).catch(e => console.log('R2 thumb delete error:', e))
-      }
-      await supabase.from('classroom_moments')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', media.id)
+      await deleteMoments([media.id])
       setAlbumMedia(prev => prev.filter(m => m.id !== media.id))
     } catch (e) {
       alert('Error: ' + e.message)
