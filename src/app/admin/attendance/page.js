@@ -4,14 +4,16 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useSchool } from '@/hooks/useSchool'
 import AdminSidebar from '@/components/AdminSidebar'
+import { todayIST, isPastDate, fetchStudentHolidays, getBlockReason, pastDateWarning } from '@/lib/attendanceRules'
 
 export default function AttendancePage() {
   const [students, setStudents] = useState([])
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  
+  const [date, setDate] = useState(todayIST())
+  const [holidays, setHolidays] = useState([])
+
   const { schoolId } = useSchool()
   const [filterProgram, setFilterProgram] = useState('all')
 
@@ -20,12 +22,14 @@ export default function AttendancePage() {
 
   const fetchData = async () => {
     setLoading(true)
-    const [s, a] = await Promise.all([
+    const [s, a, h] = await Promise.all([
       supabase.from('students').select('*').eq('status', 'active').eq('school_id', schoolId).order('full_name'),
-      supabase.from('attendance').select('*').eq('date', date)
+      supabase.from('attendance').select('*').eq('date', date),
+      fetchStudentHolidays(supabase, schoolId, date).catch(e => { console.error('Holiday fetch error:', e); return [] })
     ])
     setStudents(s.data || [])
     setAttendance(a.data || [])
+    setHolidays(h)
     setLoading(false)
   }
 
@@ -34,22 +38,55 @@ export default function AttendancePage() {
     return rec?.status || null
   }
 
-  const markAttendance = async (studentId, status) => {
-    const existing = attendance.find(a => a.student_id === studentId)
+  const blockReasonFor = (student) => getBlockReason(date, holidays, student?.program)
+
+  const saveAttendance = async (studentId, status, userId) => {
+    // Query DB directly to avoid stale state causing duplicates
+    const { data: existing } = await supabase.from('attendance')
+      .select('id, status')
+      .eq('student_id', studentId)
+      .eq('date', date)
+      .maybeSingle()
+    const { error: logError } = await supabase.from('attendance_logs').insert({
+      student_id: studentId,
+      date,
+      old_status: existing?.status || null,
+      new_status: status,
+      changed_by: userId
+    })
+    if (logError) console.error('Attendance log error:', logError)
     if (existing) {
       await supabase.from('attendance').update({ status }).eq('id', existing.id)
     } else {
       await supabase.from('attendance').insert([{ student_id: studentId, school_id: schoolId, date, status, checked_in_at: new Date().toISOString() }])
     }
+  }
+
+  const markAttendance = async (studentId, status) => {
+    const reason = blockReasonFor(students.find(s => s.id === studentId))
+    if (reason) { alert(reason); return }
+    if (isPastDate(date) && !confirm(pastDateWarning(date))) return
+    const { data: { user } } = await supabase.auth.getUser()
+    await saveAttendance(studentId, status, user.id)
     fetchData()
   }
 
   const markAll = async (status) => {
+    const allowed = filteredStudents.filter(s => !blockReasonFor(s))
+    if (allowed.length === 0) { alert(blockReasonFor(filteredStudents[0])); return }
+    const skipped = filteredStudents.length - allowed.length
+    if (skipped > 0 && !confirm(`${skipped} student(s) are on a program holiday and will be skipped. Continue?`)) return
+    if (isPastDate(date) && !confirm(pastDateWarning(date))) return
     setSaving(true)
-    for (const student of filteredStudents) {
-      await markAttendance(student.id, status)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      for (const student of allowed) {
+        await saveAttendance(student.id, status, user.id)
+      }
+    } finally {
+      setSaving(false)
+      fetchData()
     }
-    setSaving(false)
   }
 
   const filteredStudents = filterProgram === 'all'
@@ -57,6 +94,11 @@ export default function AttendancePage() {
     : students.filter(s => s.program === filterProgram)
 
   const programs = [...new Set(students.map(s => s.program).filter(Boolean))]
+
+  // Shown when no visible student can be marked on this date
+  const dateBlockReason = filteredStudents.length > 0 && filteredStudents.every(s => blockReasonFor(s))
+    ? blockReasonFor(filteredStudents[0])
+    : null
 
   const present = attendance.filter(a => filteredStudents.some(s => s.id === a.student_id) && a.status === 'present').length
   const absent = attendance.filter(a => filteredStudents.some(s => s.id === a.student_id) && a.status === 'absent').length
@@ -144,7 +186,12 @@ export default function AttendancePage() {
             ))}
           </div>
         )}  
-        {students.length > 0 && (
+        {dateBlockReason && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', fontSize: '14px' }}>
+            🚫 {dateBlockReason}
+          </div>
+        )}
+        {students.length > 0 && !dateBlockReason && (
           <div className="bulk-btns">
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', alignSelf: 'center' }}>Mark all as:</span>
             <button className="bulk-btn" style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399' }} onClick={() => markAll('present')} disabled={saving}>✅ All Present</button>

@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { SCHOOL_SAFE_COLUMNS } from '@/lib/schoolColumns'
 import { useRouter } from 'next/navigation'
 import { registerPushNotifications } from '@/lib/pushNotifications'
+import { todayIST, isPastDate, fetchStudentHolidays, getBlockReason, pastDateWarning } from '@/lib/attendanceRules'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 
@@ -14,7 +15,8 @@ export default function TeacherPortal() {
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('home')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(todayIST())
+  const [dateHolidays, setDateHolidays] = useState([])
   const [saving, setSaving] = useState(false)
   const [curriculum, setCurriculum] = useState([])
   const [completions, setCompletions] = useState([])
@@ -92,6 +94,12 @@ export default function TeacherPortal() {
   useEffect(() => { loadData() }, [])
   useEffect(() => { if (!loading) fetchCurriculum() }, [currWeek])
   useEffect(() => { if (!loading) fetchAttendance() }, [date])
+  useEffect(() => {
+    if (!profile?.school_id) return
+    fetchStudentHolidays(supabase, profile.school_id, date)
+      .then(setDateHolidays)
+      .catch(e => { console.error('Holiday fetch error:', e); setDateHolidays([]) })
+  }, [date, profile?.school_id])
 
   const loadData = async () => {
     setLoading(true)
@@ -457,6 +465,11 @@ const fetchMessages = async () => {
   const getStatus = (studentId) => attendance.find(a => a.student_id === studentId)?.status || null
 
   const markAttendance = async (studentId, status) => {
+  const student = students.find(s => s.id === studentId)
+  const holidaysToday = await fetchStudentHolidays(supabase, profile?.school_id, date)
+  const reason = getBlockReason(date, holidaysToday, student?.program)
+  if (reason) { alert(reason); return }
+  if (isPastDate(date) && !confirm(pastDateWarning(date))) return
   const { data: { user } } = await supabase.auth.getUser()
   // Query DB directly to avoid stale state causing duplicate inserts
   const { data: existing } = await supabase.from('attendance')
@@ -705,6 +718,10 @@ const fetchMessages = async () => {
 
   const present = attendance.filter(a => a.status === 'present').length
   const absent = attendance.filter(a => a.status === 'absent').length
+  // Shown when none of the teacher's students can be marked on this date
+  const attendanceBlockReason = students.length > 0 && students.every(s => getBlockReason(date, dateHolidays, s.program))
+    ? getBlockReason(date, dateHolidays, students[0].program)
+    : null
 
   const tabs = [
     { id: 'home', label: 'Home', icon: '🏠' },
@@ -836,6 +853,11 @@ const fetchMessages = async () => {
                   <div className="section-title" style={{ margin: 0 }}>✅ Mark Attendance</div>
                   <input className="date-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
+                {attendanceBlockReason && (
+                  <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', fontSize: '14px' }}>
+                    🚫 {attendanceBlockReason}
+                  </div>
+                )}
                 <div className="stats-row" style={{ marginBottom: '20px' }}>
                   <div className="stat-card"><div className="stat-value" style={{ color: '#10b981' }}>{present}</div><div className="stat-label">Present</div></div>
                   <div className="stat-card"><div className="stat-value" style={{ color: '#ef4444' }}>{absent}</div><div className="stat-label">Absent</div></div>
