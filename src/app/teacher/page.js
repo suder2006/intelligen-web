@@ -382,17 +382,19 @@ const fetchMessages = async () => {
       if (upErr) throw upErr
       const { data: { publicUrl } } = supabase.storage.from('classroom-moments').getPublicUrl(path)
       const { data: { user } } = await supabase.auth.getUser()
-      await supabase.from('classroom_moments').insert({
+      const { error: insErr } = await supabase.from('classroom_moments').insert({
+        school_id: profile?.school_id,
         class_name: momentClass, caption: momentCaption,
         photo_url: publicUrl, storage_path: path,
         uploaded_by: user.id, uploaded_by_name: profile?.full_name || 'Teacher',
         moment_date: today
       })
+      if (insErr) throw insErr
       setMomentCaption('')
       setMomentPreview(null)
       setMomentFile(null)
       if (momentFileRef.current) momentFileRef.current.value = ''
-      await fetchMoments()
+      await fetchMoments(profile?.school_id)
       alert('Photo uploaded!')
     } catch (e) {
       alert('Upload failed: ' + e.message)
