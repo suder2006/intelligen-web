@@ -336,8 +336,10 @@ export default function AdminAlbumsPage() {
 
   const DELETE_WARNING = 'This will permanently delete all photos and videos.\nThis cannot be undone!'
 
-  // Deletes one album: every R2 file first, then the DB rows. If any R2 delete
-  // fails the DB rows are kept so the album still shows and can be retried
+  // Permanently deletes one album: every R2 file first, then hard-deletes the
+  // moment rows (including previously soft-deleted ones, which would otherwise
+  // block the album delete via the album_id FK), then the album itself. If any
+  // R2 delete fails nothing is removed from the DB so the album can be retried
   // (deleting an already-removed R2 key succeeds, so a retry is safe).
   const deleteAlbumAndMedia = async (album) => {
     const { data: media, error: mediaError } = await supabase.from('classroom_moments')
@@ -345,9 +347,11 @@ export default function AdminAlbumsPage() {
       .eq('album_id', album.id)
     if (mediaError) throw new Error(`Could not load album files: ${mediaError.message}`)
 
-    // Media file plus any video poster frame; older rows may only have URLs
+    // Photo, video and video cover image; older rows may only have URLs
     const keys = [...new Set((media || []).flatMap(m => [
-      m.storage_path || keyFromUrl(m.video_url || m.photo_url),
+      m.storage_path,
+      keyFromUrl(m.photo_url),
+      keyFromUrl(m.video_url),
       keyFromUrl(m.thumbnail_url)
     ]).filter(Boolean))]
 
@@ -359,12 +363,12 @@ export default function AdminAlbumsPage() {
     }
 
     const { error: momentsError } = await supabase.from('classroom_moments')
-      .update({ deleted_at: new Date().toISOString() })
+      .delete()
       .eq('album_id', album.id)
-    if (momentsError) throw new Error(`Files deleted, but database update failed: ${momentsError.message}`)
+    if (momentsError) throw new Error(`Files were already permanently deleted from storage, but photo/video records could not be removed: ${momentsError.message}`)
 
     const { error: albumError } = await supabase.from('moment_albums').delete().eq('id', album.id)
-    if (albumError) throw new Error(`Files deleted, but album record could not be removed: ${albumError.message}`)
+    if (albumError) throw new Error(`Files were already permanently deleted from storage, but the album record could not be removed: ${albumError.message}`)
   }
 
   // Deletes albums one at a time and reports successes and failures together
@@ -386,7 +390,7 @@ export default function AdminAlbumsPage() {
 
     const deleted = albumsToDelete.length - failures.length
     if (failures.length === 0) {
-      alert(deleted === 1 ? '✅ Album deleted successfully' : `✅ ${deleted} albums deleted successfully`)
+      alert(deleted === 1 ? '✅ Album permanently deleted and storage freed!' : `✅ ${deleted} albums permanently deleted and storage freed!`)
     } else {
       alert(`${deleted > 0 ? `✅ ${deleted} deleted. ` : ''}❌ ${failures.length} failed:\n\n${failures.join('\n')}`)
     }
