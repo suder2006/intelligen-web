@@ -20,6 +20,8 @@ export default function AdminAlbumsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [selectedAlbumIds, setSelectedAlbumIds] = useState(new Set())
+  const [deletingAlbumIds, setDeletingAlbumIds] = useState(new Set())
   const [uploadProgress, setUploadProgress] = useState(0)
   const [view, setView] = useState('albums')
   const fileRef = useRef()
@@ -181,12 +183,18 @@ export default function AdminAlbumsPage() {
     }
   }
 
-  const deleteFromR2 = async (key) =>
-    fetch('/api/upload', {
+  // Throws if R2 did not confirm the delete (fetch alone never rejects on a 4xx/5xx)
+  const deleteFromR2 = async (key) => {
+    const res = await fetch('/api/upload', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', ...(await uploadAuthHeaders()) },
       body: JSON.stringify({ key })
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error || `R2 delete failed (${res.status})`)
+    }
+  }
 
   // R2 keys are the URL path, so a stored public URL maps straight back to its object
   const keyFromUrl = (url) => {
@@ -326,40 +334,91 @@ export default function AdminAlbumsPage() {
     setDeleting(null)
   }
 
-  const deleteAlbum = async (album) => {
-    if (!confirm(`Delete album "${album.title}" and all its content?`)) return
-    try {
-      // Get all media
-      const { data: media } = await supabase.from('classroom_moments')
-        .select('storage_path, thumbnail_url').eq('album_id', album.id)
+  const DELETE_WARNING = 'This will permanently delete all photos and videos.\nThis cannot be undone!'
 
-      // Delete from R2 (media plus any video poster frames)
-      if (media?.length > 0) {
-        const keys = media.flatMap(m => [m.storage_path, keyFromUrl(m.thumbnail_url)]).filter(Boolean)
-        await Promise.all(keys.map(key =>
-          deleteFromR2(key).catch(e => console.log('R2 delete error:', e))
-        ))
+  // Deletes one album: every R2 file first, then the DB rows. If any R2 delete
+  // fails the DB rows are kept so the album still shows and can be retried
+  // (deleting an already-removed R2 key succeeds, so a retry is safe).
+  const deleteAlbumAndMedia = async (album) => {
+    const { data: media, error: mediaError } = await supabase.from('classroom_moments')
+      .select('storage_path, photo_url, video_url, thumbnail_url')
+      .eq('album_id', album.id)
+    if (mediaError) throw new Error(`Could not load album files: ${mediaError.message}`)
+
+    // Media file plus any video poster frame; older rows may only have URLs
+    const keys = [...new Set((media || []).flatMap(m => [
+      m.storage_path || keyFromUrl(m.video_url || m.photo_url),
+      keyFromUrl(m.thumbnail_url)
+    ]).filter(Boolean))]
+
+    const r2Results = await Promise.allSettled(keys.map(key => deleteFromR2(key)))
+    const r2Failures = r2Results.filter(r => r.status === 'rejected')
+    if (r2Failures.length > 0) {
+      console.error('R2 delete errors:', r2Failures.map(r => r.reason))
+      throw new Error(`Could not delete ${r2Failures.length} of ${keys.length} files from storage (${r2Failures[0].reason.message}). Album was kept.`)
+    }
+
+    const { error: momentsError } = await supabase.from('classroom_moments')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('album_id', album.id)
+    if (momentsError) throw new Error(`Files deleted, but database update failed: ${momentsError.message}`)
+
+    const { error: albumError } = await supabase.from('moment_albums').delete().eq('id', album.id)
+    if (albumError) throw new Error(`Files deleted, but album record could not be removed: ${albumError.message}`)
+  }
+
+  // Deletes albums one at a time and reports successes and failures together
+  const deleteAlbums = async (albumsToDelete) => {
+    const ids = albumsToDelete.map(a => a.id)
+    setDeletingAlbumIds(new Set(ids))
+    const failures = []
+    for (const album of albumsToDelete) {
+      try {
+        await deleteAlbumAndMedia(album)
+      } catch (e) {
+        failures.push(`• ${album.title}: ${e.message}`)
+      } finally {
+        setDeletingAlbumIds(prev => { const next = new Set(prev); next.delete(album.id); return next })
       }
+    }
+    setSelectedAlbumIds(prev => new Set([...prev].filter(id => !ids.includes(id))))
+    await fetchData()
 
-      // Soft delete moments
-      await supabase.from('classroom_moments')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('album_id', album.id)
-
-      // Delete album
-      await supabase.from('moment_albums').delete().eq('id', album.id)
-
-      if (selectedAlbum?.id === album.id) {
-        setSelectedAlbum(null)
-        setAlbumMedia([])
-        setView('albums')
-      }
-      await fetchData()
-      alert('✅ Album deleted!')
-    } catch (e) {
-      alert('Error: ' + e.message)
+    const deleted = albumsToDelete.length - failures.length
+    if (failures.length === 0) {
+      alert(deleted === 1 ? '✅ Album deleted successfully' : `✅ ${deleted} albums deleted successfully`)
+    } else {
+      alert(`${deleted > 0 ? `✅ ${deleted} deleted. ` : ''}❌ ${failures.length} failed:\n\n${failures.join('\n')}`)
     }
   }
+
+  const deleteAlbum = async (album) => {
+    if (!confirm(`Delete album '${album.title}'?\n${DELETE_WARNING}`)) return
+    await deleteAlbums([album])
+  }
+
+  const deleteSelectedAlbums = async () => {
+    const chosen = albums.filter(a => selectedAlbumIds.has(a.id))
+    if (chosen.length === 0) return
+    const label = chosen.length === 1 ? `album '${chosen[0].title}'` : `${chosen.length} albums`
+    if (!confirm(`Delete ${label}?\n${DELETE_WARNING}`)) return
+    await deleteAlbums(chosen)
+  }
+
+  const toggleAlbumSelected = (albumId) => {
+    setSelectedAlbumIds(prev => {
+      const next = new Set(prev)
+      if (next.has(albumId)) next.delete(albumId)
+      else next.add(albumId)
+      return next
+    })
+  }
+
+  const allAlbumsSelected = albums.length > 0 && albums.every(a => selectedAlbumIds.has(a.id))
+  const toggleSelectAll = () =>
+    setSelectedAlbumIds(allAlbumsSelected ? new Set() : new Set(albums.map(a => a.id)))
+
+  const isDeletingAlbums = deletingAlbumIds.size > 0
 
   const setCover = async (media) => {
     if (media.media_type !== 'photo') { alert('Please select a photo as cover'); return }
@@ -393,6 +452,14 @@ export default function AdminAlbumsPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .main { margin-left: 240px; flex: 1; padding: 32px; }
         .btn { border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25); display: inline-flex; align-items: center; gap: 6px; }
+        .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.2); }
+        .btn-danger.solid { background: #ef4444; color: #fff; border-color: #ef4444; }
+        .btn-danger.solid:hover:not(:disabled) { background: #dc2626; }
+        .spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin 0.7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .album-check { width: 18px; height: 18px; accent-color: #ef4444; cursor: pointer; }
         @media (max-width: 768px) { .main { margin-left: 0; padding: 16px; } }
       `}</style>
 
@@ -452,15 +519,39 @@ export default function AdminAlbumsPage() {
                 </button>
               </div>
             ) : (
+              <>
+              {/* Selection toolbar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', padding: '10px 14px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}>
+                  <input type="checkbox" className="album-check" checked={allAlbumsSelected} onChange={toggleSelectAll} disabled={isDeletingAlbums} />
+                  Select all
+                </label>
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                  {selectedAlbumIds.size} of {albums.length} selected
+                </span>
+                <button className="btn btn-danger solid" style={{ marginLeft: 'auto' }}
+                  onClick={deleteSelectedAlbums}
+                  disabled={selectedAlbumIds.size === 0 || isDeletingAlbums}>
+                  {isDeletingAlbums ? <><span className="spinner" /> Deleting...</> : <>🗑️ Delete Selected ({selectedAlbumIds.size})</>}
+                </button>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                 {albums.map(album => {
+                  const isSelected = selectedAlbumIds.has(album.id)
+                  const isDeleting = deletingAlbumIds.has(album.id)
                   return (
                     <div key={album.id}
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '16px', overflow: 'hidden', cursor: 'pointer' }}
-                      onClick={() => selectAlbum(album)}>
+                      style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '16px', overflow: 'hidden', cursor: isDeleting ? 'wait' : 'pointer', opacity: isDeleting ? 0.5 : 1, transition: 'opacity 0.2s' }}
+                      onClick={() => { if (!isDeleting) selectAlbum(album) }}>
 
                       {/* Cover photo */}
                       <div style={{ height: '160px', background: 'rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' }}>
+                        <div onClick={e => e.stopPropagation()}
+                          style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1, background: 'rgba(15,23,42,0.75)', borderRadius: '6px', padding: '4px', display: 'flex' }}>
+                          <input type="checkbox" className="album-check" aria-label={`Select ${album.title}`}
+                            checked={isSelected} onChange={() => toggleAlbumSelected(album.id)} disabled={isDeletingAlbums} />
+                        </div>
                         {album.cover_url ? (
                           <img src={album.cover_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
@@ -488,10 +579,11 @@ export default function AdminAlbumsPage() {
                           <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
                             📅 {new Date(album.event_date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </div>
-                          <button className="btn"
+                          <button className="btn btn-danger"
                             onClick={e => { e.stopPropagation(); deleteAlbum(album) }}
-                            style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)', padding: '4px 10px', fontSize: '12px' }}>
-                            🗑️
+                            disabled={isDeletingAlbums}
+                            style={{ padding: '4px 10px', fontSize: '12px' }}>
+                            {isDeleting ? <><span className="spinner" /> Deleting...</> : '🗑️ Delete'}
                           </button>
                         </div>
                       </div>
@@ -499,6 +591,7 @@ export default function AdminAlbumsPage() {
                   )
                 })}
               </div>
+              </>
             )}
           </>
         ) : (

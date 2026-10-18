@@ -31,7 +31,7 @@ async function getUserFromRequest(request) {
 
 // Roles allowed to delete files from R2. Parents and every other role get 403.
 // Object keys carry no school_id, so there is no per-school check here.
-const DELETE_ROLES = ['school_admin', 'teacher']
+const DELETE_ROLES = ['school_admin', 'center_head', 'super_admin', 'teacher']
 
 // GET - Generate presigned URL for direct video upload
 export async function GET(request) {
