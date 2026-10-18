@@ -1,15 +1,72 @@
 import { createClient } from '@supabase/supabase-js'
+import { STORY_DAYS, generateStories, getRecentStorySummaries } from '@/lib/storyGenerator'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+export const maxDuration = 300
+
+const ALLOWED_ROLES = ['school_admin']
+
+// Without planId: generates a new Mon-Fri plan for { weekStart, program }.
+// With planId + day: regenerates that one day of an existing plan.
 export async function POST(request) {
   try {
-    const { schoolId, weekStart } = await request.json()
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : null
+    if (!token) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const { data: profile } = await supabase.from('profiles').select('role, school_id').eq('id', user.id).single()
+    if (!ALLOWED_ROLES.includes(profile?.role) || !profile?.school_id) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const schoolId = profile.school_id
 
-    if (!schoolId || !weekStart) {
+    const { weekStart, program, planId, day } = await request.json()
+
+    if (planId) {
+      if (!STORY_DAYS.includes(day)) {
+        return Response.json({ error: 'Invalid day' }, { status: 400 })
+      }
+      const { data: plan } = await supabase
+        .from('story_plans')
+        .select('*')
+        .eq('id', planId)
+        .eq('school_id', schoolId)
+        .maybeSingle()
+      if (!plan) {
+        return Response.json({ error: 'Story plan not found' }, { status: 404 })
+      }
+      if (!plan.program) {
+        return Response.json({ error: 'Older stories without a program cannot be regenerated' }, { status: 400 })
+      }
+
+      const recentSummaries = await getRecentStorySummaries(supabase, {
+        schoolId,
+        program: plan.program,
+        weekStart: plan.week_start_date,
+        extraStories: STORY_DAYS.map(d => plan[d]),
+      })
+      const generated = await generateStories({ program: plan.program, days: [day], recentSummaries })
+
+      const { error: updateError } = await supabase
+        .from('story_plans')
+        .update({ [day]: generated[day] })
+        .eq('id', plan.id)
+      if (updateError) {
+        return Response.json({ error: updateError.message }, { status: 500 })
+      }
+      return Response.json({ success: true, story: generated[day] })
+    }
+
+    if (!weekStart || !program) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -18,78 +75,23 @@ export async function POST(request) {
       .from('story_plans')
       .select('id')
       .eq('school_id', schoolId)
+      .eq('program', program)
       .eq('week_start_date', weekStart)
       .maybeSingle()
 
     if (existing) {
-      return Response.json({ error: 'Story plan already exists for this week!' }, { status: 409 })
+      return Response.json({ error: `${program} stories already exist for this week!` }, { status: 409 })
     }
 
-    // Call Claude API server-side
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 6000,
-        messages: [{
-          role: 'user',
-          content: `Generate 5 short Indian children's stories for preschool children aged 2-6 years for Monday to Friday.
-
-Requirements:
-- Indian themes, characters, settings
-- Animal stories, moral stories, nature stories, festival stories
-- Age appropriate language (simple words)
-- Warm, positive, no scary content, no monsters, no violence
-- Medium length (~300-400 words each)
-- Include 3 simple questions for parents to ask child
-- Include one fun activity suggestion
-- Strong moral value in each story
-
-Return ONLY valid JSON, no other text:
-{
-  "monday": {
-    "title": "The Kind Elephant",
-    "category": "Animal Story",
-    "emoji": "🐘",
-    "story": "Full story text here (300-400 words)...",
-    "moral": "Kindness makes the world a better place",
-    "questions": [
-      "What was the elephant's name?",
-      "How did the elephant help his friends?",
-      "How did helping others make the elephant feel?"
-    ],
-    "activity": {
-      "title": "Draw and Share!",
-      "description": "Draw your favourite animal from the story and share it with someone you love!"
-    }
-  },
-  "tuesday": { "same structure" },
-  "wednesday": { "same structure" },
-  "thursday": { "same structure" },
-  "friday": { "same structure" }
-}`
-        }]
-      })
-    })
-
-    const data = await response.json()
-    const content = data.content[0].text
-    const cleanContent = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim()
-    const plan = JSON.parse(cleanContent)
+    const recentSummaries = await getRecentStorySummaries(supabase, { schoolId, program, weekStart })
+    const plan = await generateStories({ program, recentSummaries })
 
     // Save to database
     const { error: insertError } = await supabase
       .from('story_plans')
       .insert({
         school_id: schoolId,
+        program,
         week_start_date: weekStart,
         monday: plan.monday,
         tuesday: plan.tuesday,

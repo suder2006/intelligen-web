@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { APP_URL } from '@/lib/config'
 import { registerPushNotifications } from '@/lib/pushNotifications'
+import ParentStories from '@/components/ParentStories'
 import dynamic from 'next/dynamic'
 const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false })
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
@@ -839,6 +840,7 @@ export default function ParentPortal() {
     { id: 'absence', label: 'Notify Absence', icon: '📋' },
     { id: 'checkin', label: 'Check-in', icon: '🚪' },
     { id: 'holidays', label: 'Holidays', icon: '📅' },
+    { id: 'stories', label: 'Story Time', icon: '📖' },
     { id: 'homeactivities', label: 'Home Activities', icon: '🏠' },
     { id: 'ptm', label: 'PTM', icon: '🤝' },
     { id: 'transport', label: 'Transport', icon: '🚌' },
@@ -1805,6 +1807,11 @@ export default function ParentPortal() {
                 })}
               </>
             )}  
+
+            {/* STORIES TAB */}
+            {activeTab === 'stories' && (
+              <ParentStories students={students} schoolId={schoolId} />
+            )}
 
             {/* ANNOUNCEMENTS TAB */}
             {activeTab === 'announcements' && (
