@@ -29,7 +29,7 @@ export default function StaffPage() {
       const { data: { user } } = await supabase.auth.getUser()
       const [{ data: staffData }, { data: progsData }] = await Promise.all([
         supabase.from('profiles').select('*')
-          .in('role', ['teacher', 'staff', 'center_head', 'school_admin', 'driver'])
+          .in('role', ['teacher', 'staff', 'center_head', 'school_admin', 'driver', 'inactive'])
           .eq('school_id', schoolId)
           .neq('id', user.id)
           .order('created_at', { ascending: false }),
@@ -107,7 +107,34 @@ export default function StaffPage() {
     fetchAll()
   }
 
-  const programColors = ['#38bdf8', '#10b981', '#f59e0b', '#a78bfa', '#f87171', '#34d399', '#fb923c']
+  const [statusBusy, setStatusBusy] = useState(null)
+  const [toast, setToast] = useState(null)
+
+  const setStaffStatus = async (s, action) => {
+    if (action === 'deactivate' && !confirm(`Deactivate ${s.full_name}? They will no longer be able to log in.`)) return
+    setStatusBusy(s.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin/staff-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        },
+        body: JSON.stringify({ user_id: s.id, action })
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body.error) throw new Error(body.error || `Request failed (${res.status})`)
+      setToast(`${s.full_name} has been ${action === 'deactivate' ? 'deactivated' : 'reactivated'}`)
+      setTimeout(() => setToast(null), 3000)
+      await fetchAll()
+    } catch (e) {
+      alert('Error: ' + e.message)
+    }
+    setStatusBusy(null)
+  }
+
+  const programColors =['#38bdf8', '#10b981', '#f59e0b', '#a78bfa', '#f87171', '#34d399', '#fb923c']
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'DM Sans', sans-serif", color: '#fff' }}>
@@ -140,6 +167,10 @@ export default function StaffPage() {
         .empty { text-align: center; padding: 60px; color: rgba(255,255,255,0.3); }
         .prog-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; border: 1px solid #334155; background: #0f172a; color: #94a3b8; cursor: pointer; font-size: 13px; font-family: 'DM Sans'; margin: 4px; transition: all 0.15s; }
         .prog-toggle.selected { border-color: #38bdf8; background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .status-badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .status-badge.active { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+        .status-badge.inactive { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 200; }
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; padding: 20px; } }
       `}</style>
 
@@ -159,16 +190,21 @@ export default function StaffPage() {
           <div className="grid">
             {staff.map(s => {
               const progs = staffPrograms[s.id] || []
+              const inactive = s.role === 'inactive'
+              const role = inactive ? s.previous_role : s.role
               return (
-                <div key={s.id} className="staff-card">
-                  <div className="avatar">{s.full_name?.[0]?.toUpperCase() || '?'}</div>
+                <div key={s.id} className="staff-card" style={inactive ? { opacity: 0.7 } : undefined}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="avatar">{s.full_name?.[0]?.toUpperCase() || '?'}</div>
+                    <span className={`status-badge ${inactive ? 'inactive' : 'active'}`}>{inactive ? 'Inactive' : 'Active'}</span>
+                  </div>
                   <div className="staff-name">{s.full_name}</div>
                   <div className="staff-role">
-                    {s.role === 'teacher' ? '👩‍🏫 Teacher' : 
-                     s.role === 'staff' ? '👤 Staff' :
-                     s.role === 'center_head' ? '🏫 Center Head' :
-                     s.role === 'school_admin' ? '⚙️ School Admin' :
-                     s.role === 'driver' ? '🚌 Driver' : s.role}
+                    {role === 'teacher' ? '👩‍🏫 Teacher' :
+                     role === 'staff' ? '👤 Staff' :
+                     role === 'center_head' ? '🏫 Center Head' :
+                     role === 'school_admin' ? '⚙️ School Admin' :
+                     role === 'driver' ? '🚌 Driver' : role}
                   </div>
                   {s.email && <div className="staff-info">✉️ {s.email}</div>}
                   {s.phone && <div className="staff-info">📞 {s.phone}</div>}
@@ -202,6 +238,10 @@ export default function StaffPage() {
                         style={{ flex: 1, padding: '7px', backgroundColor: 'rgba(56,189,248,0.1)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px' }}>
                         Assign Programs
                       </button>
+                      <button onClick={() => setStaffStatus(s, inactive ? 'activate' : 'deactivate')} disabled={statusBusy === s.id}
+                        style={{ padding: '7px 12px', backgroundColor: inactive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '8px', color: inactive ? '#34d399' : '#f87171', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        {statusBusy === s.id ? '...' : inactive ? '🟢 Activate' : '🔴 Deactivate'}
+                      </button>
                       <button onClick={() => deleteStaff(s.id)}
                         style={{ padding: '7px 12px', backgroundColor: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>
                         Remove
@@ -214,6 +254,8 @@ export default function StaffPage() {
           </div>
         )}
       </div>
+
+      {toast && <div className="toast">✅ {toast}</div>}
 
       {showAdd && (
         <div className="modal-overlay" onClick={() => setShowAdd(false)}>
