@@ -29,6 +29,14 @@ export default function AdminGrowthPage() {
   const [programs, setPrograms] = useState([])
   const [filterProgram, setFilterProgram] = useState('')
   const [search, setSearch] = useState('')
+  const [teachers, setTeachers] = useState({})
+  const [pendingProgram, setPendingProgram] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [bulkApproving, setBulkApproving] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState('')
 
   useEffect(() => { if (schoolId) fetchData() }, [schoolId])
 
@@ -43,7 +51,71 @@ export default function AdminGrowthPage() {
     setStudents(studRes.data || [])
     setMeasurements(measRes.data || [])
     setPrograms(progRes.data?.map(p => p.value) || [])
+
+    const teacherIds = [...new Set((measRes.data || []).map(m => m.measured_by).filter(Boolean))]
+    if (teacherIds.length > 0) {
+      const { data: profs } = await supabase.from('profiles').select('id, full_name').in('id', teacherIds)
+      setTeachers(Object.fromEntries((profs || []).map(p => [p.id, p.full_name])))
+    }
     setLoading(false)
+  }
+
+  // Edits and approvals go through the service-role API so RLS can't block them silently
+  const growthApi = async (payload) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/admin/growth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+      },
+      body: JSON.stringify(payload)
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error || 'Request failed')
+    return body
+  }
+
+  const approveFromList = async (ids) => {
+    if (ids.length > 1 && !confirm(`Approve ${ids.length} measurements?`)) return
+    ids.length > 1 ? setBulkApproving(true) : setApproving(ids[0])
+    try {
+      await growthApi({ action: 'approve', ids })
+      setSelectedIds(new Set())
+      await fetchData()
+    } catch (e) {
+      alert(`Approval failed: ${e.message}`)
+    } finally {
+      setBulkApproving(false)
+      setApproving(null)
+    }
+  }
+
+  const openEdit = (m) => {
+    setEditing(m)
+    setEditError('')
+    setEditForm({
+      measurement_date: m.measurement_date || '',
+      height_cm: m.height_cm ?? '',
+      weight_kg: m.weight_kg ?? '',
+      head_circumference_cm: m.head_circumference_cm ?? '',
+      chest_circumference_cm: m.chest_circumference_cm ?? '',
+    })
+  }
+
+  const saveEdit = async (approve = false) => {
+    setSaving(true)
+    setEditError('')
+    try {
+      await growthApi({ action: 'edit', id: editing.id, values: editForm, approve })
+      setEditing(null)
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(editing.id); return next })
+      await fetchData()
+    } catch (e) {
+      setEditError(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const approveMeasurement = async (id) => {
@@ -72,6 +144,20 @@ export default function AdminGrowthPage() {
 
   const pending = measurements.filter(m => m.status === 'pending')
   const approved = measurements.filter(m => m.status === 'approved')
+
+  const pendingList = pending
+    .filter(m => !pendingProgram || m.students?.program === pendingProgram)
+    .sort((a, b) => (b.measurement_date || '').localeCompare(a.measurement_date || ''))
+  const visibleSelected = pendingList.filter(m => selectedIds.has(m.id)).map(m => m.id)
+  const allVisibleSelected = pendingList.length > 0 && visibleSelected.length === pendingList.length
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  const toggleAllVisible = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(pendingList.map(m => m.id)))
+  const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const editBmi = calculateBMI(parseFloat(editForm.weight_kg), parseFloat(editForm.height_cm))
 
   const studentMeasurements = selectedStudent
     ? measurements.filter(m => m.student_id === selectedStudent.id).sort((a, b) => new Date(a.measurement_date) - new Date(b.measurement_date))
@@ -103,6 +189,12 @@ export default function AdminGrowthPage() {
         .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: 20px; margin-bottom: 14px; }
         .btn-primary { background: linear-gradient(135deg, #10b981, #34d399); border: none; border-radius: 10px; padding: 8px 16px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-danger { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 6px 12px; color: #f87171; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn-edit { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px; padding: 6px 12px; color: #38bdf8; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .pa-table th { padding: 10px 12px; text-align: left; color: #64748b; font-weight: 600; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
+        .pa-table td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+        .pa-table tr.sel td { background: rgba(16,185,129,0.06); }
         .tab { padding: 8px 20px; border-radius: 10px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; }
         .tab-active { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
         .tab-inactive { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.07); }
@@ -133,6 +225,76 @@ export default function AdminGrowthPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
         ) : (
+          <>
+          {/* Pending approvals across all classes */}
+          <div className="card" style={{ borderColor: 'rgba(245,158,11,0.2)', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ color: '#fff', fontWeight: '700', fontSize: '16px' }}>⏳ Pending Approvals</div>
+                <span style={{ padding: '3px 10px', background: 'rgba(245,158,11,0.15)', borderRadius: '20px', color: '#f59e0b', fontSize: '12px', fontWeight: '700' }}>
+                  {pending.length}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={pendingProgram} onChange={e => { setPendingProgram(e.target.value); setSelectedIds(new Set()) }} style={inputStyle}>
+                  <option value=''>All Classes / Programs</option>
+                  {programs.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <button className="btn-primary" onClick={() => approveFromList(visibleSelected)} disabled={visibleSelected.length === 0 || bulkApproving}>
+                  {bulkApproving ? '⏳ Approving...' : `✅ Approve selected (${visibleSelected.length})`}
+                </button>
+              </div>
+            </div>
+
+            {pendingList.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+                ✅ No pending measurements{pendingProgram ? ` in ${pendingProgram}` : ''}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="pa-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '32px' }}>
+                        <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} style={{ accentColor: '#10b981', cursor: 'pointer' }} />
+                      </th>
+                      {['Student', 'Class / Program', 'Date', 'Height', 'Weight', 'Head', 'BMI', 'Teacher', ''].map(h => <th key={h}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingList.map(m => {
+                      const bmi = calculateBMI(m.weight_kg, m.height_cm)
+                      const bmiInfo = BMI_CATEGORY(bmi)
+                      return (
+                        <tr key={m.id} className={selectedIds.has(m.id) ? 'sel' : ''}>
+                          <td>
+                            <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => toggleSelected(m.id)} style={{ accentColor: '#10b981', cursor: 'pointer' }} />
+                          </td>
+                          <td style={{ color: '#fff', fontWeight: '600' }}>{m.students?.full_name || '—'}</td>
+                          <td style={{ color: '#a78bfa' }}>{m.students?.program || '—'}</td>
+                          <td style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(m.measurement_date)}</td>
+                          <td style={{ color: '#38bdf8', fontWeight: '600' }}>{m.height_cm ? `${m.height_cm} cm` : '—'}</td>
+                          <td style={{ color: '#a78bfa', fontWeight: '600' }}>{m.weight_kg ? `${m.weight_kg} kg` : '—'}</td>
+                          <td style={{ color: '#f97316' }}>{m.head_circumference_cm ? `${m.head_circumference_cm} cm` : '—'}</td>
+                          <td style={{ color: bmiInfo.color, fontWeight: '600' }}>{bmi || '—'}</td>
+                          <td style={{ color: 'rgba(255,255,255,0.6)' }}>{teachers[m.measured_by] || '—'}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              <button className="btn-edit" onClick={() => openEdit(m)}>✏️ Edit</button>
+                              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => approveFromList([m.id])} disabled={approving === m.id || bulkApproving}>
+                                {approving === m.id ? '⏳' : '✅ Approve'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
 
             {/* Student list */}
@@ -261,6 +423,7 @@ export default function AdminGrowthPage() {
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn-edit" onClick={() => openEdit(m)}>✏️ Edit</button>
                                 <button className="btn-primary" onClick={() => approveMeasurement(m.id)} disabled={approving === m.id}>
                                   {approving === m.id ? '⏳' : '✅ Approve'}
                                 </button>
@@ -332,7 +495,10 @@ export default function AdminGrowthPage() {
                                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>By: {m.profiles.full_name}</div>
                                 )}
                               </div>
-                              <button className="btn-danger" onClick={() => deleteMeasurement(m.id)}>🗑️ Delete</button>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn-edit" onClick={() => openEdit(m)}>✏️ Edit</button>
+                                <button className="btn-danger" onClick={() => deleteMeasurement(m.id)}>🗑️ Delete</button>
+                              </div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
                               {m.height_cm && (
@@ -443,8 +609,69 @@ export default function AdminGrowthPage() {
               )}
             </div>
           </div>
+          </>
         )}
       </div>
+
+      {/* Edit measurement */}
+      {editing && (
+        <div onClick={() => !saving && setEditing(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '460px' }}>
+            <div style={{ color: '#fff', fontWeight: '700', fontSize: '18px' }}>✏️ Edit Measurement</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '4px', marginBottom: '18px' }}>
+              {editing.students?.full_name} · {editing.students?.program} ·{' '}
+              <span style={{ color: editing.status === 'approved' ? '#34d399' : '#f59e0b' }}>{editing.status}</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {[
+                ['measurement_date', 'Date', 'date'],
+                ['height_cm', 'Height (cm)', 'number'],
+                ['weight_kg', 'Weight (kg)', 'number'],
+                ['head_circumference_cm', 'Head (cm)', 'number'],
+                ['chest_circumference_cm', 'Chest (cm)', 'number'],
+              ].map(([key, label, type]) => (
+                <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: key === 'measurement_date' ? '1 / -1' : undefined }}>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: '600' }}>{label}</span>
+                  <input type={type} step={type === 'number' ? '0.1' : undefined} min={type === 'number' ? '0' : undefined}
+                    value={editForm[key]} onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                    style={{ ...inputStyle, colorScheme: 'dark' }} />
+                </label>
+              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'flex-end' }}>
+                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: '600' }}>BMI</span>
+                <div style={{ padding: '8px 12px', color: BMI_CATEGORY(editBmi).color, fontWeight: '700', fontSize: '13px' }}>
+                  {editBmi ? `${editBmi} (${BMI_CATEGORY(editBmi).label})` : '—'}
+                </div>
+              </div>
+            </div>
+
+            {editing.status === 'approved' && (
+              <div style={{ marginTop: '14px', color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+                This record stays approved, so parents see the corrected values right away.
+              </div>
+            )}
+            {editError && <div style={{ marginTop: '12px', color: '#f87171', fontSize: '13px' }}>{editError}</div>}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setEditing(null)} disabled={saving}
+                style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '13px', fontFamily: "'DM Sans', sans-serif" }}>
+                Cancel
+              </button>
+              <button className="btn-edit" style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '10px', fontWeight: '600' }} onClick={() => saveEdit(false)} disabled={saving}>
+                {saving ? '⏳' : '💾 Save'}
+              </button>
+              {editing.status === 'pending' && (
+                <button className="btn-primary" onClick={() => saveEdit(true)} disabled={saving}>
+                  {saving ? '⏳' : '✅ Save & Approve'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
