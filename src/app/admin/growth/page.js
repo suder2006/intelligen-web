@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import AdminSidebar from '@/components/AdminSidebar'
 import { useSchool } from '@/hooks/useSchool'
+import AddGrowthEntryModal from '@/components/growth/AddGrowthEntryModal'
+import BulkGrowthUploadModal from '@/components/growth/BulkGrowthUploadModal'
 
 const BMI_CATEGORY = (bmi) => {
   if (!bmi) return { label: '—', color: '#94a3b8' }
@@ -37,6 +39,9 @@ export default function AdminGrowthPage() {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const [showBulk, setShowBulk] = useState(false)
+  const [notice, setNotice] = useState('')
 
   useEffect(() => { if (schoolId) fetchData() }, [schoolId])
 
@@ -194,6 +199,9 @@ export default function AdminGrowthPage() {
         .btn-primary { background: linear-gradient(135deg, #10b981, #34d399); border: none; border-radius: 10px; padding: 8px 16px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-danger { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 6px 12px; color: #f87171; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-edit { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px; padding: 6px 12px; color: #38bdf8; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 16px; color: rgba(255,255,255,0.7); font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+        .pick-row:hover { background: rgba(16,185,129,0.1); }
+        .btn-edit:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
         .pa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .pa-table th { padding: 10px 12px; text-align: left; color: #64748b; font-weight: 600; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
@@ -216,15 +224,25 @@ export default function AdminGrowthPage() {
               Track height, weight and growth measurements · IAP standards
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ padding: '6px 14px', background: 'rgba(245,158,11,0.15)', borderRadius: '20px', color: '#f59e0b', fontSize: '13px', fontWeight: '600' }}>
               ⏳ {pending.length} Pending
             </span>
             <span style={{ padding: '6px 14px', background: 'rgba(16,185,129,0.15)', borderRadius: '20px', color: '#34d399', fontSize: '13px', fontWeight: '600' }}>
               ✅ {approved.length} Approved
             </span>
+            <button className="btn-edit" style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '10px', fontWeight: '600' }}
+              onClick={() => setShowBulk(true)} disabled={loading}>📤 Bulk Upload</button>
+            <button className="btn-primary" onClick={() => setShowAdd(true)} disabled={loading}>➕ Add Entry</button>
           </div>
         </div>
+
+        {notice && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', marginBottom: '16px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', color: '#34d399', fontSize: '13px' }}>
+            <span>✅ {notice}</span>
+            <button onClick={() => setNotice('')} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: '#34d399', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.3)' }}>Loading...</div>
@@ -616,6 +634,24 @@ export default function AdminGrowthPage() {
           </>
         )}
       </div>
+
+      {showAdd && (
+        <AddGrowthEntryModal
+          students={students} programs={programs} schoolId={schoolId}
+          growthApi={growthApi} inputStyle={inputStyle}
+          onClose={() => setShowAdd(false)}
+          onSaved={async (message) => { setShowAdd(false); setNotice(message); await fetchData() }}
+        />
+      )}
+
+      {showBulk && (
+        <BulkGrowthUploadModal
+          students={students} programs={programs} measurements={measurements} schoolId={schoolId}
+          growthApi={growthApi} inputStyle={inputStyle}
+          onClose={() => setShowBulk(false)}
+          onSaved={fetchData}
+        />
+      )}
 
       {/* Edit measurement */}
       {editing && (
