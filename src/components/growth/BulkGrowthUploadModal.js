@@ -1,7 +1,7 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
-import { MEASURE_FIELDS } from '@/lib/growth'
+import { MEASURE_FIELDS, todayLocal } from '@/lib/growth'
 import { TEMPLATE_HEADERS, parseGrowthSheet } from '@/lib/growthExcel'
 import { GrowthModal, BMI_COLORS, fieldLabelStyle } from './shared'
 
@@ -9,11 +9,13 @@ const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-IN',
 const show = (v) => (v === null || v === undefined || v === '' ? '—' : v)
 
 // Excel template download, upload, preview and save through
-// /api/admin/growth (action: bulk).
+// /api/admin/growth (action: bulk). One program and one measurement date per
+// upload; students are matched by name within that program.
 export default function BulkGrowthUploadModal({ students, programs, measurements, schoolId, growthApi, inputStyle, onClose, onSaved }) {
   const [program, setProgram] = useState('')
+  const [date, setDate] = useState(todayLocal())
   const [fileName, setFileName] = useState('')
-  const [preview, setPreview] = useState(null)
+  const [sheet, setSheet] = useState(null)
   const [readError, setReadError] = useState('')
   const [duplicates, setDuplicates] = useState('skip')
   const [status, setStatus] = useState('pending')
@@ -22,47 +24,61 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
   const [result, setResult] = useState(null)
   const fileRef = useRef(null)
 
+  // Programs from the masters list plus any used by active students
+  const programOptions = useMemo(
+    () => [...new Set([...programs, ...students.map(s => s.program).filter(Boolean)])].sort(),
+    [programs, students])
+  const programStudents = useMemo(
+    () => students.filter(s => s.program === program).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')),
+    [students, program])
+
+  const dateError = !date ? 'Pick the measurement date'
+    : date > todayLocal() ? 'The measurement date cannot be in the future' : ''
+
+  // Re-checked whenever the program, date or records change
+  const preview = useMemo(() => {
+    if (!sheet || !program || dateError) return null
+    return parseGrowthSheet(sheet, { students: programStudents, existing: measurements, date, program })
+  }, [sheet, program, date, dateError, programStudents, measurements])
+  const sheetError = preview?.error || (preview && preview.valid.length === 0 && preview.errors.length === 0
+    ? 'No rows with measurements found in the sheet.' : '')
+  const ready = preview && !sheetError
+
   const downloadTemplate = () => {
-    const list = students
-      .filter(s => !program || s.program === program)
-      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
-    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...list.map(s => [s.full_name, s.student_id || ''])])
-    ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 22 }, { wch: 23 }]
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...programStudents.map(s => [s.full_name])])
+    ws['!cols'] = [{ wch: 28 }, { wch: 11 }, { wch: 11 }, { wch: 22 }, { wch: 23 }]
     const help = XLSX.utils.aoa_to_sheet([
-      ['How to fill in the Growth sheet'],
+      [`How to fill in the Growth sheet (${program})`],
       [''],
-      ['date', 'Measurement date as YYYY-MM-DD (e.g. 2026-11-04) or DD/MM/YYYY. Required.'],
+      ['student_name', 'Pre-filled with the active students of this program. Do not change the names.'],
       ['height_cm', 'Height in centimetres, e.g. 92.5 (40–180)'],
       ['weight_kg', 'Weight in kilograms, e.g. 14.2 (2–80)'],
       ['head_circumference_cm', 'Head circumference in centimetres, e.g. 48.5 (30–65). Optional.'],
       ['chest_circumference_cm', 'Chest circumference in centimetres, e.g. 52 (30–100). Optional.'],
       [''],
-      ['Enter at least height or weight. Rows left empty are ignored.'],
-      ['Students are matched by student_id; if it is blank, by exact name.'],
+      ['Enter at least height or weight. Rows with no measurements are ignored.'],
+      ['The measurement date is chosen on the upload screen and applies to every row.'],
+      ['Students are matched by name within the program chosen on the upload screen.'],
+      ['Two students with the same name in a program cannot be uploaded; use Add Entry for them.'],
       ['Do not change the column headers.'],
     ])
-    help['!cols'] = [{ wch: 24 }, { wch: 70 }]
+    help['!cols'] = [{ wch: 24 }, { wch: 80 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Growth')
     XLSX.utils.book_append_sheet(wb, help, 'Instructions')
-    const slug = (program || 'all').replace(/[^a-z0-9]+/gi, '_').toLowerCase()
-    XLSX.writeFile(wb, `growth_template_${slug}.xlsx`)
+    XLSX.writeFile(wb, `growth_template_${program.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.xlsx`)
   }
 
   const readFile = async (file) => {
     setReadError('')
-    setPreview(null)
+    setSheet(null)
     setSaveError('')
     if (!file) return
     setFileName(file.name)
     try {
       const wb = XLSX.read(await file.arrayBuffer())
       const ws = wb.Sheets[wb.SheetNames[0]]
-      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: true })
-      const parsed = parseGrowthSheet(aoa, students, measurements)
-      if (parsed.error) { setReadError(parsed.error); return }
-      if (parsed.valid.length === 0 && parsed.errors.length === 0) { setReadError('No filled-in rows found in the sheet.'); return }
-      setPreview(parsed)
+      setSheet(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: true }))
     } catch (e) {
       setReadError(`Could not read the file: ${e.message}`)
     } finally {
@@ -70,8 +86,8 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
     }
   }
 
-  const dupCount = preview ? preview.valid.filter(v => v.duplicateOf).length : 0
-  const newCount = preview ? preview.valid.length - dupCount : 0
+  const dupCount = ready ? preview.valid.filter(v => v.duplicateOf).length : 0
+  const newCount = ready ? preview.valid.length - dupCount : 0
   const toSaveCount = newCount + (duplicates === 'overwrite' ? dupCount : 0)
 
   const save = async () => {
@@ -80,7 +96,8 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
     try {
       const rows = preview.valid.map(v => ({ row: v.row, student_id: v.student.id, ...v.record }))
       const res = await growthApi({ action: 'bulk', school_id: schoolId, status, duplicates, rows })
-      setResult({ ...res, previewErrors: preview.errors })
+      // Snapshot: the preview re-runs against the refreshed records after saving
+      setResult({ ...res, date, previewErrors: preview.errors, labels: Object.fromEntries(preview.valid.map(v => [v.row, v.student.full_name])) })
       await onSaved()
     } catch (e) {
       setSaveError(e.message)
@@ -96,9 +113,9 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
   // Result summary
   if (result) {
     const allErrors = [...result.previewErrors, ...result.errors].sort((a, b) => a.row - b.row)
-    const rowLabel = Object.fromEntries((preview?.valid || []).map(v => [v.row, v.student.full_name]))
     return (
       <GrowthModal title="📤 Upload complete" onClose={onClose} maxWidth="560px">
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginBottom: '12px' }}>{program} · measured {fmtDate(result.date)}</div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <span style={chip('rgba(16,185,129,0.15)', '#34d399')}>✅ {result.saved} saved as {status}</span>
           {result.overwritten > 0 && <span style={chip('rgba(56,189,248,0.15)', '#38bdf8')}>✏️ {result.overwritten} overwritten</span>}
@@ -113,7 +130,7 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
                 {allErrors.map((e, i) => (
                   <tr key={i}>
                     <td style={{ ...td, color: '#94a3b8' }}>{e.row}</td>
-                    <td style={{ ...td, color: '#fff' }}>{e.label || rowLabel[e.row] || '—'}</td>
+                    <td style={{ ...td, color: '#fff' }}>{e.label || result.labels[e.row] || '—'}</td>
                     <td style={{ ...td, color: '#f87171' }}>{e.error}</td>
                   </tr>
                 ))}
@@ -129,39 +146,63 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
   }
 
   return (
-    <GrowthModal title="📤 Bulk Upload (Excel)" onClose={onClose} busy={saving} maxWidth={preview ? '1000px' : '520px'}>
-      {/* Step 1: template */}
+    <GrowthModal title="📤 Bulk Upload (Excel)" onClose={onClose} busy={saving} maxWidth={ready ? '1000px' : '560px'}>
+      {/* Step 1: program and date */}
       <div className="card" style={{ marginBottom: '12px' }}>
-        <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>1. Download the template</div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <select value={program} onChange={e => setProgram(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: '180px' }}>
-            <option value=''>All Programs</option>
-            {programs.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <button className="btn-edit" style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '10px', fontWeight: '600' }} onClick={downloadTemplate}>
-            ⬇️ Download Template
-          </button>
+        <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>1. Choose the program and measurement date</div>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '180px' }}>
+            <span style={fieldLabelStyle}>Program</span>
+            <select value={program} onChange={e => setProgram(e.target.value)} disabled={saving} style={inputStyle}>
+              <option value=''>Select a program...</option>
+              {programOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={fieldLabelStyle}>Measurement date (all rows)</span>
+            <input type="date" required max={todayLocal()} value={date} disabled={saving}
+              onChange={e => setDate(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }} />
+          </label>
         </div>
+        {program && (
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '8px' }}>
+            {programStudents.length} active student{programStudents.length === 1 ? '' : 's'} in {program}
+          </div>
+        )}
+        {dateError && <div style={{ marginTop: '8px', color: '#f87171', fontSize: '13px' }}>{dateError}</div>}
+      </div>
+
+      {/* Step 2: template */}
+      <div className="card" style={{ marginBottom: '12px' }}>
+        <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>2. Download the template</div>
+        <button className="btn-edit" style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '10px', fontWeight: '600' }}
+          onClick={downloadTemplate} disabled={!program || programStudents.length === 0}>
+          ⬇️ Download Template
+        </button>
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '8px' }}>
-          Student names and IDs are filled in. Add the date, height_cm, weight_kg and optionally head and chest circumference.
+          {program
+            ? `Student names for ${program} are filled in. Add height_cm, weight_kg and optionally head and chest circumference.`
+            : 'Choose a program first.'}
         </div>
       </div>
 
-      {/* Step 2: upload */}
+      {/* Step 3: upload */}
       <div className="card" style={{ marginBottom: '12px' }}>
-        <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>2. Upload the filled-in file</div>
+        <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>3. Upload the filled-in file</div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => readFile(e.target.files?.[0])} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={saving}>📤 Upload Excel</button>
+          <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={saving || !program || !!dateError}>📤 Upload Excel</button>
           {fileName && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{fileName}</span>}
         </div>
-        {readError && <div style={{ marginTop: '10px', color: '#f87171', fontSize: '13px' }}>{readError}</div>}
+        {(readError || sheetError) && <div style={{ marginTop: '10px', color: '#f87171', fontSize: '13px' }}>{readError || sheetError}</div>}
       </div>
 
-      {/* Step 3: preview */}
-      {preview && (
+      {/* Step 4: preview */}
+      {ready && (
         <div className="card" style={{ marginBottom: 0 }}>
-          <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>3. Check and save</div>
+          <div style={{ color: '#fff', fontWeight: '600', fontSize: '14px', marginBottom: '10px' }}>
+            4. Check and save · {program} · measured {fmtDate(date)}
+          </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
             <span style={chip('rgba(16,185,129,0.15)', '#34d399')}>✅ {newCount} new</span>
             <span style={chip('rgba(245,158,11,0.15)', '#f59e0b')}>🔁 {dupCount} duplicates</span>
@@ -174,7 +215,7 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Row', 'Student', 'Program', 'Date', ...MEASURE_FIELDS.map(f => `${f.label} (${f.unit})`), 'BMI', ''].map(h => <th key={h} style={th}>{h}</th>)}
+                    {['Row', 'Student', ...MEASURE_FIELDS.map(f => `${f.label} (${f.unit})`), 'BMI', ''].map(h => <th key={h} style={th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -184,8 +225,6 @@ export default function BulkGrowthUploadModal({ students, programs, measurements
                       <tr key={v.row} style={d ? { background: 'rgba(245,158,11,0.05)' } : undefined}>
                         <td style={{ ...td, color: '#94a3b8' }}>{v.row}</td>
                         <td style={{ ...td, color: '#fff', fontWeight: '600' }}>{v.student.full_name}</td>
-                        <td style={{ ...td, color: '#a78bfa' }}>{v.student.program || '—'}</td>
-                        <td style={{ ...td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(v.record.measurement_date)}</td>
                         {MEASURE_FIELDS.map(f => (
                           <td key={f.key} style={td}>
                             <span style={{ color: '#fff' }}>{show(v.record[f.key])}</span>
