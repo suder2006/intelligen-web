@@ -80,8 +80,14 @@ export default function AdminGrowthPage() {
     if (ids.length > 1 && !confirm(`Approve ${ids.length} measurements?`)) return
     ids.length > 1 ? setBulkApproving(true) : setApproving(ids[0])
     try {
-      await growthApi({ action: 'approve', ids })
-      setSelectedIds(new Set())
+      const { approved } = await growthApi({ action: 'approve', ids })
+      setSelectedIds(prev => new Set([...prev].filter(id => !ids.includes(id))))
+      if (approved < ids.length) {
+        const skipped = ids.length - approved
+        alert(skipped === ids.length && ids.length === 1
+          ? 'This measurement is no longer pending, so it was not approved.'
+          : `${skipped} of ${ids.length} measurements were no longer pending and were not approved.`)
+      }
       await fetchData()
     } catch (e) {
       alert(`Approval failed: ${e.message}`)
@@ -118,17 +124,7 @@ export default function AdminGrowthPage() {
     }
   }
 
-  const approveMeasurement = async (id) => {
-    setApproving(id)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('physical_growth').update({
-      status: 'approved',
-      approved_by: user.id,
-      approved_at: new Date().toISOString()
-    }).eq('id', id)
-    if (!error) await fetchData()
-    setApproving(null)
-  }
+  const approveMeasurement = (id) => approveFromList([id])
 
   const rejectMeasurement = async (id) => {
     if (!confirm('Reject this measurement?')) return
