@@ -28,16 +28,22 @@ const isMissingColumn = (error) => error && (error.code === 'PGRST204' || error.
 //        head_circumference_cm, chest_circumference_cm }, approve?: boolean }
 //   Updates the values and date, recomputes BMI and keeps the current status
 //   (an approved record stays approved). approve: true also approves a pending record.
+// POST { action: 'reject', id }
+//   Rejects a pending record. 409 if it is no longer pending.
+// POST { action: 'delete', id }
+//   Permanently deletes a record (any status).
 // Admins of the records' school only (super admins: any school). Runs with the
 // service role, so RLS on physical_growth can't block the update silently.
+const ACTIONS = ['approve', 'edit', 'reject', 'delete']
+
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}))
     const { action } = body
-    const ids = action === 'approve' ? body.ids : [body.id]
-    if (action !== 'approve' && action !== 'edit') {
-      return NextResponse.json({ error: "action must be 'approve' or 'edit'" }, { status: 400 })
+    if (!ACTIONS.includes(action)) {
+      return NextResponse.json({ error: `action must be one of: ${ACTIONS.join(', ')}` }, { status: 400 })
     }
+    const ids = action === 'approve' ? body.ids : [body.id]
     if (!Array.isArray(ids) || ids.length === 0 || ids.some(id => !id)) {
       return NextResponse.json({ error: 'No records given' }, { status: 400 })
     }
@@ -62,6 +68,22 @@ export async function POST(request) {
         .update(approval).in('id', ids).eq('status', 'pending').select('id')
       if (error) throw error
       return NextResponse.json({ success: true, approved: data.length })
+    }
+
+    if (action === 'reject') {
+      const { data, error } = await supabase.from('physical_growth')
+        .update({ status: 'rejected' }).eq('id', ids[0]).eq('status', 'pending').select('id')
+      if (error) throw error
+      if (data.length === 0) return NextResponse.json({ error: 'Record is no longer pending' }, { status: 409 })
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'delete') {
+      const { data, error } = await supabase.from('physical_growth')
+        .delete().eq('id', ids[0]).select('id')
+      if (error) throw error
+      if (data.length === 0) return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+      return NextResponse.json({ success: true })
     }
 
     // Edit

@@ -132,13 +132,21 @@ export default function AdminGrowthPage() {
 
   const rejectMeasurement = async (id) => {
     if (!confirm('Reject this measurement?')) return
-    const { error } = await supabase.from('physical_growth').update({ status: 'rejected' }).eq('id', id)
-    if (!error) await fetchData()
+    try {
+      await growthApi({ action: 'reject', id })
+    } catch (e) {
+      alert(`Reject failed: ${e.message}`)
+    }
+    await fetchData()
   }
 
   const deleteMeasurement = async (id) => {
     if (!confirm('Delete this measurement permanently?')) return
-    await supabase.from('physical_growth').delete().eq('id', id)
+    try {
+      await growthApi({ action: 'delete', id })
+    } catch (e) {
+      alert(`Delete failed: ${e.message}`)
+    }
     await fetchData()
   }
 
