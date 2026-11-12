@@ -35,6 +35,8 @@ export default function AdminGrowthPage() {
   const [pendingProgram, setPendingProgram] = useState('')
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [bulkApproving, setBulkApproving] = useState(false)
+  const [rejecting, setRejecting] = useState(null)
+  const [bulkRejecting, setBulkRejecting] = useState(false)
   const [editing, setEditing] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
@@ -102,6 +104,37 @@ export default function AdminGrowthPage() {
     }
   }
 
+  // Reject from the Pending Approvals list: one row or the ticked rows.
+  // Each record goes through the route's reject action; failures are reported.
+  const rejectFromList = async (ids) => {
+    const byId = Object.fromEntries(measurements.map(m => [m.id, m]))
+    const nameOf = (id) => byId[id]?.students?.full_name || 'Unknown student'
+    const single = ids.length === 1
+    if (!confirm(single
+      ? `Reject ${nameOf(ids[0])}'s measurement? Parents will not see it.`
+      : `Reject ${ids.length} measurements? Parents will not see them.`)) return
+
+    single ? setRejecting(ids[0]) : setBulkRejecting(true)
+    const results = await Promise.allSettled(ids.map(id => growthApi({ action: 'reject', id })))
+    const rejected = ids.filter((_, i) => results[i].status === 'fulfilled')
+    const failed = ids
+      .map((id, i) => ({ name: nameOf(id), result: results[i] }))
+      .filter(r => r.result.status === 'rejected')
+      .map(r => ({ name: r.name, message: r.result.reason?.message || 'Request failed' }))
+
+    setSelectedIds(prev => new Set([...prev].filter(id => !rejected.includes(id))))
+    if (single && failed.length) {
+      alert(`Reject failed: ${failed[0].message}`)
+    } else if (!single) {
+      alert(failed.length === 0
+        ? `Rejected ${rejected.length} measurement${rejected.length === 1 ? '' : 's'}.`
+        : `Rejected ${rejected.length} of ${ids.length}. ${failed.length} failed:\n\n${failed.map(f => `${f.name}: ${f.message}`).join('\n')}`)
+    }
+    await fetchData()
+    setRejecting(null)
+    setBulkRejecting(false)
+  }
+
   const openEdit = (m) => {
     setEditing(m)
     setEditError('')
@@ -158,6 +191,7 @@ export default function AdminGrowthPage() {
     .filter(m => !pendingProgram || m.students?.program === pendingProgram)
     .sort((a, b) => (b.measurement_date || '').localeCompare(a.measurement_date || ''))
   const visibleSelected = pendingList.filter(m => selectedIds.has(m.id)).map(m => m.id)
+  const bulkBusy = bulkApproving || bulkRejecting
   const allVisibleSelected = pendingList.length > 0 && visibleSelected.length === pendingList.length
   const toggleSelected = (id) => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -201,7 +235,7 @@ export default function AdminGrowthPage() {
         .btn-edit { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px; padding: 6px 12px; color: #38bdf8; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 16px; color: rgba(255,255,255,0.7); font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
         .pick-row:hover { background: rgba(16,185,129,0.1); }
-        .btn-edit:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-edit:disabled, .btn-secondary:disabled, .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
         .pa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .pa-table th { padding: 10px 12px; text-align: left; color: #64748b; font-weight: 600; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
@@ -262,8 +296,12 @@ export default function AdminGrowthPage() {
                   <option value=''>All Classes / Programs</option>
                   {programs.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
-                <button className="btn-primary" onClick={() => approveFromList(visibleSelected)} disabled={visibleSelected.length === 0 || bulkApproving}>
+                <button className="btn-primary" onClick={() => approveFromList(visibleSelected)} disabled={visibleSelected.length === 0 || bulkBusy}>
                   {bulkApproving ? '⏳ Approving...' : `✅ Approve selected (${visibleSelected.length})`}
+                </button>
+                <button className="btn-danger" style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '10px', fontWeight: '600' }}
+                  onClick={() => rejectFromList(visibleSelected)} disabled={visibleSelected.length === 0 || bulkBusy}>
+                  {bulkRejecting ? '⏳ Rejecting...' : `❌ Reject selected (${visibleSelected.length})`}
                 </button>
               </div>
             </div>
@@ -303,8 +341,11 @@ export default function AdminGrowthPage() {
                           <td>
                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                               <button className="btn-edit" onClick={() => openEdit(m)}>✏️ Edit</button>
-                              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => approveFromList([m.id])} disabled={approving === m.id || bulkApproving}>
+                              <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => approveFromList([m.id])} disabled={approving === m.id || rejecting === m.id || bulkBusy}>
                                 {approving === m.id ? '⏳' : '✅ Approve'}
+                              </button>
+                              <button className="btn-danger" onClick={() => rejectFromList([m.id])} disabled={approving === m.id || rejecting === m.id || bulkBusy}>
+                                {rejecting === m.id ? '⏳' : '❌ Reject'}
                               </button>
                             </div>
                           </td>
